@@ -1,0 +1,80 @@
+{
+  "generated_at": "2026-10-15T00:00:00Z",
+  "project_root": "C:/Patay/vps/vendas",
+  "languages": [
+    { "name": "TypeScript", "extensions": [".ts"], "file_count": 740 },
+    { "name": "TypeScript JSX", "extensions": [".tsx"], "file_count": 305 },
+    { "name": "SQL", "extensions": [".sql"], "file_count": 141 },
+    { "name": "Prisma Schema", "extensions": [".prisma"], "file_count": 1 }
+  ],
+  "primary_language": "TypeScript",
+  "frameworks": [
+    { "name": "NestJS", "version": "11.0.1", "source": "apps/api/package.json" },
+    { "name": "Prisma", "version": "6.2.1", "source": "apps/api/package.json" },
+    { "name": "Next.js", "version": "16.2.10", "source": "apps/web/package.json" },
+    { "name": "React", "version": "19.2.4", "source": "apps/web/package.json" },
+    { "name": "Zod", "version": "3.25.76", "source": "packages/contracts/package.json" },
+    { "name": "zapo-js", "version": "1.7.1", "source": "apps/whatsapp-worker/package.json" },
+    { "name": "Turborepo", "version": "2.3.3", "source": "package.json" }
+  ],
+  "package_manager": "pnpm",
+  "entry_points": [
+    { "path": "apps/api/src/main.ts", "type": "server_entry" },
+    { "path": "apps/web/src/app/(app)", "type": "app_entry" },
+    { "path": "apps/web/src/app/login", "type": "app_entry" },
+    { "path": "apps/portal-cliente/src/app", "type": "app_entry" },
+    { "path": "apps/whatsapp-worker/src/main.ts", "type": "worker_entry" }
+  ],
+  "config_files": [
+    "turbo.json",
+    "pnpm-workspace.yaml",
+    "docker/.env.prod.example",
+    "docker/.env.evolution-api.prod.example",
+    "docker/.env.evolution-go.prod.example",
+    "docker/.env.servicos.prod.example"
+  ],
+  "ci_cd": [],
+  "docker": {
+    "dockerfile": "docker/api.Dockerfile",
+    "compose": "docker/docker-compose.dev.yml"
+  },
+  "database_hints": [
+    { "path": "apps/api/prisma/schema.prisma", "type": "prisma_schema" },
+    { "path": "apps/api/prisma/migrations/", "type": "migrations_dir" },
+    { "path": "apps/api/prisma/seed-base.ts", "type": "seed_script" },
+    { "path": "apps/api/prisma/demo-dados.ts", "type": "seed_script" }
+  ],
+  "test_framework": "Jest",
+  "test_file_count": 113,
+  "modules": [
+    "acessos", "agente", "armazenamento", "assinaturas", "atividades", "auth",
+    "backup-empresa", "cadastros", "cliente-campo-config", "clientes", "consultas",
+    "contas-bancarias", "demo", "documentos-email", "email", "empresas",
+    "equipamentos-comodato", "erros", "escopo", "estoque", "estrutura", "feriados",
+    "fornecedores", "grupos-economicos", "inicio", "integracao", "integracao-keys",
+    "leads", "meus-atendimentos", "notas-entrada", "notas-saida", "notificacoes",
+    "objetivos", "oportunidades", "orcamento-config", "orcamentos", "parametros",
+    "perfis", "planos", "plataforma", "politica-senha", "portal-cliente",
+    "produto-campos", "produtos", "recuperacao-senha", "relatorios", "sms",
+    "sugestao-compra", "suporte-acesso", "termos", "titulos-receber", "tours",
+    "usuarios", "vendedores", "whatsapp"
+  ],
+  "total_files": 1204,
+  "organization_suggestion": {
+    "granularity": "module",
+    "rationale": "apps/api/src/modules/ tem 55 pastas top-level nomeadas por domínio de negócio, cada uma com seu próprio controller/service/dto.",
+    "signals": [
+      {
+        "type": "top_level_domain_folders",
+        "evidence": [
+          "apps/api/src/modules/clientes/",
+          "apps/api/src/modules/orcamentos/",
+          "apps/api/src/modules/produtos/",
+          "apps/api/src/modules/whatsapp/",
+          "apps/api/src/modules/relatorios/"
+        ]
+      }
+    ],
+    "features": []
+  }
+}

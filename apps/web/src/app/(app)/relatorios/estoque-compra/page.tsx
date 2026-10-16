@@ -59,9 +59,9 @@ type Ordem = { coluna: keyof RelatorioEstoqueCompraLinha; sentido: "asc" | "desc
  * (média × meses − estoque; negativo = sobra).
  */
 export default function RelatorioEstoqueCompraPage() {
-  const empresaNome = useAuthStore(
-    (s) => s.user?.empresas.find((e) => e.empresaId === s.user?.empresaAtivaId)?.nomeFantasia,
-  );
+  const empresaAtiva = useAuthStore((s) => s.user?.empresas.find((e) => e.empresaId === s.user?.empresaAtivaId));
+  const empresaNome = empresaAtiva?.nomeFantasia;
+  const logoUrl = empresaAtiva?.logoUrl;
   const [atalho, setAtalho] = useState("3");
   const [fim, setFim] = useState(hojeIso);
   const [inicio, setInicio] = useState(() => mesesAntes(hojeIso(), 3));
@@ -173,10 +173,10 @@ export default function RelatorioEstoqueCompraPage() {
       ]
     : [];
 
-  const exportar = (formato: "pdf" | "xlsx") => {
-    const params = { titulo: "Estoque e compra", empresaNome, filtros: filtrosTexto, colunas: visiveis, linhas: ordenadas };
-    if (formato === "pdf") exportarRelatorioPdf(params);
-    else exportarRelatorioExcel(params);
+  const exportar = async (formato: "pdf" | "xlsx") => {
+    const params = { titulo: "Estoque e compra", empresaNome, logoUrl, filtros: filtrosTexto, colunas: visiveis, linhas: ordenadas };
+    if (formato === "pdf") await exportarRelatorioPdf(params);
+    else await exportarRelatorioExcel(params);
   };
 
   const colunasTabela: ColumnDef<RelatorioEstoqueCompraLinha>[] = visiveis.map((c) => ({
@@ -296,11 +296,11 @@ export default function RelatorioEstoqueCompraPage() {
             <SeletorColunas colunas={colunas} ocultas={ocultas} alternar={alternar} mostrarTodas={mostrarTodas} />
             {podeExportar && (
               <>
-                <Button variant="outline" className="gap-1.5" disabled={!data?.linhas.length} onClick={() => exportar("pdf")}>
+                <Button variant="outline" className="gap-1.5" disabled={!data?.linhas.length} onClick={() => void exportar("pdf")}>
                   <FileText className="size-4" />
                   PDF
                 </Button>
-                <Button variant="outline" className="gap-1.5" disabled={!data?.linhas.length} onClick={() => exportar("xlsx")}>
+                <Button variant="outline" className="gap-1.5" disabled={!data?.linhas.length} onClick={() => void exportar("xlsx")}>
                   <FileSpreadsheet className="size-4" />
                   Excel
                 </Button>

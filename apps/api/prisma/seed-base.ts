@@ -146,6 +146,14 @@ const PARAMETROS_PADRAO = [
       'Agrupa o Dashboard Gerencial pela hierarquia comercial (gerente, supervisor e seus vendedores); falso mostra a lista plana',
   },
   {
+    parametro: 'RELATORIO_VENDAS_QUEBRA_VENDEDOR',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'true',
+    descricao:
+      'Agrupa a grade de Vendas por vendedor (mensal) por vendedor, com subtotal; falso mostra só o cliente, somado entre vendedores',
+  },
+  {
     parametro: 'VENDAS_SERIES_NOTA',
     tipo: 'texto' as const,
     tamanho: 30,

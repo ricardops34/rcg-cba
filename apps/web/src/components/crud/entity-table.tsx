@@ -264,7 +264,7 @@ export function EntityTable<T>({
                 <TableRow key={i}>
                   {selecionavel && <TableCell className="w-10" />}
                   {colunasVisiveis.map((col) => (
-                    <TableCell key={col.id ?? col.header}>
+                    <TableCell key={col.id ?? col.header} className={col.className}>
                       <Skeleton className="h-4 w-full max-w-36" />
                     </TableCell>
                   ))}

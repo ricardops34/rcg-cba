@@ -26,6 +26,8 @@ import {
 } from "@/components/relatorios/filtros-selecao";
 import type { ColunaRelatorio } from "@/lib/relatorio-export";
 import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { VendasPorVendedorGrid } from "@/components/relatorios/vendas-por-vendedor";
 import { Receipt } from "lucide-react";
 
 const COLUNAS: ColunaRelatorio<RelatorioVendasLinha>[] = [
@@ -127,63 +129,76 @@ export default function RelatorioVendasPage() {
         </div>
       </div>
 
-      <PainelFiltros
-        ativos={ativos}
-        onGerar={gerar}
-        principais={
-          <>
-            <CampoData id="v-inicio" rotulo="De" valor={inicio} onChange={setInicio} />
-            <CampoData id="v-fim" rotulo="Até" valor={fim} onChange={setFim} />
-            <div className="w-56">
-              <CampoFiltro rotulo="Vendedor">
-                <VendedoresMultiSelect value={vendedorIds} onChange={setVendedorIds} />
-              </CampoFiltro>
-            </div>
-          </>
-        }
-      >
-        <CampoFiltro rotulo="Cliente">
-          <BuscaMultiSelect
-            tipo="clientes"
-            value={clientes}
-            onChange={setClientes}
-            buscaPlaceholder="Código, razão social, fantasia ou CNPJ..."
-          />
-        </CampoFiltro>
-        <CampoFiltro rotulo="Produto">
-          <BuscaMultiSelect
-            tipo="produtos"
-            value={produtos}
-            onChange={setProdutos}
-            buscaPlaceholder="Código, descrição, Cod. Corp., Cód. fabricante ou EAN..."
-          />
-        </CampoFiltro>
-        <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
-        <CampoTexto id="v-mun" rotulo="Cidade" valor={municipio} onChange={setMunicipio} largura="w-full" placeholder="Contém" />
-        <CampoTexto id="v-nf" rotulo="NF" valor={notaFiscal} onChange={setNotaFiscal} largura="w-full" placeholder="Número da nota" />
-      </PainelFiltros>
+      <Tabs defaultValue="detalhado">
+        <TabsList>
+          <TabsTrigger value="detalhado">Detalhado</TabsTrigger>
+          <TabsTrigger value="mensal">Por vendedor (mensal)</TabsTrigger>
+        </TabsList>
 
-      <RelatorioPaginado
-        titulo="Vendas por vendedor"
-        rotina="relatorio-vendas"
-        chave="vendas"
-        consulta={consulta}
-        filtrosTexto={
-          consulta
-            ? descreverFiltros(
-                { inicio: String(consulta.inicio), fim: String(consulta.fim), rotulo: "Emissão" },
-                filtrosGerados,
-              )
-            : []
-        }
-        buscar={(p) =>
-          apiFetch<RelatorioResultado<RelatorioVendasLinha>>("/relatorios/vendas", {
-            query: { ...consulta, ...p },
-          })
-        }
-        colunas={COLUNAS}
-        rowKey={(l) => l.id}
-      />
+        <TabsContent value="detalhado" className="space-y-3">
+          <PainelFiltros
+            ativos={ativos}
+            onGerar={gerar}
+            principais={
+              <>
+                <CampoData id="v-inicio" rotulo="De" valor={inicio} onChange={setInicio} />
+                <CampoData id="v-fim" rotulo="Até" valor={fim} onChange={setFim} />
+                <div className="w-56">
+                  <CampoFiltro rotulo="Vendedor">
+                    <VendedoresMultiSelect value={vendedorIds} onChange={setVendedorIds} />
+                  </CampoFiltro>
+                </div>
+              </>
+            }
+          >
+            <CampoFiltro rotulo="Cliente">
+              <BuscaMultiSelect
+                tipo="clientes"
+                value={clientes}
+                onChange={setClientes}
+                buscaPlaceholder="Código, razão social, fantasia ou CNPJ..."
+              />
+            </CampoFiltro>
+            <CampoFiltro rotulo="Produto">
+              <BuscaMultiSelect
+                tipo="produtos"
+                value={produtos}
+                onChange={setProdutos}
+                buscaPlaceholder="Código, descrição, Cod. Corp., Cód. fabricante ou EAN..."
+              />
+            </CampoFiltro>
+            <CampoCategorias valor={categoriaIds} onChange={setCategoriaIds} />
+            <CampoTexto id="v-mun" rotulo="Cidade" valor={municipio} onChange={setMunicipio} largura="w-full" placeholder="Contém" />
+            <CampoTexto id="v-nf" rotulo="NF" valor={notaFiscal} onChange={setNotaFiscal} largura="w-full" placeholder="Número da nota" />
+          </PainelFiltros>
+
+          <RelatorioPaginado
+            titulo="Vendas por vendedor"
+            rotina="relatorio-vendas"
+            chave="vendas"
+            consulta={consulta}
+            filtrosTexto={
+              consulta
+                ? descreverFiltros(
+                    { inicio: String(consulta.inicio), fim: String(consulta.fim), rotulo: "Emissão" },
+                    filtrosGerados,
+                  )
+                : []
+            }
+            buscar={(p) =>
+              apiFetch<RelatorioResultado<RelatorioVendasLinha>>("/relatorios/vendas", {
+                query: { ...consulta, ...p },
+              })
+            }
+            colunas={COLUNAS}
+            rowKey={(l) => l.id}
+          />
+        </TabsContent>
+
+        <TabsContent value="mensal">
+          <VendasPorVendedorGrid />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

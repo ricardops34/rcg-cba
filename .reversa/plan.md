@@ -8,9 +8,9 @@
 
 ## Fase 1: Reconhecimento 🔍
 
-- [ ] **Scout** — Mapeamento de estrutura de pastas e tecnologias
-- [ ] **Scout** — Análise de dependências e gerenciadores de pacotes
-- [ ] **Scout** — Identificação de entry points, CI/CD e configurações
+- [x] **Scout** — Mapeamento de estrutura de pastas e tecnologias
+- [x] **Scout** — Análise de dependências e gerenciadores de pacotes
+- [x] **Scout** — Identificação de entry points, CI/CD e configurações
 
 ## Decisão de organização das specs 🗂️
 
@@ -18,9 +18,61 @@
 
 ## Fase 2: Escavação 🏗️
 
-> O Reversa preenche esta seção com os módulos reais após o Scout concluir o reconhecimento.
-
-- [ ] **Arqueólogo** — Análise dos módulos identificados pelo Scout
+- [x] **Arqueólogo** — Análise do módulo `auth`
+- [x] **Arqueólogo** — Análise do módulo `clientes`
+- [x] **Arqueólogo** — Análise do módulo `empresas`
+- [x] **Arqueólogo** — Análise do módulo `grupos-economicos`
+- [x] **Arqueólogo** — Análise do módulo `usuarios`
+- [x] **Arqueólogo** — Análise do módulo `perfis`
+- [x] **Arqueólogo** — Análise do módulo `acessos`
+- [x] **Arqueólogo** — Análise do módulo `produtos`
+- [x] **Arqueólogo** — Análise do módulo `produto-campos`
+- [x] **Arqueólogo** — Análise do módulo `cliente-campo-config`
+- [x] **Arqueólogo** — Análise do módulo `estoque`
+- [x] **Arqueólogo** — Análise do módulo `estrutura`
+- [x] **Arqueólogo** — Análise do módulo `fornecedores`
+- [x] **Arqueólogo** — Análise do módulo `notas-entrada`
+- [x] **Arqueólogo** — Análise do módulo `notas-saida`
+- [x] **Arqueólogo** — Análise do módulo `sugestao-compra`
+- [x] **Arqueólogo** — Análise do módulo `orcamentos`
+- [ ] **Arqueólogo** — Análise do módulo `orcamento-config`
+- [ ] **Arqueólogo** — Análise do módulo `titulos-receber`
+- [ ] **Arqueólogo** — Análise do módulo `contas-bancarias`
+- [ ] **Arqueólogo** — Análise do módulo `equipamentos-comodato`
+- [ ] **Arqueólogo** — Análise do módulo `vendedores`
+- [ ] **Arqueólogo** — Análise do módulo `leads`
+- [ ] **Arqueólogo** — Análise do módulo `oportunidades`
+- [ ] **Arqueólogo** — Análise do módulo `atividades`
+- [ ] **Arqueólogo** — Análise do módulo `objetivos`
+- [ ] **Arqueólogo** — Análise do módulo `meus-atendimentos`
+- [ ] **Arqueólogo** — Análise do módulo `consultas`
+- [ ] **Arqueólogo** — Análise do módulo `relatorios`
+- [ ] **Arqueólogo** — Análise do módulo `whatsapp`
+- [ ] **Arqueólogo** — Análise do módulo `agente`
+- [ ] **Arqueólogo** — Análise do módulo `notificacoes`
+- [ ] **Arqueólogo** — Análise do módulo `email`
+- [ ] **Arqueólogo** — Análise do módulo `documentos-email`
+- [ ] **Arqueólogo** — Análise do módulo `sms`
+- [ ] **Arqueólogo** — Análise do módulo `armazenamento`
+- [ ] **Arqueólogo** — Análise do módulo `backup-empresa`
+- [ ] **Arqueólogo** — Análise do módulo `assinaturas`
+- [ ] **Arqueólogo** — Análise do módulo `planos`
+- [ ] **Arqueólogo** — Análise do módulo `plataforma`
+- [ ] **Arqueólogo** — Análise do módulo `parametros`
+- [ ] **Arqueólogo** — Análise do módulo `escopo`
+- [ ] **Arqueólogo** — Análise do módulo `politica-senha`
+- [ ] **Arqueólogo** — Análise do módulo `recuperacao-senha`
+- [ ] **Arqueólogo** — Análise do módulo `suporte-acesso`
+- [ ] **Arqueólogo** — Análise do módulo `integracao`
+- [ ] **Arqueólogo** — Análise do módulo `integracao-keys`
+- [ ] **Arqueólogo** — Análise do módulo `portal-cliente`
+- [ ] **Arqueólogo** — Análise do módulo `cadastros`
+- [ ] **Arqueólogo** — Análise do módulo `feriados`
+- [ ] **Arqueólogo** — Análise do módulo `erros`
+- [ ] **Arqueólogo** — Análise do módulo `termos`
+- [ ] **Arqueólogo** — Análise do módulo `tours`
+- [ ] **Arqueólogo** — Análise do módulo `inicio`
+- [ ] **Arqueólogo** — Análise do módulo `demo`
 
 ## Fase 3: Interpretação 🧠
 

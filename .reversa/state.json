@@ -5,19 +5,41 @@
   "chat_language": "pt-br",
   "doc_language": "Português",
   "answer_mode": "file",
-  "doc_level": "completo",
+  "doc_level": "detalhado",
   "output_folder": "_reversa_sdd",
   "forward_folder": "_reversa_forward",
-  "phase": null,
-  "completed": [],
+  "phase": "escavacao",
+  "completed": ["reconhecimento"],
   "pending": [
-    "reconhecimento",
     "escavacao",
     "interpretacao",
     "geracao",
     "revisao"
   ],
-  "checkpoints": {},
+  "checkpoints": {
+    "scout": {
+      "completed_at": "2026-10-15T00:00:00Z",
+      "files": [
+        "_reversa_sdd/inventory.md",
+        "_reversa_sdd/dependencies.md",
+        ".reversa/context/surface.json"
+      ]
+    },
+    "archaeologist": {
+      "modules_analyzed": ["auth", "clientes", "empresas", "grupos-economicos", "usuarios", "perfis", "acessos", "produtos", "produto-campos", "cliente-campo-config", "estoque", "estrutura", "fornecedores", "notas-entrada", "notas-saida", "sugestao-compra", "orcamentos"],
+      "modules_pending": [
+        "orcamento-config", "titulos-receber",
+        "contas-bancarias", "equipamentos-comodato", "vendedores", "leads",
+        "oportunidades", "atividades", "objetivos", "meus-atendimentos",
+        "consultas", "relatorios", "whatsapp", "agente", "notificacoes",
+        "email", "documentos-email", "sms", "armazenamento", "backup-empresa",
+        "assinaturas", "planos", "plataforma", "parametros", "escopo",
+        "politica-senha", "recuperacao-senha", "suporte-acesso", "integracao",
+        "integracao-keys", "portal-cliente", "cadastros", "feriados", "erros",
+        "termos", "tours", "inicio", "demo"
+      ]
+    }
+  },
   "engines": [
     "claude-code",
     "codex"
