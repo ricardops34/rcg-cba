@@ -4,9 +4,9 @@ import { Providers } from "./providers";
 import { PwaRegistro } from "@/components/pwa-registro";
 
 export const metadata: Metadata = {
-  title: "Plataforma Comercial",
+  title: "CRM",
   description: "Gestão comercial multiempresa",
-  appleWebApp: { capable: true, title: "Plataforma", statusBarStyle: "default" },
+  appleWebApp: { capable: true, title: "CRM", statusBarStyle: "default" },
   icons: { apple: "/icons/apple-touch-icon.png" },
 };
 
