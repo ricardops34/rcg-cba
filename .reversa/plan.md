@@ -68,7 +68,7 @@
 - [x] **Arqueólogo** — Análise do módulo `portal-cliente`
 - [x] **Arqueólogo** — Análise do módulo `cadastros`
 - [x] **Arqueólogo** — Análise do módulo `feriados`
-- [ ] **Arqueólogo** — Análise do módulo `erros`
+- [x] **Arqueólogo** — Análise do módulo `erros`
 - [ ] **Arqueólogo** — Análise do módulo `termos`
 - [ ] **Arqueólogo** — Análise do módulo `tours`
 - [ ] **Arqueólogo** — Análise do módulo `inicio`

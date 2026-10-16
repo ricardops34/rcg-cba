@@ -2434,3 +2434,40 @@ de desconto exige `percFinal ≥ percInicial` por faixa; a consulta de CEP é `G
 ### DTOs 🟢
 
 `feriadoCreateSchema` (`data` AAAA-MM-DD, `descricao`), `feriadoUpdateSchema` (parcial), `feriadoQuerySchema` (`ano` 2000–2100, opcional), `feriadoGerarNacionaisSchema` (`ano` obrigatório). Resposta: `data` como texto AAAA-MM-DD.
+
+
+---
+
+## `erros`
+
+### Tabela `audit_logs` (model `ErroLog`, sem RLS, sem FK) 🟢
+
+| Campo | Tipo | Obrigatório | Observação |
+|---|---|---|---|
+| `id` | uuid | sim | |
+| `origem` | `ErroOrigem` | sim | `servidor` ou `cliente` |
+| `tipo` | `ErroTipo` | sim | |
+| `ocorridoEm` | data/hora | sim | no cliente, o relógio do navegador (futuro vira hora de chegada) |
+| `criadoEm` | data/hora | sim | |
+| `ultimaEm` | data/hora | sim | última repetição absorvida; campo de ordenação, período e expurgo |
+| `ocorrencias` | inteiro | sim, padrão 1 | repetições colapsadas |
+| `rota` | texto | sim | como veio, **com a query**; corta em 500 |
+| `rotaPadrao` | texto | sim | sem query, ids trocados por `:id` |
+| `metodo`, `status`, `pagina` | texto / inteiro / texto | não | `pagina` só em erro de cliente |
+| `mensagem` | texto | sim | até 2.000 |
+| `resumo` | texto | sim | normalizada, até 300; é o que agrupa |
+| `stack` | texto | não | até 8.000 |
+| `assinatura` | texto | sim | hash curto (16 hex) |
+| `usuarioId`, `usuarioEmail` | texto | não | sem FK: o log sobrevive à exclusão do usuário |
+| `empresaId`, `empresaRazaoSocial` | texto | não | sem FK; nulo antes de haver empresa ativa |
+| `ip`, `userAgent` | texto | não | `userAgent` até 300 |
+
+Índices: `(assinatura, ultimaEm)`, `(ultimaEm)`, `(empresaId, ultimaEm)`.
+
+### Tabela `erros_log_config` (singleton `unico`, sem RLS) 🟢
+
+`retencaoDias` (30; 0 = sem expurgo), `tetoPorEmpresa` (5000; 0 = sem teto), `registrar4xx` (false), `atualizadoEm`, `atualizadoPor` (e-mail de quem alterou). A linha nasce na migration.
+
+### DTOs 🟢
+
+`erroClienteReportSchema` (1 a 50 itens; item: `tipo` de rede/resposta/javascript/promessa, `ocorridoEm`, `rota` ≤ 500, `metodo` ≤ 10, `status` 0–599, `pagina` ≤ 500, `mensagem` ≤ 1.000, `stack` ≤ 8.000), `erroLogQuerySchema` (paginação + origem, tipo, empresaId, dataInicio, dataFim, search), `erroLogOcorrenciaQuerySchema` (assinatura), `erroLogConfigUpdateSchema` (retenção 0–3650, teto 0–1.000.000, 4xx).

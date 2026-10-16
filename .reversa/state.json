@@ -78,16 +78,16 @@
         "integracao-keys",
         "portal-cliente",
         "cadastros",
-        "feriados"
+        "feriados",
+        "erros"
       ],
       "modules_pending": [
-        "erros",
         "termos",
         "tours",
         "inicio",
         "demo"
       ],
-      "last_update": "2026-10-16T11:09:04.649Z"
+      "last_update": "2026-10-16T11:32:34.058Z"
     }
   },
   "engines": [

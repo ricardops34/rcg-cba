@@ -6772,3 +6772,88 @@ Cadastro dos dias em que a empresa não atende, **por empresa** (RLS, `withTenan
 ### 7. Dependências e testes
 
 `PrismaService`, `HorarioTrabalhoService` (módulo `acessos`), `feriados-nacionais`, `@plataforma/contracts`. Consumidores: `auth` (login), `JwtAuthGuard` (a cada requisição), `atividades`, `titulos-receber`, `orcamentos` (validade e atividade de retorno), `clientes`, `notificacoes` (varredura), `whatsapp` (triagem e agendamento), `agente` (`consultar_feriados`). A limpeza do modo demonstração apaga a tabela. **Testes só do cálculo; nenhum do service, do controller nem do cache.**
+
+---
+
+## Módulo `erros`
+
+**Caminho:** `apps/api/src/modules/erros/` (2 controllers, 2 services, DTO, module — ~850 linhas) + `apps/api/src/common/filters/http-exception.filter.ts` (o produtor) + `apps/web/src/lib/erro-report.ts` (captura no navegador) + `apps/web/src/app/(app)/plataforma/erros/page.tsx`.
+**Testes:** `erros-log.service.spec.ts` (normalização, colapso de rajada, relógio adiantado). **Sem teste** do filtro, dos controllers, da varredura nem das consultas.
+**Tabela física:** `audit_logs` (o model Prisma é `ErroLog`; a tabela órfã foi ocupada pela migration `20260904140000_log_de_erros`), mais `erros_log_config`.
+
+### 1. Responsabilidade 🟢
+
+Log de erros da plataforma, lido só pela administração do SaaS. Duas origens: o **servidor** (o `AllExceptionsFilter` global, `@Catch()`, grava 500 e, com o interruptor ligado, também 4xx) e o **navegador** (rede, resposta inválida, erro de JavaScript, promessa rejeitada), que cobre o caso em que a API estava fora e nada chegou nela. Agrupa por assinatura, colapsa rajadas em contador e se limita sozinho por prazo e por teto por empresa.
+
+### 2. Rotas 🟢
+
+| Rota | Guards | Comportamento |
+|---|---|---|
+| `POST /erros/cliente` | `JwtAuthGuard`, throttle 20/min | lote de 1 a 50 itens do navegador; 204; exige login (erro na tela de login não é reportado) |
+| `GET /plataforma/erros` | `JwtAuthGuard` + `PlatformAdminGuard` | grupos por assinatura, 7 dias por padrão, mais recentes primeiro |
+| `GET /plataforma/erros/resumo` | idem | cartões do topo |
+| `GET /plataforma/erros/ocorrencias?assinatura=` | idem | linhas de um grupo, com stack, usuário, empresa e IP |
+| `GET` / `PATCH /plataforma/erros/config` | idem | retenção (0–3650 dias), teto por empresa (0–1.000.000), interruptor de 4xx |
+| `DELETE /plataforma/erros/:assinatura` | idem | apaga o grupo inteiro ("já resolvi isto") |
+
+Sem `PermissionsGuard`: os perfis são globais, então uma permissão abriria o log a todo administrador de empresa. O corte é o atributo `administradorPlataforma`.
+
+### 3. Algoritmos 🟢
+
+- **Assinatura:** SHA-1 (16 hex) de `origem | tipo | rotaPadrao | método | status | resumo`.
+- **`normalizarRota`:** descarta a query, troca uuid e segmento numérico por `:id`, corta em 500.
+- **`normalizarMensagem`:** troca uuid por `:id`, texto entre aspas por `"…"`/`'…'`, números por `:n`, comprime espaços, corta em 300.
+- **Colapso de rajada:** mapa em memória `assinatura → {id, em}`. Repetição dentro de 60 s vira `ocorrencias + 1` e atualiza `ultimaEm` na linha aberta; se a linha sumiu (`count = 0`), cai no INSERT. Teto de 500 entradas (limpa tudo ao estourar). A janela **renova a cada repetição**.
+- **Não lança, não se chama:** `registrarDoServidor` é fire-and-forget com `.catch`; falhas saem pelo logger do Nest, fora do filtro. O filtro ignora a própria rota `/erros/cliente` e todo 401.
+- **4xx:** só com `registrar4xx` ligado (lido com cache de 30 s); 401 nunca. Stack só em exceção não tratada e em `HttpException` ≥ 500.
+- **Relógio do navegador:** `ocorridoEm` inválido ou no futuro vira a hora de chegada.
+- **Razão social:** gravada na linha (o log sobrevive à exclusão da empresa), com cache de processo sem expiração.
+- **Varredura (a cada 30 min e no boot):** expurga `ultimaEm < agora − retencaoDias` e, por empresa (inclusive o balde `empresaId = null`), apaga as mais antigas acima do teto, até 5.000 por passagem.
+- **Listagem:** `groupBy` por assinatura com soma de ocorrências, mais um segundo `groupBy` só para contar o total de grupos.
+
+### 4. Achados
+
+#### 4.1 Quem está logado consegue encher o log e empurrar para fora os erros reais 🟡
+
+`POST /erros/cliente` aceita 50 itens por chamada e 20 chamadas por minuto (por IP, o throttle global). A mensagem do navegador é livre (até 1.000 caracteres) e só números e trechos entre aspas são normalizados; mensagens diferentes geram assinaturas diferentes, e o colapso só junta assinatura igual. Até 1.000 linhas por minuto, **antes** da varredura de 30 minutos. O teto por empresa corta as **mais antigas**, então o excesso apaga justamente os erros reais da empresa. O comentário do controller afirma que o limite impede o cliente em laço de "empurrar o log inteiro sozinho"; o limite reduz, mas não impede. 🔴 confirmar se esse risco é aceito (o comentário do contrato fala em "report não virar canal de escrita livre").
+
+#### 4.2 A rota gravada guarda a query string inteira 🟡
+
+`rota` é gravada como veio (até 500 caracteres); só `rotaPadrao` descarta a query. Se uma rota receber dado na query (busca por CPF ou nome, token de link), ele fica no log por até 30 dias, junto com `usuarioEmail` e IP. A leitura é restrita ao administrador do SaaS (decisão registrada no controller), mas a gravação não mascara nada, nem `mensagem` e `stack`, que trazem dado real (nome de cliente num 500). 🔴 confirmar com o usuário se vale mascarar a query na gravação.
+
+#### 4.3 O comentário da janela de colapso não bate com o código 🟢
+
+O comentário de `JANELA_COLAPSO_MS` diz "limita a rajada a ~1.440 linhas por dia no pior caso". Como a janela é renovada a cada repetição, uma rajada contínua de uma mesma assinatura fica em **uma linha só** (o stack é o da primeira ocorrência). O 1.440 só vale para repetições espaçadas em pouco mais de 60 s. O comportamento é melhor que o escrito, mas o comentário leva a um raciocínio errado sobre volume.
+
+#### 4.4 Colapso e cache são por processo 🟡
+
+Com mais de uma réplica da API, cada uma tem o seu mapa de colapso: o mesmo erro vira uma linha por réplica por janela (o agrupamento da tela junta tudo, então só o contador `linhas` mostra). A configuração também fica em cache de 30 s por processo, e a varredura roda em **todas** as réplicas, sem trava (idempotente, mas dobra o custo do `groupBy` de tabela inteira). 🔴 confirmar o número de réplicas em produção.
+
+#### 4.5 Consultas que crescem com o volume 🟡
+
+- `listarGrupos` faz um segundo `groupBy` por assinatura só para contar o total; o custo cresce com o número de assinaturas do período.
+- `resumo`: `ultimas24h` e `ultimos7Dias` **ignoram** os filtros de origem, tipo, empresa e busca (só os outros quatro cartões os respeitam). Pode ser intencional, mas a tela mostra números de escopos diferentes lado a lado.
+- A varredura faz `groupBy` na tabela inteira a cada 30 minutos.
+
+#### 4.6 Apagar grupo é irrestrito e sem rastro 🟡
+
+`DELETE /plataforma/erros/:assinatura` apaga todas as linhas da assinatura, de qualquer período, sem registro de quem apagou (a configuração grava `atualizadoPor`, o apagar não). Um grupo apagado por engano não volta.
+
+#### 4.7 Detalhes menores 🟡
+
+- No colapso, `ultimaEm` recebe `dados.ocorridoEm` do item; um item de cliente mais antigo que a linha faz `ultimaEm` regredir (não há `max`).
+- O cache de razão social nunca expira; renomear a empresa mantém o nome antigo nas linhas novas até reiniciar.
+- O filtro ignora a rota de report por `rota.includes('/erros/cliente')`: qualquer rota que contenha esse trecho também some do log.
+- `retencaoDias = 0` com `tetoPorEmpresa = 0` desliga as duas defesas; o contrato permite.
+
+### 5. Estruturas de dados 🟢
+
+`ErroLog` (tabela `audit_logs`, sem RLS e sem FK de propósito), `ErroLogConfig` (singleton `unico`), enums `ErroOrigem` (`servidor`, `cliente`) e `ErroTipo` (`excecao`, `http`, `rede`, `resposta`, `javascript`, `promessa`). Ver `data-dictionary.md`, seção `erros`.
+
+### 6. Metadados 🟢
+
+Janela de colapso 60 s (500 entradas); cache de configuração 30 s; padrão de 30 dias, teto 5.000 e `registrar4xx = false`; período padrão de consulta 7 dias; cortes de texto (mensagem 2.000, resumo 300, stack 8.000, rota 500, userAgent 300, página 500); varredura de 30 min, lote de 5.000; throttle do report 20/min; lote do navegador 50 e buffer em `localStorage` (debounce 3 s, backoff 30 s, repetição idêntica dentro de 60 s não reentra).
+
+### 7. Dependências e testes
+
+`PrismaService` apenas; `ErrosLogService` é exportado porque `main.ts` o injeta no filtro global. Produtores: `AllExceptionsFilter` (todo o servidor) e `erro-report.ts` (navegador). Rota de leitura só para `PlatformAdminGuard`. **Testes cobrem normalização e colapso; filtro, controllers, varredura e consultas sem teste.**

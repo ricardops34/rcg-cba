@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-16T11:09:04.647Z",
+  "generated_at": "2026-10-16T11:32:34.056Z",
   "modules": [
     {
       "name": "auth",
@@ -3232,6 +3232,79 @@
         "horario-trabalho.spec.ts"
       ],
       "complexity": "low",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "erros",
+      "path": "apps/api/src/modules/erros",
+      "responsibility": "Log de erros da plataforma (tabela audit_logs): grava o que o servidor processou (filtro global) e o que o navegador viu; agrupa por assinatura, colapsa rajadas, expurga por prazo e teto; leitura so do administrador da plataforma.",
+      "files": [
+        "erros.module.ts",
+        "erros.controller.ts",
+        "plataforma-erros.controller.ts",
+        "erros-log.service.ts",
+        "erros-varredura.service.ts",
+        "dto/erro-log.dto.ts",
+        "../../common/filters/http-exception.filter.ts"
+      ],
+      "entities": [
+        "ErroLog (audit_logs)",
+        "ErroLogConfig",
+        "ErroOrigem",
+        "ErroTipo"
+      ],
+      "main_functions": [
+        "ErrosLogService.registrarDoServidor/registrarDoCliente/gravar/listarGrupos/listarOcorrencias/resumo/removerGrupo/lerConfig/atualizarConfig",
+        "normalizarRota",
+        "normalizarMensagem",
+        "ErrosVarreduraService.varrer",
+        "AllExceptionsFilter.catch"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "AllExceptionsFilter (main.ts)",
+        "apps/web erro-report.ts",
+        "tela Plataforma > Erros"
+      ],
+      "business_rules": [
+        {
+          "description": "Assinatura = hash(origem, tipo, rotaPadrao, metodo, status, resumo); repeticao em 60 s vira contador (janela renova a cada repeticao)",
+          "location": "erros-log.service.ts:gravar",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "401 nunca e gravado; 4xx so com registrar4xx; a rota /erros/cliente nunca e gravada",
+          "location": "common/filters/http-exception.filter.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Retencao por prazo e teto por empresa (apaga as mais antigas); 0 desliga cada uma",
+          "location": "erros-varredura.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Leitura e config so para administrador da plataforma (sem PermissionsGuard)",
+          "location": "plataforma-erros.controller.ts",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "usuario logado pode gerar ate 1000 linhas/min com mensagens distintas e o teto por empresa apaga as mais antigas (erros reais)",
+        "rota e gravada com a query string inteira; mensagem e stack tambem sem mascaramento",
+        "comentario da janela de colapso (1.440 linhas/dia) nao bate: a janela renova a cada repeticao",
+        "colapso, cache de config e razao social sao por processo; varredura roda em toda replica",
+        "listarGrupos faz segundo groupBy so para contar; resumo 24h/7d ignora filtros",
+        "DELETE do grupo apaga tudo sem registrar quem apagou",
+        "ultimaEm pode regredir (sem max); cache de razao social nunca expira",
+        "sem teste de filtro, controllers, varredura e consultas"
+      ],
+      "test_files": [
+        "erros-log.service.spec.ts"
+      ],
+      "complexity": "medium",
       "confidence": "CONFIRMADO"
     }
   ]
