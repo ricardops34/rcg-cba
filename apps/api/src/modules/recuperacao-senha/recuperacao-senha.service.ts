@@ -19,6 +19,9 @@ import { AcessosService } from '../acessos/acessos.service';
 /** Quanto tempo o link vale. */
 export const VALIDADE_MINUTOS = 30;
 
+/** Links por conta por hora (decisão de 2026-10-15). */
+export const LINKS_POR_HORA = 3;
+
 /** O mesmo custo do resto da plataforma (`usuarios.service`, `auth.service`). */
 const SALT_ROUNDS = 12;
 
@@ -80,6 +83,22 @@ export class RecuperacaoSenhaService {
       select: { id: true, nome: true, email: true },
     });
     if (!usuario) return;
+
+    // Limite por conta, além do por IP do controller: trocando de IP dava
+    // para encher a caixa de alguém de links. Acima do limite a resposta é a
+    // mesma (quem pede não sabe), só não sai e-mail.
+    const recentes = await this.prisma.senhaRedefinicao.count({
+      where: {
+        usuarioId: usuario.id,
+        criadoEm: { gte: new Date(Date.now() - 60 * 60_000) },
+      },
+    });
+    if (recentes >= LINKS_POR_HORA) {
+      this.logger.warn(
+        `Redefinição de senha: limite de ${LINKS_POR_HORA} links por hora atingido para ${usuario.email}.`,
+      );
+      return;
+    }
 
     const empresaId = await this.empresaDoPedido(
       usuario.id,

@@ -15,7 +15,12 @@ const prismaVinculos = {
 };
 
 function montar(
-  opcoes: { usuario?: typeof USUARIO | null; senhaProvisoria?: boolean } = {},
+  opcoes: {
+    usuario?: typeof USUARIO | null;
+    senhaProvisoria?: boolean;
+    /** Links pedidos pela conta na última hora. */
+    recentes?: number;
+  } = {},
 ) {
   const criados: { tokenHash: string; expiraEm: Date }[] = [];
   const tx = {
@@ -51,7 +56,10 @@ function montar(
         alias: 'bj',
       }),
     },
-    senhaRedefinicao: { findUnique: jest.fn() },
+    senhaRedefinicao: {
+      findUnique: jest.fn(),
+      count: jest.fn().mockResolvedValue(opcoes.recentes ?? 0),
+    },
     $transaction: jest.fn((fn: (t: typeof tx) => unknown) => fn(tx)),
     // usuario_empresas tem RLS pelo próprio usuário: lida por withUsuario.
     withUsuario: jest.fn((_id: string, fn: (t: unknown) => unknown) =>
@@ -122,6 +130,20 @@ describe('RecuperacaoSenhaService.pedir', () => {
     const minutos = (criados[0].expiraEm.getTime() - Date.now()) / 60_000;
     expect(minutos).toBeGreaterThan(29);
     expect(minutos).toBeLessThanOrEqual(30);
+  });
+
+  it('acima de 3 links na hora para a mesma conta: mesma resposta, sem e-mail nem link novo', async () => {
+    const { service, mail, criados, prisma } = montar({ recentes: 3 });
+
+    expect(await service.pedir({ email: USUARIO.email })).toEqual({ ok: true });
+    expect(prisma.senhaRedefinicao.count).toHaveBeenCalledWith({
+      where: {
+        usuarioId: USUARIO.id,
+        criadoEm: { gte: expect.any(Date) as unknown },
+      },
+    });
+    expect(criados).toHaveLength(0);
+    expect(mail.send).not.toHaveBeenCalled();
   });
 
   it('sai pelo servidor da empresa da tela de login quando ela liberou o e-mail de acesso', async () => {
