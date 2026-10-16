@@ -57,6 +57,9 @@ export interface ExportParams {
   colunaNivel?: string;
 }
 
+/** Moeda contábil do Excel: "R$" à esquerda da célula, valor à direita, zero como "-". */
+const FORMATO_CONTABIL = '_("R$"* #,##0.00_);_("R$"* (#,##0.00);_("R$"* "-"??_);_(@_)';
+
 /** Indentação da descrição no arquivo, proporcional ao nível do nó. */
 const indentar = (l: LinhaExportavel) => "      ".repeat(l.nivel ?? 0);
 
@@ -253,7 +256,7 @@ export function exportarConsultaExcel(params: ExportParams): void {
       const ref = XLSX.utils.encode_cell({ r: primeiraLinhaDados + l, c });
       const celula = sheet[ref];
       if (celula && typeof celula.v === "number")
-        celula.z = params.formato === "quantidade" ? "#,##0" : "#,##0.00";
+        celula.z = params.formato === "quantidade" ? "#,##0" : FORMATO_CONTABIL;
     }
   }
   sheet["!cols"] = [

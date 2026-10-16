@@ -83,7 +83,8 @@ const NUM_FMT: Record<FormatoColuna, string | undefined> = {
   data: undefined,
   numero: "#,##0.00",
   quantidade: "#,##0.####",
-  moeda: '"R$" #,##0.00',
+  // Contábil: "R$" à esquerda da célula, valor à direita, zero como "-".
+  moeda: '_("R$"* #,##0.00_);_("R$"* (#,##0.00);_("R$"* "-"??_);_(@_)',
   percentual: "0.00%",
 };
 
