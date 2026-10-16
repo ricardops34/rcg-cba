@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-10-16T02:34:34.767Z",
+  "generated_at": "2026-10-16T07:50:54.579Z",
   "modules": [
     {
       "name": "auth",
@@ -2769,6 +2769,60 @@
         "recuperacao-senha.service.spec.ts"
       ],
       "complexity": "medium",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "suporte-acesso",
+      "path": "apps/api/src/modules/suporte-acesso",
+      "responsibility": "Consentimento temporario do cliente para o suporte da plataforma operar no ambiente dele, com bloqueio sem liberacao e log de auditoria das acoes; guard global.",
+      "files": [
+        "suporte-acesso.module.ts",
+        "suporte-acesso.controller.ts",
+        "suporte-acesso.service.ts",
+        "../../common/guards/suporte-acesso.guard.ts"
+      ],
+      "entities": [
+        "EmpresaSuporteAcesso",
+        "EmpresaSuporteLog"
+      ],
+      "main_functions": [
+        "SuporteAcessoService.concederAcesso/revogarAcesso",
+        "SuporteAcessoService.getAcessoAtivo/listHistorico/listLogs",
+        "SuporteAcessoService.registrarLogSuporte/validarAcessoSuporteAtivo",
+        "SuporteAcessoGuard.canActivate"
+      ],
+      "dependencies": [
+        "PrismaService",
+        "@plataforma/contracts"
+      ],
+      "consumers": [
+        "apps/web Administracao > Suporte",
+        "apps/web layout (aviso de liberacao ativa)",
+        "APP_GUARD em todas as rotas"
+      ],
+      "business_rules": [
+        {
+          "description": "Uma liberacao vigente por empresa; conceder revoga as anteriores",
+          "location": "suporte-acesso.service.ts:concederAcesso",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Administrador da plataforma em empresa de cliente so com liberacao vigente, e cada acao vai ao log (intencao; nao aplicada, ver gaps)",
+          "location": "common/guards/suporte-acesso.guard.ts",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "guard global roda antes do JwtAuthGuard: request.user sempre ausente, nada e bloqueado nem registrado",
+        "excecoes de caminho comparam sem o prefixo /api/v1",
+        "nao ha caminho para o suporte entrar no cliente (switchEmpresa exige vinculo) - confirmar com o usuario",
+        "conceder com dto any: duracaoHoras sem limite e concatenacao de texto",
+        "logs e historico sem permissao de rotina",
+        "corpo da requisicao no log sem mascarar senha",
+        "revogar nao confere estado; conceder nao atomico"
+      ],
+      "test_files": [],
+      "complexity": "low",
       "confidence": "CONFIRMADO"
     }
   ]

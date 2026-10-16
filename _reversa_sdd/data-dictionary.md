@@ -2154,3 +2154,38 @@ Sem tabela própria. Resposta de `GET /escopo/vendedores`:
 
 `EsqueciSenhaInput` = `{email, empresaAlias?}`; `RedefinirSenhaInput` =
 `{token, novaSenha}`.
+
+---
+
+## Módulo `suporte-acesso`
+
+### `EmpresaSuporteAcesso` (tabela `empresa_suporte_acessos`) 🟢
+
+Índice `[empresaId, validoAte, revogadoEm]`. Preservada na limpeza da base (auditoria).
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | |
+| `empresaId` | String | FK `Empresa` |
+| `concedidoPorId` | String | FK `Usuario` |
+| `motivo` | Text | 5–500 (contrato) |
+| `validoAte` | DateTime | concessão + `duracaoHoras` |
+| `revogadoEm`, `revogadoPorId` | DateTime?, String? | |
+| `createdAt`, `updatedAt` | | |
+
+### `EmpresaSuporteLog` (tabela `empresa_suporte_logs`) 🟢
+
+Índice `[empresaId, createdAt]`; `suporteAcessoId` com `onDelete: Cascade`.
+
+| Campo | Tipo | Observação |
+|---|---|---|
+| `id` | String (uuid) | |
+| `empresaId`, `suporteAcessoId`, `usuarioPlataformaId` | String | |
+| `metodoHttp`, `rota` | String | |
+| `payload` | Text? | corpo JSON, até 2000 caracteres, sem máscara |
+| `ip`, `userAgent` | String? | |
+| `createdAt` | DateTime | |
+
+### `ConcederSuporte` (Zod, não aplicado no controller) 🟢
+
+`motivo` (5–500), `duracaoHoras` (inteiro 1–72, padrão 4).

@@ -5866,3 +5866,97 @@ cobre: resposta igual sem conta, link único que invalida o anterior, empresa pe
 SMTP da empresa ou da plataforma, token inválido/vencido/usado, troca com histórico,
 desbloqueio e revogação, e a corrida do uso duplo. A política é simulada (não pega o
 achado da RLS).
+
+---
+
+## Módulo `suporte-acesso`
+
+**Caminho:** `apps/api/src/modules/suporte-acesso/` + `apps/api/src/common/guards/suporte-acesso.guard.ts`.
+**Arquivos (3 + 1):** `suporte-acesso.module.ts` (`@Global`, registra o guard como
+`APP_GUARD`), `suporte-acesso.controller.ts` (63, 5 rotas), `suporte-acesso.service.ts`
+(175); `suporte-acesso.guard.ts` (66). Contrato: `packages/contracts/src/suporte-acesso.ts`.
+
+### 1. Responsabilidade 🟢 (intenção) / 🔴 (efeito)
+
+**Consentimento do cliente para o suporte da plataforma**: o administrador da empresa
+concede uma liberação temporária (1–72 h, com motivo) para a equipe da plataforma
+operar no ambiente dela; cada requisição do suporte nesse período fica num **log de
+auditoria** (método, rota, corpo até 2000 caracteres, IP, navegador), visível à
+empresa. Sem liberação vigente, o guard deveria **bloquear** o administrador da
+plataforma no ambiente do cliente.
+
+### 2. Rotas 🟢
+
+`JwtAuthGuard` + `PermissionsGuard`, empresa = a ativa do token.
+
+| Rota | Permissão | Comportamento |
+|---|---|---|
+| `GET /suporte-acesso/ativo` | só JWT | liberação vigente (não revogada, `validoAte` futuro) |
+| `POST /suporte-acesso/conceder` `{motivo, duracaoHoras}` | `empresa.editar` | revoga as vigentes e cria uma nova |
+| `POST /suporte-acesso/revogar/:id` | `empresa.editar` | marca `revogadoEm`/`revogadoPorId` |
+| `GET /suporte-acesso/historico` | só JWT | concessões, com quem concedeu e revogou |
+| `GET /suporte-acesso/logs` | só JWT | as 500 ações mais recentes do suporte |
+
+### 3. Algoritmos e lógica
+
+#### 3.1 Concessão 🟢
+
+`validoAte = agora + duracaoHoras`. Uma vigente por vez: conceder revoga as anteriores
+ainda válidas (em transações separadas da criação).
+
+#### 3.2 O guard global (`SuporteAcessoGuard`) 🟢
+
+Para cada requisição: sem `request.user` → libera; usuário que não administra a
+plataforma → libera; caminho começando com `/plataforma`, `/auth`, `/termos`,
+`/tours` ou `/integracao` → libera; empresa ativa com `ePlataforma` → libera; senão
+exige liberação vigente (403 com a mensagem "Solicite ao cliente a liberação…") e
+grava o log da ação.
+
+#### 3.3 Achados
+
+- 🔴 **O guard não faz nada.** É registrado como `APP_GUARD` e guards globais rodam
+  **antes** dos guards do controller; o `JwtAuthGuard` só existe nos controllers (o
+  único outro global é o `ThrottlerGuard`). Quando o `SuporteAcessoGuard` roda,
+  `request.user` ainda não existe, e a primeira linha devolve `true`. Nenhuma
+  requisição é bloqueada e **nenhum log de suporte é gravado**, nunca (0 linhas em
+  `empresa_suporte_logs` no dev e no dump da produção).
+- 🔴 **As exceções de caminho nunca casam.** `request.path` traz o prefixo global
+  (`/api/v1/plataforma/...`), e o guard compara com `/plataforma`. Se o guard passasse
+  a ver o usuário, ele bloquearia e registraria também as rotas da plataforma, de
+  login e da integração.
+- 🟡 **Não há como o suporte entrar no cliente.** A troca de empresa
+  (`AuthService.switchEmpresa`) exige vínculo em `usuario_empresas`, e tanto
+  `plataforma.criarEmpresa` quanto `vincularAdministrador` recusam conta de
+  administrador da plataforma. A tela de liberação existe (Administração > Suporte),
+  o cliente concede, e nada usa a concessão. Por isso o guard inerte não é
+  explorável hoje — mas o primeiro caminho de entrada que surgir chega sem bloqueio
+  nem auditoria. 🔴 confirmar com o usuário como o suporte deveria entrar.
+- 🟡 **`conceder` sem validação.** `@Body() dto: any`, apesar do
+  `concederSuporteSchema` no contrato. `duracaoHoras` ausente vira data inválida
+  (500); como texto, `getHours() + "100"` concatena ("13100") e a liberação dura
+  meses; o limite de 72 h não vale.
+- 🟡 **Logs e histórico sem permissão de rotina**: qualquer usuário da empresa lê as
+  ações do suporte, inclusive o corpo das requisições.
+- 🟡 **O corpo vai inteiro para o log** (até 2000 caracteres), sem mascarar senha:
+  uma troca de senha feita pelo suporte ficaria gravada em texto puro.
+- 🟡 **Revogar não confere estado**: revogar de novo, ou uma concessão já vencida,
+  sobrescreve `revogadoEm`/`revogadoPorId`.
+- 🟡 **Conceder não é atômico**: revogar as vigentes e criar a nova são duas
+  transações; dois pedidos simultâneos deixam duas vigentes.
+
+### 4. Estruturas de dados 🟢
+
+`EmpresaSuporteAcesso` (`empresa_suporte_acessos`) e `EmpresaSuporteLog`
+(`empresa_suporte_logs`). Ver `data-dictionary.md`, seção `suporte-acesso`.
+
+### 5. Metadados 🟢
+
+`duracaoHoras` 1–72, padrão 4 (contrato, não aplicado); corpo do log truncado em 2000;
+lista de logs limitada a 500.
+
+### 6. Dependências e testes
+
+`PrismaService`, `@plataforma/contracts`; o guard depende de `SuporteAcessoService` e
+`PrismaService`. Consumidores: `apps/web` Administração > Suporte
+(`admin/suporte-acesso/page.tsx`) e o layout (aviso de liberação ativa). **Sem
+testes** — nenhum teste pegaria a ordem dos guards.

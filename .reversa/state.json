@@ -72,10 +72,10 @@
         "parametros",
         "escopo",
         "politica-senha",
-        "recuperacao-senha"
+        "recuperacao-senha",
+        "suporte-acesso"
       ],
       "modules_pending": [
-        "suporte-acesso",
         "integracao",
         "integracao-keys",
         "portal-cliente",
@@ -87,7 +87,7 @@
         "inicio",
         "demo"
       ],
-      "last_update": "2026-10-16T02:34:34.769Z"
+      "last_update": "2026-10-16T07:50:54.582Z"
     }
   },
   "engines": [
