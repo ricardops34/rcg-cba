@@ -118,6 +118,9 @@ export function ConsultaEvolucaoView() {
   const empresaNome = usuario?.empresas.find(
     (e) => e.empresaId === usuario.empresaAtivaId,
   )?.nomeFantasia;
+  const logoUrl = usuario?.empresas.find(
+    (e) => e.empresaId === usuario.empresaAtivaId,
+  )?.logoUrl;
 
   const vendedores = useVendedoresEscopo();
 
@@ -206,19 +209,20 @@ export function ConsultaEvolucaoView() {
   /** Zero vira "—": a tabela é quase toda numérica e o olho procura o que houve. */
   const celula = (v: number) => (v === 0 ? "—" : valorCheio(v));
 
-  const exportar = (formato: "pdf" | "excel") => {
+  const exportar = async (formato: "pdf" | "excel") => {
     if (!data) return;
     const params = {
       resultado: data,
       titulo: `Evolução Mensal — ${definicao.label}`,
       rotuloEntidade: "Vendedor",
       empresaNome,
+      logoUrl,
       formato: definicao.formato,
       contextoExtra: [`Indicador: ${definicao.label}`],
     };
     try {
-      if (formato === "pdf") exportarConsultaPdf(params);
-      else exportarConsultaExcel(params);
+      if (formato === "pdf") await exportarConsultaPdf(params);
+      else await exportarConsultaExcel(params);
     } catch {
       toast.error("Não foi possível gerar o arquivo.");
     }

@@ -147,6 +147,9 @@ export function ConsultaVendasCategoriaView() {
   const empresaNome = usuario?.empresas.find(
     (e) => e.empresaId === usuario.empresaAtivaId,
   )?.nomeFantasia;
+  const logoUrl = usuario?.empresas.find(
+    (e) => e.empresaId === usuario.empresaAtivaId,
+  )?.logoUrl;
   const vendedores = useVendedoresEscopo();
 
   // Só categorias raiz no primeiro select, como no formulário de Objetivos —
@@ -302,7 +305,7 @@ export function ConsultaVendasCategoriaView() {
    * navegação. O rodapé continua sendo o total geral do período, para o
    * arquivo não parecer somar só a parte visível.
    */
-  const exportar = (formato: "pdf" | "excel") => {
+  const exportar = async (formato: "pdf" | "excel") => {
     if (!data) return;
     const linhasDoArquivo: LinhaExportavel[] = linhas.map(
       ({ no, nivel, tipo }) => ({
@@ -321,6 +324,7 @@ export function ConsultaVendasCategoriaView() {
       titulo: TITULO,
       rotuloEntidade: "Categoria / Subcategoria / Produto",
       empresaNome,
+      logoUrl,
       colunaNivel: "Nível",
       contextoExtra: [
         ...(data.subCategoria
@@ -332,8 +336,8 @@ export function ConsultaVendasCategoriaView() {
       ],
     };
     try {
-      if (formato === "pdf") exportarConsultaPdf(params);
-      else exportarConsultaExcel(params);
+      if (formato === "pdf") await exportarConsultaPdf(params);
+      else await exportarConsultaExcel(params);
     } catch {
       toast.error("Não foi possível gerar o arquivo.");
     }

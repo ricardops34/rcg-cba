@@ -1,10 +1,11 @@
 import { jsPDF } from "jspdf";
 import autoTable from "jspdf-autotable";
-import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import type {
   ConsultaVendasLinha,
   ConsultaVendasResultado,
 } from "@plataforma/contracts";
+import { arrayBufferParaBase64, baixarLivro, baixarLogo, inserirLogo } from "@/lib/relatorio-export";
 
 /**
  * Exportação das Consultas de venda (PDF e Excel), montada no navegador a
@@ -39,6 +40,8 @@ export interface ExportParams {
   rotuloEntidade: string;
   /** Nome fantasia da empresa ativa, impresso no cabeçalho do PDF. */
   empresaNome?: string | null;
+  /** Caminho do logo da empresa ativa (`user.empresas[].logoUrl`) — PNG/JPEG. */
+  logoUrl?: string | null;
   /**
    * O que os números são. `moeda` (padrão) sai com dois decimais; `quantidade`
    * é contagem de clientes, e sai inteira — na consulta de evolução as duas
@@ -129,11 +132,22 @@ function descreverFiltros({ resultado, contextoExtra }: ExportParams): string[] 
  * PDF em paisagem — retrato não comporta as 12 colunas de mês mais o total
  * sem espremer os valores a ponto de quebrar a linha.
  */
-export function exportarConsultaPdf(params: ExportParams): void {
+export async function exportarConsultaPdf(params: ExportParams): Promise<void> {
   const { resultado, titulo, rotuloEntidade, empresaNome } = params;
   const doc = new jsPDF({ unit: "mm", format: "a4", orientation: "landscape" });
   const margem = 10;
   let y = margem;
+
+  const logo = await baixarLogo(params.logoUrl);
+  if (logo) {
+    try {
+      const dataUrl = `data:image/${logo.extensao};base64,${arrayBufferParaBase64(logo.buffer)}`;
+      doc.addImage(dataUrl, logo.extensao.toUpperCase(), margem, margem - 2, 0, 12);
+      y += 14;
+    } catch {
+      // logo corrompida ou formato que o jsPDF não embute: segue sem imagem.
+    }
+  }
 
   if (empresaNome) {
     doc.setFontSize(9);
@@ -204,7 +218,7 @@ export function exportarConsultaPdf(params: ExportParams): void {
  * Planilha .xlsx com os valores como número (não texto) — a soma e o filtro
  * do Excel só funcionam assim. A formatação de moeda fica na célula.
  */
-export function exportarConsultaExcel(params: ExportParams): void {
+export async function exportarConsultaExcel(params: ExportParams): Promise<void> {
   const { resultado, titulo, rotuloEntidade } = params;
 
   const arvore = !!params.colunaNivel;
@@ -234,40 +248,51 @@ export function exportarConsultaExcel(params: ExportParams): void {
     resultado.media,
   ];
 
-  // Duas linhas de contexto antes da tabela: sem elas a planilha exportada
-  // não diz de que período/vendedor ela é.
-  const linhas = [
-    [titulo],
-    [descreverFiltros(params).join("   ·   ")],
-    [],
-    cabecalho,
-    ...corpo,
-    rodape,
-  ];
-
-  const sheet = XLSX.utils.aoa_to_sheet(linhas);
-  const primeiraLinhaDados = 4; // 1-based, contando as 3 linhas de contexto
-  const totalLinhas = corpo.length + 1; // + rodapé
+  const livro = new ExcelJS.Workbook();
+  livro.creator = params.empresaNome ?? "Plataforma";
+  livro.created = new Date();
+  const aba = livro.addWorksheet("Consulta");
   // A formatação de moeda começa depois das colunas de texto: descrição,
   // código e — na árvore — o nível.
   const primeiraColunaNumerica = arvore ? 3 : 2;
-  for (let l = 0; l < totalLinhas; l++) {
-    for (let c = primeiraColunaNumerica; c < cabecalho.length; c++) {
-      const ref = XLSX.utils.encode_cell({ r: primeiraLinhaDados + l, c });
-      const celula = sheet[ref];
-      if (celula && typeof celula.v === "number")
-        celula.z = params.formato === "quantidade" ? "#,##0" : FORMATO_CONTABIL;
-    }
-  }
-  sheet["!cols"] = [
-    { wch: 45 },
-    ...(arvore ? [{ wch: 14 }] : []),
-    { wch: 14 },
-    ...rotulosMes.map(() => ({ wch: 13 })),
-    { wch: 15 },
-    { wch: 15 },
+  aba.columns = [
+    { width: 45 },
+    ...(arvore ? [{ width: 14 }] : []),
+    { width: 14 },
+    ...rotulosMes.map(() => ({ width: 15 })),
+    { width: 17 },
+    { width: 17 },
   ];
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, sheet, "Consulta");
-  XLSX.writeFile(wb, nomeArquivo(params, "xlsx"));
+
+  // Quatro linhas no topo para a logo; sem ela, a tabela sobe.
+  const logo = await baixarLogo(params.logoUrl);
+  if (logo) {
+    inserirLogo(livro, aba, logo);
+    for (let i = 0; i < 4; i++) aba.addRow([]);
+  }
+
+  // Duas linhas de contexto antes da tabela: sem elas a planilha exportada
+  // não diz de que período/vendedor ela é.
+  aba.addRow([titulo]).font = { size: 14, bold: true };
+  aba.addRow([descreverFiltros(params).join("   ·   ")]);
+  aba.addRow([]);
+
+  const linhaCab = aba.addRow(cabecalho);
+  linhaCab.eachCell((cel) => {
+    cel.font = { bold: true, color: { argb: "FFFFFFFF" } };
+    cel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E40AF" } };
+  });
+
+  const formatoNumero = params.formato === "quantidade" ? "#,##0" : FORMATO_CONTABIL;
+  const escreverLinha = (valores: (string | number)[], negrito = false) => {
+    const row = aba.addRow(valores);
+    row.eachCell((cel, col) => {
+      if (col > primeiraColunaNumerica && typeof cel.value === "number") cel.numFmt = formatoNumero;
+      if (negrito) cel.font = { bold: true };
+    });
+  };
+  corpo.forEach((l) => escreverLinha(l));
+  escreverLinha(rodape, true);
+
+  await baixarLivro(livro, nomeArquivo(params, "xlsx"));
 }

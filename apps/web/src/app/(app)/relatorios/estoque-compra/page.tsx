@@ -137,7 +137,7 @@ export default function RelatorioEstoqueCompraPage() {
       { campo: "descricao", titulo: "Descrição", valor: (l) => l.descricao },
       { campo: "codigoCorp", titulo: "Cod. Corp.", valor: (l) => l.codigoCorp },
       { campo: "fornecedor", titulo: "Fornecedor", valor: (l) => l.fornecedor },
-      { campo: "estoque", titulo: "Estoque", valor: (l) => l.estoque, formato: "numero" },
+      { campo: "estoque", titulo: "Estoque", valor: (l) => l.estoque, formato: "numero", centralizar: true },
       { campo: "entradas", titulo: "Entrada-Qtd", valor: (l) => l.entradas, formato: "numero" },
       { campo: "saidas", titulo: "Saída-Qtd", valor: (l) => l.saidas, formato: "numero" },
       { campo: "ultimoPreco", titulo: "Últ. Preço", valor: (l) => l.ultimoPreco, formato: "moeda" },

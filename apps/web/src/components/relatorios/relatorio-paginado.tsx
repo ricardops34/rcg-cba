@@ -122,7 +122,11 @@ export function RelatorioPaginado<T>({
     id: c.campo,
     header: c.titulo,
     sortKey: c.campo,
-    className: ehNumerica(c.formato) ? "text-right whitespace-nowrap" : undefined,
+    className: c.centralizar
+      ? "text-center whitespace-nowrap"
+      : ehNumerica(c.formato)
+        ? "text-right whitespace-nowrap"
+        : undefined,
     cell: (l) => formatar(c.valor(l), c.formato),
   }));
 

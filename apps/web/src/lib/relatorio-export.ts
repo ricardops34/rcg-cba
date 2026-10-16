@@ -21,10 +21,15 @@ export interface ColunaRelatorio<T> {
   titulo: string;
   valor: (linha: T) => string | number | null;
   formato?: FormatoColuna;
+  /** Centraliza a coluna (tela, PDF e Excel) — ex.: estoque, quantidade, unidade. */
+  centralizar?: boolean;
 }
 
 const NUMERICOS: FormatoColuna[] = ["numero", "quantidade", "moeda", "percentual"];
 export const ehNumerica = (f?: FormatoColuna) => !!f && NUMERICOS.includes(f);
+
+export const alinhamento = (c?: { formato?: FormatoColuna; centralizar?: boolean }) =>
+  c?.centralizar ? "center" : ehNumerica(c?.formato) ? "right" : "left";
 
 /** `2026-01-07` → `07/01/2026` (data civil, sem fuso). */
 const dataBr = (v: string) => {
@@ -90,7 +95,7 @@ const NUM_FMT: Record<FormatoColuna, string | undefined> = {
   percentual: '0.00"%"',
 };
 
-function arrayBufferParaBase64(buffer: ArrayBuffer): string {
+export function arrayBufferParaBase64(buffer: ArrayBuffer): string {
   let binario = "";
   const bytes = new Uint8Array(buffer);
   for (const byte of bytes) binario += String.fromCharCode(byte);
@@ -98,7 +103,7 @@ function arrayBufferParaBase64(buffer: ArrayBuffer): string {
 }
 
 /** Extensão do arquivo de logo pelo `Content-Type` da resposta — o nome vem com hash, sem extensão confiável. */
-async function baixarLogo(
+export async function baixarLogo(
   logoUrl: string | null | undefined,
 ): Promise<{ buffer: ArrayBuffer; extensao: "png" | "jpeg" } | null> {
   const url = assetUrl(logoUrl);
@@ -163,7 +168,7 @@ export async function exportarRelatorioPdf<T>(p: ExportRelatorio<T>): Promise<vo
     headStyles: { fillColor: AZUL_RGB, textColor: 255 },
     footStyles: { fillColor: [241, 245, 249], textColor: 20, fontStyle: "bold" },
     columnStyles: Object.fromEntries(
-      p.colunas.map((c, i) => [i, { halign: ehNumerica(c.formato) ? "right" : "left" }]),
+      p.colunas.map((c, i) => [i, { halign: alinhamento(c) }]),
     ),
     didDrawPage: (dados) => {
       if (dados.pageNumber > 1) cabecalho();
@@ -284,16 +289,23 @@ function montarAbaParametros<T>(
 }
 
 /** Aba "Relatório": cabeçalho fixo, filtro automático, totais e formato numérico nativo (soma/filtro funcionam na planilha). */
-function montarAbaRelatorio<T>(livro: ExcelJS.Workbook, p: ExportRelatorio<T>) {
+function montarAbaRelatorio<T>(
+  livro: ExcelJS.Workbook,
+  p: ExportRelatorio<T>,
+  logo: { buffer: ArrayBuffer; extensao: "png" | "jpeg" } | null,
+) {
   const aba = livro.addWorksheet("Relatório");
   aba.columns = p.colunas.map((c) => ({
-    header: c.titulo,
     key: c.campo,
     width: ehNumerica(c.formato) ? 14 : Math.max(12, c.titulo.length + 2),
     style: { numFmt: NUM_FMT[c.formato ?? "texto"] },
   }));
 
-  const cabecalho = aba.getRow(1);
+  // Com logo, o cabeçalho da tabela desce para a linha 5 e a logo ocupa o topo.
+  const linhaCab = logo ? 5 : 1;
+  if (logo) inserirLogo(livro, aba, logo);
+  const cabecalho = aba.getRow(linhaCab);
+  p.colunas.forEach((c, i) => (cabecalho.getCell(i + 1).value = c.titulo));
   cabecalho.eachCell((cel) => {
     cel.font = { bold: true, color: { argb: BRANCO } };
     cel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: AZUL } };
@@ -310,8 +322,7 @@ function montarAbaRelatorio<T>(livro: ExcelJS.Workbook, p: ExportRelatorio<T>) {
     });
     const row = aba.addRow(valores);
     row.eachCell((cel, col) => {
-      const formato = p.colunas[col - 1]?.formato;
-      cel.alignment = { horizontal: ehNumerica(formato) ? "right" : "left" };
+      cel.alignment = { horizontal: alinhamento(p.colunas[col - 1]) };
       if (i % 2 === 1) cel.fill = { type: "pattern", pattern: "solid", fgColor: { argb: CINZA_CLARO } };
     });
   });
@@ -321,12 +332,12 @@ function montarAbaRelatorio<T>(livro: ExcelJS.Workbook, p: ExportRelatorio<T>) {
     row.eachCell((cel, col) => {
       cel.font = { bold: true };
       cel.border = { top: { style: "double", color: { argb: "FF94A3B8" } } };
-      cel.alignment = { horizontal: ehNumerica(p.colunas[col - 1]?.formato) ? "right" : "left" };
+      cel.alignment = { horizontal: alinhamento(p.colunas[col - 1]) };
     });
   }
 
-  aba.autoFilter = { from: { row: 1, column: 1 }, to: { row: 1, column: p.colunas.length } };
-  aba.views = [{ state: "frozen", ySplit: 1 }];
+  aba.autoFilter = { from: { row: linhaCab, column: 1 }, to: { row: linhaCab, column: p.colunas.length } };
+  aba.views = [{ state: "frozen", ySplit: linhaCab }];
 }
 
 /**
@@ -340,13 +351,30 @@ export async function exportarRelatorioExcel<T>(p: ExportRelatorio<T>): Promise<
   livro.created = new Date();
 
   montarAbaParametros(livro, p, logo);
-  montarAbaRelatorio(livro, p);
+  montarAbaRelatorio(livro, p, logo);
 
+  await baixarLivro(livro, nomeArquivo(p.titulo, "xlsx"));
+}
+
+/** Logo no topo da aba (4 linhas reservadas). */
+export function inserirLogo(
+  livro: ExcelJS.Workbook,
+  aba: ExcelJS.Worksheet,
+  logo: { buffer: ArrayBuffer; extensao: "png" | "jpeg" },
+) {
+  const imagemId = livro.addImage({
+    base64: `data:image/${logo.extensao};base64,${arrayBufferParaBase64(logo.buffer)}`,
+    extension: logo.extensao,
+  });
+  aba.addImage(imagemId, { tl: { col: 0, row: 0 }, ext: { width: 160, height: 60 } });
+}
+
+export async function baixarLivro(livro: ExcelJS.Workbook, nome: string): Promise<void> {
   const buffer = await livro.xlsx.writeBuffer();
   const url = URL.createObjectURL(new Blob([buffer], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" }));
   const a = document.createElement("a");
   a.href = url;
-  a.download = nomeArquivo(p.titulo, "xlsx");
+  a.download = nome;
   a.click();
   URL.revokeObjectURL(url);
 }

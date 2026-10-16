@@ -39,7 +39,7 @@ const COLUNAS: ColunaRelatorio<RelatorioVendasLinha>[] = [
   { campo: "notaFiscal", titulo: "Nota Fiscal", valor: (l) => l.notaFiscal },
   { campo: "produtoCodigo", titulo: "Cód. Prod.", valor: (l) => l.produtoCodigo },
   { campo: "produto", titulo: "Produto", valor: (l) => l.produto },
-  { campo: "quantidade", titulo: "Quantidade", valor: (l) => l.quantidade, formato: "quantidade" },
+  { campo: "quantidade", titulo: "Quantidade", valor: (l) => l.quantidade, formato: "quantidade", centralizar: true },
   { campo: "vlrProduto", titulo: "Vlr. Produto", valor: (l) => l.vlrProduto, formato: "moeda" },
   { campo: "vlrItem", titulo: "Vlr. Item", valor: (l) => l.vlrItem, formato: "moeda" },
 ];
