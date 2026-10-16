@@ -1,5 +1,6 @@
 "use client";
-
+import { useAgente } from "@/components/agente/use-agente";
+import 
 import { useEffect, useRef, useState } from "react";
 import { AnotacaoDialog } from "@/components/whatsapp/anotacao-dialog";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -139,6 +140,7 @@ export function Composer({
     }).catch(() => undefined);
   };
 
+  const { disponivel: iaDisponivel } = useAgente();
   const sugerirResposta = useMutation({
     mutationFn: () =>
       apiFetch<{ sugestao: string }>(`/whatsapp/conversas/${conversaId}/sugerir-resposta`, {
@@ -404,21 +406,25 @@ export function Composer({
           />
         </div>
 
-        <Button
-          type="button"
-          size="icon"
-          variant="outline"
-          disabled={ocupado || sugerirResposta.isPending}
-          onClick={() => sugerirResposta.mutate()}
-          title="Sugerir resposta com IA (Copilot)"
-          className="text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
-        >
-          {sugerirResposta.isPending ? (
-            <Loader2 className="size-4 animate-spin text-amber-500" />
-          ) : (
-            <Sparkles className="size-4" />
-          )}
-        </Button>
+        {/* Só existe com o agente de IA ativo na empresa e liberado para o
+            usuário — a API também recusa sem ele, isto só evita o botão morto. */}
+        {iaDisponivel ? (
+          <Button
+            type="button"
+            size="icon"
+            variant="outline"
+            disabled={ocupado || sugerirResposta.isPending}
+            onClick={() => sugerirResposta.mutate()}
+            title="Sugerir resposta com IA (Copilot)"
+            className="text-amber-600 dark:text-amber-400 border-amber-500/30 hover:bg-amber-500/10"
+          >
+            {sugerirResposta.isPending ? (
+              <Loader2 className="size-4 animate-spin text-amber-500" />
+            ) : (
+              <Sparkles className="size-4" />
+            )}
+          </Button>
+        ) : null}
 
         {gravacao.gravando ? (
           <>
