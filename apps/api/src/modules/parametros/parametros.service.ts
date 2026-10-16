@@ -168,29 +168,36 @@ export class ParametrosService {
   ) {
     this.validarConteudo(input.tipo, input.conteudo, input.tamanho);
     return this.prisma.withTenant(empresaId, async (tx) => {
+      // A chave é única por empresa **inclusive entre os excluídos** (o
+      // `@@unique` do banco). Excluído com a mesma chave é reativado com os
+      // dados novos; antes o `create` batia no índice e dava 500.
       const existente = await tx.parametroEmpresa.findFirst({
-        where: { empresaId, parametro: input.parametro, deletedAt: null },
-        select: { id: true },
+        where: { empresaId, parametro: input.parametro },
+        select: { id: true, deletedAt: true },
       });
-      if (existente) {
+      if (existente && !existente.deletedAt) {
         throw new ConflictException(
           `Já existe o parâmetro '${input.parametro}' nesta empresa`,
         );
       }
-      const row = await tx.parametroEmpresa.create({
-        data: {
-          ...input,
-          conteudo:
-            input.tipo === 'senha' && input.conteudo
-              ? cifrarParametro(input.conteudo)
-              : (input.conteudo ?? null),
-          descricao: input.descricao ?? null,
-          tamanho: input.tamanho ?? null,
-          empresaId,
-          createdBy: user.id,
-          updatedBy: user.id,
-        },
-      });
+      const dados = {
+        ...input,
+        conteudo:
+          input.tipo === 'senha' && input.conteudo
+            ? cifrarParametro(input.conteudo)
+            : (input.conteudo ?? null),
+        descricao: input.descricao ?? null,
+        tamanho: input.tamanho ?? null,
+        updatedBy: user.id,
+      };
+      const row = existente
+        ? await tx.parametroEmpresa.update({
+            where: { id: existente.id },
+            data: { ...dados, deletedAt: null, deletedBy: null },
+          })
+        : await tx.parametroEmpresa.create({
+            data: { ...dados, empresaId, createdBy: user.id },
+          });
       return this.paraLeitura(row);
     });
   }
@@ -206,6 +213,18 @@ export class ParametrosService {
         where: { id, empresaId, deletedAt: null },
       });
       if (!atual) throw new NotFoundException('Parâmetro não encontrado');
+
+      // O código procura o parâmetro pela chave (`SMTP_SENHA`, `SMS_TOKEN`...):
+      // renomear desligava o recurso em silêncio, e uma chave repetida dava
+      // 500 no índice. Para outra chave, cadastra-se um parâmetro novo.
+      if (
+        input.parametro !== undefined &&
+        input.parametro !== atual.parametro
+      ) {
+        throw new BadRequestException(
+          'A chave do parâmetro não pode ser alterada. Cadastre um parâmetro novo com a outra chave.',
+        );
+      }
 
       this.validarConteudo(
         input.tipo ?? atual.tipo,

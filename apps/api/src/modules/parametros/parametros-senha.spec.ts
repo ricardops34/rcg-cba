@@ -159,3 +159,53 @@ describe('ParametrosCifragemService — cifra na subida o que está em claro', (
     expect(tx.empresa.findMany).not.toHaveBeenCalled();
   });
 });
+
+describe('ParametrosService — chave do parâmetro', () => {
+  const atual = {
+    id: 'p1',
+    empresaId: 'e1',
+    parametro: 'SMTP_HOST',
+    tipo: 'texto',
+    tamanho: 120,
+    conteudo: 'smtp.exemplo.com',
+  };
+
+  it('não renomeia a chave pelo PATCH (reenviar a mesma é aceito)', async () => {
+    await expect(
+      montar(atual).service.update('e1', user, 'p1', { parametro: 'OUTRA' }),
+    ).rejects.toThrow(/não pode ser alterada/);
+
+    const mesma = montar(atual);
+    await mesma.service.update('e1', user, 'p1', {
+      parametro: 'SMTP_HOST',
+      conteudo: 'novo.exemplo.com',
+    });
+    expect(mesma.gravado()).toBe('novo.exemplo.com');
+  });
+
+  it('recriar uma chave excluída reativa a linha em vez de dar 500', async () => {
+    const { service, gravado } = montar({
+      id: 'p1',
+      deletedAt: new Date('2026-10-01'),
+    });
+
+    await service.create('e1', user, {
+      parametro: 'SMTP_HOST',
+      tipo: 'texto',
+      conteudo: 'smtp.novo.com',
+      ativo: true,
+    });
+
+    expect(gravado()).toBe('smtp.novo.com');
+  });
+
+  it('chave viva repetida continua recusada', async () => {
+    await expect(
+      montar({ id: 'p1', deletedAt: null }).service.create('e1', user, {
+        parametro: 'SMTP_HOST',
+        tipo: 'texto',
+        ativo: true,
+      }),
+    ).rejects.toThrow(/Já existe/);
+  });
+});
