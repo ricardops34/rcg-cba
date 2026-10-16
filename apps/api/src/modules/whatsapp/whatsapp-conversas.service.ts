@@ -512,6 +512,7 @@ export class WhatsappConversasService {
           ultimaMensagemPrevia: this.previa(c.mensagens[0]),
           naoLidas: c.naoLidas,
           arquivada: c.arquivada,
+          importante: c.importante,
           vendedorId: c.sessao.vendedorId,
           vendedorNome: c.sessao.vendedor?.nome ?? "Empresa",
           clienteVendedorNome: c.cliente?.vendedor?.nome ?? null,
@@ -603,6 +604,7 @@ export class WhatsappConversasService {
         ultimaMensagemPrevia: this.previa(c.mensagens[0]),
         naoLidas: c.naoLidas,
         arquivada: c.arquivada,
+          importante: c.importante,
         vendedorId: c.sessao.vendedorId,
         vendedorNome: c.sessao.vendedor?.nome ?? 'Empresa',
         clienteVendedorNome: c.cliente?.vendedor?.nome ?? null,
@@ -683,6 +685,7 @@ export class WhatsappConversasService {
           previa: this.previa(c.mensagens[0]),
           naoLidas: c.naoLidas,
           arquivada: c.arquivada,
+          importante: c.importante,
         })),
       };
     });
@@ -1637,6 +1640,7 @@ export class WhatsappConversasService {
           ultimaMensagemPrevia: this.previa(c.mensagens[0]),
           naoLidas: c.naoLidas,
           arquivada: c.arquivada,
+          importante: c.importante,
           vendedorId: c.sessao.vendedorId,
           vendedorNome: c.sessao.vendedor?.nome ?? 'Empresa',
           clienteVendedorNome: c.cliente?.vendedor?.nome ?? null,
@@ -1720,6 +1724,23 @@ export class WhatsappConversasService {
         },
       });
       return this.eventosDaConversa(tx, conversaId);
+    });
+  }
+
+  /** Marca ou desmarca a conversa como importante (vale o escopo da conversa). */
+  async marcarImportante(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    importante: boolean,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.conversaNoEscopo(tx, empresaId, user, conversaId);
+      await tx.whatsappConversa.update({
+        where: { id: conversaId },
+        data: { importante },
+      });
+      return { importante };
     });
   }
 

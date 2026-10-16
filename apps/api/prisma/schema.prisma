@@ -3912,6 +3912,8 @@ model Atividade {
   iniciarConversa Boolean      @default(false)
   /// Registro de algo que o sistema executa sozinho na hora (mensagem agendada): aparece na agenda, mas não é tarefa do vendedor e não gera aviso de vencimento.
   automatica     Boolean       @default(false)
+  /// Marcado pelo vendedor como importante: ganha destaque na agenda e nas listas.
+  importante     Boolean       @default(false)
   tipo           TipoAtividade @default(tarefa)
   titulo         String
   descricao      String?
@@ -4648,6 +4650,8 @@ model WhatsappConversa {
   ultimaMensagemClienteEm DateTime?
   naoLidas         Int       @default(0)
   arquivada        Boolean   @default(false)
+  /// Marcada como importante por quem atende: destaque e filtro na lista de conversas.
+  importante       Boolean   @default(false)
 
   /// Em que ponto do atendimento esta conversa está.
   ///

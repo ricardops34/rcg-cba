@@ -770,6 +770,7 @@ export class WhatsappAcoesService {
         titulo: input.titulo,
         ...(input.descricao ? { descricao: input.descricao } : {}),
         dataVencimento: input.dataVencimento ?? null,
+        importante: input.importante,
         clienteId,
         vendedorId,
         concluida: false,

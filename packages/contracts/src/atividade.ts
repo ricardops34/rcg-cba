@@ -17,6 +17,7 @@ export const atividadeCreateSchema = z.object({
   concluida: z.boolean().default(false),
   dataConclusao: z.coerce.date().nullable().optional(),
   ativo: z.boolean().default(true),
+  importante: z.boolean().optional().describe("Destaque na agenda e nas listas"),
 });
 export type AtividadeCreate = z.infer<typeof atividadeCreateSchema>;
 
@@ -35,6 +36,7 @@ export const atividadeSchema = z.object({
   iniciarConversa: z.boolean().optional(),
   /** Mensagem agendada: o sistema envia sozinho, não é tarefa do vendedor. */
   automatica: z.boolean().optional(),
+  importante: z.boolean().optional(),
   vendedorId: z.string().uuid(),
   tipo: tipoAtividadeSchema,
   titulo: z.string(),
@@ -79,6 +81,7 @@ export const atividadeQuerySchema = paginationQuerySchema.extend({
   oportunidadeId: z.string().uuid().optional(),
   orcamentoId: z.string().uuid().optional(),
   concluida: booleanQueryParam,
+  importante: booleanQueryParam.describe("Só as marcadas como importantes"),
   vencidas: booleanQueryParam.describe(
     "Atalho: dataVencimento no passado e concluida=false",
   ),

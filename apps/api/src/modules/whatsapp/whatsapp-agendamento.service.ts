@@ -116,6 +116,7 @@ export class WhatsappAgendamentoService
               descricao: input.texto,
               dataVencimento: enviarEm,
               automatica: true,
+              importante: input.importante ?? false,
               createdBy: user.id,
               updatedBy: user.id,
             },
@@ -164,10 +165,17 @@ export class WhatsappAgendamentoService
         );
       }
 
-      const { count } = await tx.whatsappMensagemAgendada.updateMany({
-        where: { id: agendamentoId, conversaId, status: 'pendente' },
-        data: dados,
-      });
+      // Só a marca de importante não toca a mensagem: vale para a atividade.
+      const mudaMensagem = Object.keys(dados).length > 0;
+      const { count } = mudaMensagem
+        ? await tx.whatsappMensagemAgendada.updateMany({
+            where: { id: agendamentoId, conversaId, status: 'pendente' },
+            data: dados,
+          })
+        : await tx.whatsappMensagemAgendada.updateMany({
+            where: { id: agendamentoId, conversaId, status: 'pendente' },
+            data: {},
+          });
       if (count === 0) {
         throw new NotFoundException(
           'Agendamento não encontrado, já enviado ou em envio.',
@@ -184,6 +192,9 @@ export class WhatsappAgendamentoService
             titulo: tituloDaAtividade(atual.texto),
             descricao: atual.texto,
             dataVencimento: atual.enviarEm,
+            ...(input.importante !== undefined
+              ? { importante: input.importante }
+              : {}),
             updatedBy: user.id,
           },
         });
@@ -212,8 +223,22 @@ export class WhatsappAgendamentoService
         select: { id: true, nome: true },
       });
       const nomePorId = new Map(autores.map((a) => [a.id, a.nome]));
+      const atividadeIds = linhas
+        .map((l) => l.atividadeId)
+        .filter((id): id is string => !!id);
+      const importantes = new Set(
+        atividadeIds.length
+          ? (
+              await tx.atividade.findMany({
+                where: { id: { in: atividadeIds }, importante: true },
+                select: { id: true },
+              })
+            ).map((a) => a.id)
+          : [],
+      );
 
       return linhas.map((l) => ({
+        importante: l.atividadeId ? importantes.has(l.atividadeId) : false,
         id: l.id,
         conversaId: l.conversaId,
         texto: l.texto,
@@ -299,6 +324,7 @@ export class WhatsappAgendamentoService
           titulo: true,
           descricao: true,
           dataVencimento: true,
+          importante: true,
         },
       });
       return linhas;
@@ -324,7 +350,9 @@ export class WhatsappAgendamentoService
         titulo?: string;
         descricao?: string | null;
         dataVencimento?: Date;
+        importante?: boolean;
       } = {};
+      if (input.importante !== undefined) dados.importante = input.importante;
       if (input.titulo !== undefined) dados.titulo = input.titulo;
       if (input.descricao !== undefined) dados.descricao = input.descricao;
       if (input.dataVencimento !== undefined) {

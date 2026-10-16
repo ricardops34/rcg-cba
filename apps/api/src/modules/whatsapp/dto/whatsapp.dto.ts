@@ -4,6 +4,7 @@ import {
   whatsappAgendarMensagemSchema,
   whatsappAtualizarAgendamentoSchema,
   whatsappAtualizarAtendimentoSchema,
+  whatsappMarcarImportanteSchema,
   whatsappAnotarSchema,
   whatsappAgendarVisitaSchema,
   whatsappConectarSchema,
@@ -68,6 +69,9 @@ export class WhatsappAtualizarAgendamentoDto extends createZodDto(
 ) {}
 export class WhatsappAtualizarAtendimentoDto extends createZodDto(
   whatsappAtualizarAtendimentoSchema,
+) {}
+export class WhatsappMarcarImportanteDto extends createZodDto(
+  whatsappMarcarImportanteSchema,
 ) {}
 export class WhatsappAgendarVisitaDto extends createZodDto(
   whatsappAgendarVisitaSchema,

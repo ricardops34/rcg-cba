@@ -38,6 +38,7 @@ import {
   WhatsappAgendarMensagemDto,
   WhatsappAtualizarAgendamentoDto,
   WhatsappAtualizarAtendimentoDto,
+  WhatsappMarcarImportanteDto,
   WhatsappAnotarDto,
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
@@ -718,6 +719,28 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.conversas.eventosGerencial(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Marcar ou desmarcar a conversa como importante',
+    description:
+      'Destaque para quem atende e para a supervisão. Vale o escopo da conversa ' +
+      '(dono, supervisor, gerente). Requer whatsapp-conversas.cadastrar.',
+  })
+  @ApiBodyExample({ importante: true })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Patch('conversas/:id/importante')
+  marcarImportante(
+    @Param('id') id: string,
+    @Body() dto: WhatsappMarcarImportanteDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.marcarImportante(
+      user.empresaAtivaId,
+      user,
+      id,
+      dto.importante,
+    );
   }
 
   @ApiOperation({

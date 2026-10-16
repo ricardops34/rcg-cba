@@ -137,6 +137,7 @@ export class AtividadesService {
         ...(query.orcamentoId ? { orcamentoId: query.orcamentoId } : {}),
         ...(query.tipo ? { tipo: query.tipo } : {}),
         ...(query.concluida !== undefined ? { concluida: query.concluida } : {}),
+        ...(query.importante !== undefined ? { importante: query.importante } : {}),
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.vencidas
           ? { concluida: false, dataVencimento: { lt: new Date() } }

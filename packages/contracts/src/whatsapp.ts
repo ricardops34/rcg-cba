@@ -493,6 +493,8 @@ export const whatsappConversaSchema = z.object({
     .describe("Primeiros caracteres da última mensagem, para a lista"),
   naoLidas: z.number().int(),
   arquivada: z.boolean(),
+  /** Marcada como importante por quem atende. */
+  importante: z.boolean().optional(),
   /**
    * De quem é a conversa — e, como cada vendedor tem uma conexão só
    * (`@@unique(empresaId, vendedorId)` em `whatsapp_sessoes`), também **por
@@ -1069,6 +1071,7 @@ export const whatsappAgendarMensagemSchema = z.object({
   enviarEm: z.coerce.date().refine((d) => d.getTime() > Date.now(), {
     message: "Escolha uma data e hora no futuro",
   }),
+  importante: z.boolean().optional().describe("Destaque na agenda"),
 });
 export type WhatsappAgendarMensagem = z.infer<
   typeof whatsappAgendarMensagemSchema
@@ -1087,10 +1090,13 @@ export const whatsappAtualizarAgendamentoSchema = z
         message: "Escolha uma data e hora no futuro",
       })
       .optional(),
+    importante: z.boolean().optional(),
   })
-  .refine((v) => v.texto !== undefined || v.enviarEm !== undefined, {
-    message: "Informe o texto ou a data e hora",
-  });
+  .refine(
+    (v) =>
+      v.texto !== undefined || v.enviarEm !== undefined || v.importante !== undefined,
+    { message: "Informe o que mudar" },
+  );
 export type WhatsappAtualizarAgendamento = z.infer<
   typeof whatsappAtualizarAgendamentoSchema
 >;
@@ -1104,6 +1110,8 @@ export const whatsappMensagemAgendadaSchema = z.object({
   erro: z.string().nullable(),
   /** Atividade da Agenda que representa este agendamento. */
   atividadeId: z.string().uuid().nullable().optional(),
+  /** Marcada como importante na agenda (via atividade). */
+  importante: z.boolean().optional(),
   criadaPor: z.string().uuid(),
   criadaPorNome: z.string().nullable(),
   criadaEm: z.string().datetime(),
@@ -1124,6 +1132,7 @@ export const whatsappAtendimentoAgendadoSchema = z.object({
   titulo: z.string(),
   descricao: z.string().nullable(),
   dataVencimento: z.string().datetime(),
+  importante: z.boolean().optional(),
 });
 export type WhatsappAtendimentoAgendado = z.infer<
   typeof whatsappAtendimentoAgendadoSchema
@@ -1140,16 +1149,26 @@ export const whatsappAtualizarAtendimentoSchema = z
         message: "Escolha uma data e hora no futuro",
       })
       .optional(),
+    importante: z.boolean().optional(),
   })
   .refine(
     (v) =>
       v.titulo !== undefined ||
       v.descricao !== undefined ||
-      v.dataVencimento !== undefined,
+      v.dataVencimento !== undefined ||
+      v.importante !== undefined,
     { message: "Informe o que mudar" },
   );
 export type WhatsappAtualizarAtendimento = z.infer<
   typeof whatsappAtualizarAtendimentoSchema
+>;
+
+/** Marca ou desmarca a conversa como importante. */
+export const whatsappMarcarImportanteSchema = z.object({
+  importante: z.boolean(),
+});
+export type WhatsappMarcarImportante = z.infer<
+  typeof whatsappMarcarImportanteSchema
 >;
 
 /** Teto do WhatsApp para anexo; a tela avisa antes de subir o arquivo. */
@@ -1176,6 +1195,7 @@ export const whatsappAgendarVisitaSchema = z.object({
    * data, não há o que avisar: a API ignora.
    */
   iniciarConversa: z.boolean().default(false),
+  importante: z.boolean().optional(),
 });
 export type WhatsappAgendarVisita = z.infer<typeof whatsappAgendarVisitaSchema>;
 
