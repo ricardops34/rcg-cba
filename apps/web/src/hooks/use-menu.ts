@@ -21,6 +21,31 @@ export interface MenuItem {
   submenus?: MenuItem[];
 }
 
+/**
+ * A tela de uma rota está liberada para o celular? Vale a regra dos três
+ * níveis: módulo, menu (ou submenu) e ao menos uma rotina precisam estar
+ * marcados. É a mesma conta do guard de rota e do menu lateral.
+ */
+export function rotaDisponivelNoCelular(
+  modulos: ModuloComMenus[] | undefined,
+  rota: string,
+): boolean {
+  for (const modulo of modulos ?? []) {
+    for (const menu of modulo.menus) {
+      for (const candidato of [menu, ...(menu.submenus ?? [])]) {
+        if (candidato.rota !== rota) continue;
+        return (
+          modulo.disponivelTelaPequena &&
+          (candidato === menu || menu.disponivelTelaPequena) &&
+          candidato.disponivelTelaPequena &&
+          candidato.rotinas.some((rotina) => rotina.disponivelTelaPequena)
+        );
+      }
+    }
+  }
+  return false;
+}
+
 export interface ModuloComMenus {
   id: string;
   nome: string;

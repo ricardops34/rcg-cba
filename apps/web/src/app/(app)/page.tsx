@@ -31,6 +31,8 @@ import type {
 } from "@plataforma/contracts";
 import { useAuthStore } from "@/stores/auth-store";
 import { useWhatsappIntegracao } from "@/hooks/use-whatsapp-integracao";
+import { useIsMobile } from "@/hooks/use-mobile";
+import { rotaDisponivelNoCelular, useMenu } from "@/hooks/use-menu";
 import { apiFetch } from "@/lib/api-client";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -184,11 +186,17 @@ export default function InicioPage() {
   const user = useAuthStore((s) => s.user);
   const permissoes = user?.permissoes;
   const { ativo: whatsappAtivo } = useWhatsappIntegracao();
+  const isMobile = useIsMobile();
+  const { data: modulos } = useMenu();
 
+  // No celular, só os atalhos cuja tela está liberada para tela pequena — o
+  // cartão que levaria à mensagem "abra em uma tela maior" não deve existir.
+  // Enquanto o menu carrega, não se sabe ainda: nada aparece, em vez de piscar.
   const visiveis = ATALHOS.filter(
     (a) =>
       permissoes?.includes(a.permissao) &&
-      (!a.exigeWhatsapp || whatsappAtivo === true),
+      (!a.exigeWhatsapp || whatsappAtivo === true) &&
+      (!isMobile || rotaDisponivelNoCelular(modulos, a.href)),
   ).slice(0, MAX_ATALHOS);
 
   const statusIntegracaoQuery = useQuery({
@@ -235,19 +243,19 @@ export default function InicioPage() {
           <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
             Acesso rápido
           </h2>
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+          <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
             {visiveis.map((atalho) => (
-              <Link key={atalho.href} href={atalho.href}>
+              <Link key={atalho.href} href={atalho.href} className="min-w-0">
                 <Card className="group h-full shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-1 hover:ring-primary/30">
-                  <CardHeader>
+                  <CardHeader className="px-3 sm:px-4">
                     <div className="mb-1 flex items-center justify-between">
-                      <div className="flex size-10 items-center justify-center rounded-full bg-primary/10 text-primary">
-                        <atalho.icone className="size-5" />
+                      <div className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary sm:size-10">
+                        <atalho.icone className="size-4.5 sm:size-5" />
                       </div>
                       <ArrowRight className="size-4 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
                     </div>
-                    <CardTitle className="text-base">{atalho.titulo}</CardTitle>
-                    <p className="text-sm text-muted-foreground">
+                    <CardTitle className="text-sm leading-snug sm:text-base">{atalho.titulo}</CardTitle>
+                    <p className="line-clamp-2 text-xs text-muted-foreground sm:text-sm">
                       {atalho.descricao}
                     </p>
                   </CardHeader>
