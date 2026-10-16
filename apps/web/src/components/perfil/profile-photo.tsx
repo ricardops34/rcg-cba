@@ -148,7 +148,7 @@ export function ProfilePhoto({
         {podeAlterar ? (
           <div className="mt-4 border-t pt-4">
             <p className="mb-2 text-xs font-medium text-muted-foreground">Avatares corporativos</p>
-            <div className="grid grid-cols-4 gap-2 sm:flex sm:flex-wrap">
+            <div className="grid grid-cols-3 gap-3 sm:grid-cols-4 md:grid-cols-6">
               {AVATARES_PADRAO.map((avatar) => {
                 const src = `/avatares-padrao/${avatar}.jpg`;
                 const selecionado = user.avatarUrl === src;
@@ -159,7 +159,7 @@ export function ProfilePhoto({
                     key={avatar}
                     type="button"
                     className={cn(
-                      "group relative size-14 overflow-hidden rounded-full border-2 bg-background outline-none transition-transform hover:scale-105 focus-visible:ring-3 focus-visible:ring-ring/50 sm:size-16",
+                      "group relative aspect-square w-full overflow-hidden rounded-2xl border-[3px] bg-background outline-none transition-transform hover:scale-[1.03] focus-visible:ring-3 focus-visible:ring-ring/50",
                       selecionado ? "border-primary" : "border-transparent hover:border-primary/40",
                     )}
                     disabled={disabled || salvando}
@@ -173,9 +173,9 @@ export function ProfilePhoto({
                     {selecionado || carregando ? (
                       <span className="absolute inset-0 flex items-center justify-center bg-black/30 text-white">
                         {carregando ? (
-                          <LoaderCircle className="size-5 animate-spin motion-reduce:animate-none" />
+                          <LoaderCircle className="size-8 animate-spin motion-reduce:animate-none" />
                         ) : (
-                          <Check className="size-5" strokeWidth={3} />
+                          <Check className="size-8" strokeWidth={3} />
                         )}
                       </span>
                     ) : null}

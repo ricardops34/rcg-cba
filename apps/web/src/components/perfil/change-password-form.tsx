@@ -85,7 +85,7 @@ export function ChangePasswordForm() {
           </FieldGroup>
         </CardContent>
         <CardFooter className="justify-end">
-          <Button type="submit" disabled={form.formState.isSubmitting}>
+          <Button type="submit" className="w-full sm:w-auto" disabled={form.formState.isSubmitting}>
             Trocar senha
           </Button>
         </CardFooter>

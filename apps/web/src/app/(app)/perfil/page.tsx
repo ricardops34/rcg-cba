@@ -1,176 +1,96 @@
 "use client";
 
-import { useState } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import type { CurrentUser } from "@plataforma/contracts";
-import { toast } from "sonner";
-import { useAuthStore } from "@/stores/auth-store";
-import { apiFetch, ApiError } from "@/lib/api-client";
-import { ChangePasswordForm } from "@/components/perfil/change-password-form";
-import { WhatsappPareamentoCard } from "@/components/perfil/whatsapp-pareamento-card";
+import { useSyncExternalStore } from "react";
+import { Camera, MessageCircle, ShieldCheck, UserRound } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import { Field, FieldGroup, FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
-import { Switch } from "@/components/ui/switch";
-import { Button } from "@/components/ui/button";
-import { TermosAceitosCard } from "@/components/perfil/termos-aceitos-card";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { useAuthStore } from "@/stores/auth-store";
+import { AssinaturaWhatsappCard } from "@/components/perfil/assinatura-whatsapp-card";
+import { ChangePasswordForm } from "@/components/perfil/change-password-form";
+import { DadosPessoaisCard } from "@/components/perfil/dados-pessoais-card";
+import { IdentidadeHeader } from "@/components/perfil/identidade-header";
 import { ProfilePhoto } from "@/components/perfil/profile-photo";
 import { TelaInicialCard } from "@/components/perfil/tela-inicial-card";
+import { TermosAceitosCard } from "@/components/perfil/termos-aceitos-card";
 import { UsarFotoNoWhatsapp } from "@/components/perfil/usar-foto-no-whatsapp";
+import { WhatsappPareamentoCard } from "@/components/perfil/whatsapp-pareamento-card";
 
+const ABAS = ["conta", "whatsapp", "seguranca"] as const;
+type Aba = (typeof ABAS)[number];
+
+/**
+ * Meu perfil, em três abas — a tela era uma pilha longa de cartões, cada um
+ * com um jeito de salvar. Agora cada aba é um assunto, e dentro dela:
+ *
+ * - **campos de texto** têm Salvar no rodapé do próprio cartão, que só habilita
+ *   quando algo mudou;
+ * - **escolhas** (foto, avatar, tela inicial) valem na hora e avisam por toast.
+ *
+ * A aba aberta fica no endereço (`#whatsapp`), então um link já cai no lugar certo.
+ */
 export default function PerfilPage() {
-  const { user, setUser } = useAuthStore();
-  const queryClient = useQueryClient();
-  const [nomeEditado, setNome] = useState<string | undefined>();
-  const [nascimentoEditado, setNascimento] = useState<string | undefined>();
-  const [nomeWhatsappEditado, setNomeWhatsapp] = useState<string | undefined>();
-  const [usarNomeWhatsappEditado, setUsarNomeWhatsapp] = useState<boolean | undefined>();
-  const nome = nomeEditado ?? user?.nome ?? "";
-  const nascimento = nascimentoEditado ?? user?.dataNascimento ?? "";
-  const nomeWhatsapp = nomeWhatsappEditado ?? user?.nomeWhatsapp ?? "";
-  const usarNomeWhatsapp = usarNomeWhatsappEditado ?? user?.usarNomeWhatsapp ?? true;
-  // Ligado, o nome que assina é obrigatório.
-  const faltaNomeWhatsapp = usarNomeWhatsapp && !nomeWhatsapp.trim();
-  const mudou =
-    nome.trim() !== user?.nome ||
-    nascimento !== (user?.dataNascimento ?? "") ||
-    nomeWhatsapp.trim() !== (user?.nomeWhatsapp ?? "") ||
-    usarNomeWhatsapp !== (user?.usarNomeWhatsapp ?? true);
-  const salvarDados = useMutation({
-    mutationFn: () =>
-      apiFetch<CurrentUser>("/auth/me", {
-        method: "PATCH",
-        body: {
-          nome: nome.trim(),
-          nomeWhatsapp: nomeWhatsapp.trim(),
-          usarNomeWhatsapp,
-          ...(nascimento ? { dataNascimento: nascimento } : {}),
-        },
-      }),
-    onSuccess: (atualizado) => {
-      setUser(atualizado);
-      setNome(undefined);
-      setNascimento(undefined);
-      setNomeWhatsapp(undefined);
-      setUsarNomeWhatsapp(undefined);
-      queryClient.setQueryData(["auth", "me"], atualizado);
-      toast.success("Dados atualizados");
+  const user = useAuthStore((s) => s.user);
+  // A aba vem do endereço (#whatsapp); no servidor, e antes de hidratar, é a primeira.
+  const hash = useSyncExternalStore(
+    (aviso) => {
+      window.addEventListener("hashchange", aviso);
+      return () => window.removeEventListener("hashchange", aviso);
     },
-    onError: (erro) =>
-      toast.error(erro instanceof ApiError ? erro.message : "Não foi possível atualizar os dados"),
-  });
-  const empresaAtiva = user?.empresas.find((e) => e.empresaId === user.empresaAtivaId);
+    () => window.location.hash.slice(1),
+    () => "",
+  );
+  const aba: Aba = (ABAS as readonly string[]).includes(hash) ? (hash as Aba) : "conta";
+  const trocar = (valor: string) => window.location.replace(`#${valor}`);
 
   return (
-    // Duas pilhas independentes, e não uma grade de linhas: na grade, cada linha
-    // assumia a altura do card mais alto, e a Tela inicial esticava vazia ao
-    // lado dos Dados da conta.
-    <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-2">
-      <div className="flex flex-col gap-4">
-        <Card>
-          <CardHeader>
-            <CardTitle>Dados da conta</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <FieldGroup>
-              {user && <ProfilePhoto user={user} />}
-              <UsarFotoNoWhatsapp />
-              {/* Só leitura: quem muda é o administrador. Fica acima dos campos
-                  editáveis para o "Salvar dados" não parecer valer para eles. */}
-              <dl className="grid grid-cols-1 gap-3 rounded-lg border bg-muted/20 p-3 text-sm sm:grid-cols-3">
-                <div className="min-w-0">
-                  <dt className="text-xs text-muted-foreground">E-mail</dt>
-                  <dd className="truncate font-medium" title={user?.email}>{user?.email}</dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-xs text-muted-foreground">Empresa ativa</dt>
-                  <dd className="truncate font-medium">{empresaAtiva?.nomeFantasia}</dd>
-                </div>
-                <div className="min-w-0">
-                  <dt className="text-xs text-muted-foreground">Perfil</dt>
-                  <dd className="truncate font-medium">{empresaAtiva?.perfilNome}</dd>
-                </div>
-              </dl>
-              <Field>
-                <FieldLabel>Nome</FieldLabel>
-                <Input
-                  value={nome}
-                  onChange={(event) => setNome(event.target.value)}
-                  maxLength={120}
-                  aria-label="Nome do perfil"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Este nome identifica você na plataforma e no atendimento.
+    <div className="mx-auto w-full max-w-3xl space-y-4">
+      <IdentidadeHeader />
+
+      <Tabs value={aba} onValueChange={trocar} className="gap-4">
+        <TabsList variant="line" className="w-full border-b" aria-label="Seções do perfil">
+          <TabsTrigger value="conta" className="flex-none px-3 py-2">
+            <UserRound /> Conta
+          </TabsTrigger>
+          <TabsTrigger value="whatsapp" className="flex-none px-3 py-2">
+            <MessageCircle /> WhatsApp
+          </TabsTrigger>
+          <TabsTrigger value="seguranca" className="flex-none px-3 py-2">
+            <ShieldCheck /> Segurança
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="conta" className="space-y-4">
+          {user && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2">
+                  <Camera className="size-4 text-primary" />
+                  Foto
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <ProfilePhoto user={user} />
+                <p className="mt-2 text-xs text-muted-foreground">
+                  A foto vale assim que você a escolhe.
                 </p>
-              </Field>
-              <Field>
-                <div className="flex items-center justify-between gap-2">
-                  <FieldLabel htmlFor="nome-whatsapp">Nome no WhatsApp</FieldLabel>
-                  <label className="flex shrink-0 items-center gap-2 text-xs font-normal text-muted-foreground">
-                    <Switch
-                      checked={usarNomeWhatsapp}
-                      onCheckedChange={setUsarNomeWhatsapp}
-                      aria-label="Usar o nome do WhatsApp na assinatura"
-                    />
-                    Usar
-                  </label>
-                </div>
-                <Input
-                  id="nome-whatsapp"
-                  value={nomeWhatsapp}
-                  onChange={(event) => setNomeWhatsapp(event.target.value)}
-                  maxLength={40}
-                  placeholder="Como você quer assinar"
-                  disabled={!usarNomeWhatsapp}
-                  required={usarNomeWhatsapp}
-                  aria-invalid={faltaNomeWhatsapp}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Assina as mensagens que você envia ao cliente pela plataforma
-                  {usarNomeWhatsapp && nomeWhatsapp.trim() ? (
-                    <>
-                      {" "}— ele verá <span className="font-medium">*{nomeWhatsapp.trim()}:*</span>
-                    </>
-                  ) : null}
-                  . {usarNomeWhatsapp ? "Obrigatório enquanto estiver ligado." : "Desligado, as mensagens saem sem assinatura."}
-                </p>
-                {faltaNomeWhatsapp ? (
-                  <p className="text-xs text-destructive">Informe o nome que assina as mensagens ou desligue o "Usar".</p>
-                ) : null}
-              </Field>
-              <Field>
-                <FieldLabel htmlFor="nascimento">Data de nascimento</FieldLabel>
-                <Input
-                  id="nascimento"
-                  type="date"
-                  className="sm:w-56"
-                  value={nascimento}
-                  onChange={(event) => setNascimento(event.target.value)}
-                />
-              </Field>
-              <div className="flex justify-end">
-                <Button
-                  type="button"
-                  disabled={nome.trim().length < 2 || faltaNomeWhatsapp || !mudou || salvarDados.isPending}
-                  onClick={() => salvarDados.mutate()}
-                >
-                  {salvarDados.isPending ? "Salvando…" : "Salvar dados"}
-                </Button>
-              </div>
-            </FieldGroup>
-          </CardContent>
-        </Card>
+              </CardContent>
+            </Card>
+          )}
+          <DadosPessoaisCard />
+          <TelaInicialCard />
+        </TabsContent>
 
-        <TermosAceitosCard />
-      </div>
+        <TabsContent value="whatsapp" className="space-y-4">
+          <AssinaturaWhatsappCard />
+          <WhatsappPareamentoCard />
+          <UsarFotoNoWhatsapp />
+        </TabsContent>
 
-      <div className="flex flex-col gap-4">
-        <TelaInicialCard />
-
-        <ChangePasswordForm />
-
-        <WhatsappPareamentoCard />
-      </div>
+        <TabsContent value="seguranca" className="space-y-4">
+          <ChangePasswordForm />
+          <TermosAceitosCard />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

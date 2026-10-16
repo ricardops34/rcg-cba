@@ -52,7 +52,7 @@ Corrigir aqui melhora muitas telas de uma vez.
 |------|----------|-----------|
 | Tela inicial | ✅ | Faixa de resumo empilha no celular (21039cf) |
 | Barra superior | ✅ | Ajuda/Sobre/Tour vão para o menu da foto |
-| Perfil | ✅ | Nada a corrigir na leitura |
+| Perfil | ✅ | Refeita em 3 abas (Conta, WhatsApp, Segurança), cada cartão com seu Salvar; avatares maiores (grade 3–6 colunas) |
 | Rolagem lateral do documento | ✅ 📱 pendente | `overflow-x: clip` em html/body/shell (577fd35). **Conferir no iPhone após o deploy** — a causa exata não foi isolada |
 
 ## 6. Inventário das telas
