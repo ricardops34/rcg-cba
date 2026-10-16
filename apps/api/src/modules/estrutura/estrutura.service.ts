@@ -9,6 +9,7 @@ import type {
   MenuUpdate,
   ModuloCreate,
   ModuloUpdate,
+  EmpresaEstruturaToggle,
   RotinaCreate,
   RotinaUpdate,
 } from '@plataforma/contracts';
@@ -56,24 +57,39 @@ export class EstruturaService {
       },
     });
 
+    const tp = desativados.telaPequena;
+    const rotinasDe = (
+      rotinas: { id: string; disponivelTelaPequena: boolean }[],
+    ) =>
+      rotinas
+        .filter((rotina) => !desativados.rotinas.has(rotina.id))
+        .map((rotina) => ({
+          ...rotina,
+          disponivelTelaPequena:
+            tp.rotinas.get(rotina.id) ?? rotina.disponivelTelaPequena,
+        }));
+
+    // A decisão da empresa para o celular sobrepõe a do catálogo.
     return modulos
       .filter((modulo) => !desativados.modulos.has(modulo.id))
       .map((modulo) => ({
         ...modulo,
+        disponivelTelaPequena:
+          tp.modulos.get(modulo.id) ?? modulo.disponivelTelaPequena,
         menus: modulo.menus
           .filter((menu) => !desativados.menus.has(menu.id))
           .map((menu) => ({
             ...menu,
-            rotinas: menu.rotinas.filter(
-              (rotina) => !desativados.rotinas.has(rotina.id),
-            ),
+            disponivelTelaPequena:
+              tp.menus.get(menu.id) ?? menu.disponivelTelaPequena,
+            rotinas: rotinasDe(menu.rotinas),
             submenus: menu.submenus
               .filter((sub) => !desativados.menus.has(sub.id))
               .map((sub) => ({
                 ...sub,
-                rotinas: sub.rotinas.filter(
-                  (rotina) => !desativados.rotinas.has(rotina.id),
-                ),
+                disponivelTelaPequena:
+                  tp.menus.get(sub.id) ?? sub.disponivelTelaPequena,
+                rotinas: rotinasDe(sub.rotinas),
               })),
           })),
       }));
@@ -81,7 +97,15 @@ export class EstruturaService {
 
   private async desativadosDaEmpresa(empresaId: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const [modulos, menus, rotinas, assinatura] = await Promise.all([
+      const [
+        modulos,
+        menus,
+        rotinas,
+        assinatura,
+        ovModulos,
+        ovMenus,
+        ovRotinas,
+      ] = await Promise.all([
         tx.empresaModulo.findMany({ where: { empresaId, ativo: false } }),
         tx.empresaMenu.findMany({ where: { empresaId, ativo: false } }),
         tx.empresaRotina.findMany({ where: { empresaId, ativo: false } }),
@@ -97,6 +121,15 @@ export class EstruturaService {
             },
           },
         }),
+        tx.empresaModulo.findMany({
+          where: { empresaId, telaPequena: { not: null } },
+        }),
+        tx.empresaMenu.findMany({
+          where: { empresaId, telaPequena: { not: null } },
+        }),
+        tx.empresaRotina.findMany({
+          where: { empresaId, telaPequena: { not: null } },
+        }),
       ]);
 
       const disabledModulos = new Set(modulos.map((m) => m.moduloId));
@@ -107,9 +140,7 @@ export class EstruturaService {
         const planoModulos = new Set(
           assinatura.plano.modulos.map((m) => m.moduloId),
         );
-        const planoMenus = new Set(
-          assinatura.plano.menus.map((m) => m.menuId),
-        );
+        const planoMenus = new Set(assinatura.plano.menus.map((m) => m.menuId));
         const planoRotinas = new Set(
           assinatura.plano.rotinas.map((r) => r.rotinaId),
         );
@@ -140,6 +171,17 @@ export class EstruturaService {
         modulos: disabledModulos,
         menus: disabledMenus,
         rotinas: disabledRotinas,
+        telaPequena: {
+          modulos: new Map(
+            ovModulos.map((m) => [m.moduloId, m.telaPequena as boolean]),
+          ),
+          menus: new Map(
+            ovMenus.map((m) => [m.menuId, m.telaPequena as boolean]),
+          ),
+          rotinas: new Map(
+            ovRotinas.map((r) => [r.rotinaId, r.telaPequena as boolean]),
+          ),
+        },
       };
     });
   }
@@ -147,7 +189,7 @@ export class EstruturaService {
   async definirModuloDaEmpresa(
     empresaId: string,
     moduloId: string,
-    ativo: boolean,
+    ajuste: EmpresaEstruturaToggle,
     actorId: string,
   ) {
     await this.ensureExists('modulo', moduloId);
@@ -157,11 +199,12 @@ export class EstruturaService {
         create: {
           empresaId,
           moduloId,
-          ativo,
+          ativo: ajuste.ativo ?? true,
+          telaPequena: ajuste.telaPequena ?? null,
           createdBy: actorId,
           updatedBy: actorId,
         },
-        update: { ativo, updatedBy: actorId },
+        update: { ...ajuste, updatedBy: actorId },
       }),
     );
   }
@@ -169,7 +212,7 @@ export class EstruturaService {
   async definirMenuDaEmpresa(
     empresaId: string,
     menuId: string,
-    ativo: boolean,
+    ajuste: EmpresaEstruturaToggle,
     actorId: string,
   ) {
     await this.ensureMenu(menuId);
@@ -179,11 +222,12 @@ export class EstruturaService {
         create: {
           empresaId,
           menuId,
-          ativo,
+          ativo: ajuste.ativo ?? true,
+          telaPequena: ajuste.telaPequena ?? null,
           createdBy: actorId,
           updatedBy: actorId,
         },
-        update: { ativo, updatedBy: actorId },
+        update: { ...ajuste, updatedBy: actorId },
       }),
     );
   }
@@ -191,7 +235,7 @@ export class EstruturaService {
   async definirRotinaDaEmpresa(
     empresaId: string,
     rotinaId: string,
-    ativo: boolean,
+    ajuste: EmpresaEstruturaToggle,
     actorId: string,
   ) {
     await this.ensureExists('rotina', rotinaId);
@@ -201,17 +245,19 @@ export class EstruturaService {
         create: {
           empresaId,
           rotinaId,
-          ativo,
+          ativo: ajuste.ativo ?? true,
+          telaPequena: ajuste.telaPequena ?? null,
           createdBy: actorId,
           updatedBy: actorId,
         },
-        update: { ativo, updatedBy: actorId },
+        update: { ...ajuste, updatedBy: actorId },
       }),
     );
   }
 
   async listArvore(empresaId: string) {
     const desativados = await this.desativadosDaEmpresa(empresaId);
+    const tp = desativados.telaPequena;
 
     const modulos = await this.prisma.modulo.findMany({
       where: { deletedAt: null },
@@ -240,19 +286,34 @@ export class EstruturaService {
     return modulos.map((modulo) => ({
       ...modulo,
       ativoNaEmpresa: !desativados.modulos.has(modulo.id),
+      telaPequenaNaEmpresa:
+        tp.modulos.get(modulo.id) ?? modulo.disponivelTelaPequena,
+      telaPequenaPropria: tp.modulos.get(modulo.id) ?? null,
       menus: modulo.menus.map((menu) => ({
         ...menu,
         ativoNaEmpresa: !desativados.menus.has(menu.id),
+        telaPequenaNaEmpresa:
+          tp.menus.get(menu.id) ?? menu.disponivelTelaPequena,
+        telaPequenaPropria: tp.menus.get(menu.id) ?? null,
         rotinas: menu.rotinas.map((rotina) => ({
           ...rotina,
           ativoNaEmpresa: !desativados.rotinas.has(rotina.id),
+          telaPequenaNaEmpresa:
+            tp.rotinas.get(rotina.id) ?? rotina.disponivelTelaPequena,
+          telaPequenaPropria: tp.rotinas.get(rotina.id) ?? null,
         })),
         submenus: menu.submenus.map((sub) => ({
           ...sub,
           ativoNaEmpresa: !desativados.menus.has(sub.id),
+          telaPequenaNaEmpresa:
+            tp.menus.get(sub.id) ?? sub.disponivelTelaPequena,
+          telaPequenaPropria: tp.menus.get(sub.id) ?? null,
           rotinas: sub.rotinas.map((rotina) => ({
             ...rotina,
             ativoNaEmpresa: !desativados.rotinas.has(rotina.id),
+            telaPequenaNaEmpresa:
+              tp.rotinas.get(rotina.id) ?? rotina.disponivelTelaPequena,
+            telaPequenaPropria: tp.rotinas.get(rotina.id) ?? null,
           })),
         })),
       })),
@@ -427,10 +488,7 @@ export class EstruturaService {
     return { success: true };
   }
 
-  private async ensureExists(
-    entity: 'modulo' | 'menu' | 'rotina',
-    id: string,
-  ) {
+  private async ensureExists(entity: 'modulo' | 'menu' | 'rotina', id: string) {
     const record = await (this.prisma[entity] as any).findFirst({
       where: { id, deletedAt: null },
     });

@@ -85,7 +85,7 @@ export class EstruturaController {
     return this.service.definirModuloDaEmpresa(
       user.empresaAtivaId,
       moduloId,
-      dto.ativo,
+      dto,
       user.id,
     );
   }
@@ -108,7 +108,30 @@ export class EstruturaController {
     return this.service.definirMenuDaEmpresa(
       user.empresaAtivaId,
       menuId,
-      dto.ativo,
+      dto,
+      user.id,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Ajustar uma rotina nesta empresa',
+    description:
+      'Liga/desliga a rotina e/ou define se ela aparece no celular, apenas para a empresa ativa. ' +
+      'telaPequena null volta a seguir o catálogo. Requer estrutura.editar.',
+  })
+  @ApiParam({ name: 'rotinaId', example: MENU_ID_EXAMPLE })
+  @ApiBodyExample({ telaPequena: true })
+  @RequirePermission('estrutura', 'editar')
+  @Patch('estrutura/empresa/rotinas/:rotinaId')
+  definirRotinaDaEmpresa(
+    @Param('rotinaId') rotinaId: string,
+    @Body() dto: EmpresaEstruturaToggleDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.definirRotinaDaEmpresa(
+      user.empresaAtivaId,
+      rotinaId,
+      dto,
       user.id,
     );
   }

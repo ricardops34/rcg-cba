@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { createContext, useContext, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -98,14 +98,52 @@ import {
  * dela). Basta um deles estar desligado para o item sair do menu.
  */
 interface MenuArvore extends Menu {
-  rotinas: Rotina[];
+  rotinas: RotinaArvore[];
   submenus: MenuArvore[];
   ativoNaEmpresa: boolean;
+  telaPequenaNaEmpresa: boolean;
 }
 
 interface ModuloComMenus extends Modulo {
   menus: MenuArvore[];
   ativoNaEmpresa: boolean;
+  telaPequenaNaEmpresa: boolean;
+}
+
+/** A rotina da árvore traz, além do catálogo, o valor valendo nesta empresa. */
+type RotinaArvore = Rotina & { telaPequenaNaEmpresa: boolean };
+
+type NivelEstrutura = "modulo" | "menu" | "rotina";
+
+/**
+ * "Disponível no celular" **desta empresa**: é decisão do administrador dela, e
+ * não do catálogo da plataforma (que só dá o valor de partida). Vai por contexto
+ * porque o interruptor aparece nos três níveis da árvore.
+ */
+const CelularContext = createContext<
+  (tipo: NivelEstrutura, id: string, nome: string, value: boolean) => void
+>(() => undefined);
+
+function CelularSwitch({
+  tipo,
+  id,
+  nome,
+  checked,
+}: {
+  tipo: NivelEstrutura;
+  id: string;
+  nome: string;
+  checked: boolean;
+}) {
+  const alternar = useContext(CelularContext);
+  return (
+    <SwitchDeLinha
+      rotulo="Celular"
+      checked={checked}
+      label={`Mostrar "${nome}" no celular desta empresa`}
+      onCheckedChange={(value) => alternar(tipo, id, nome, value)}
+    />
+  );
 }
 
 /** Menu e submenus achatados numa lista só — para contas e para os seletores. */
@@ -323,6 +361,24 @@ export default function EstruturaPage() {
       apiFetch(`/estrutura/empresa/menus/${id}`, { method: "PATCH", body: { ativo } }),
   });
 
+  const celularEmpresa = useMutation({
+    mutationFn: ({ tipo, id, telaPequena }: { tipo: NivelEstrutura; id: string; telaPequena: boolean }) =>
+      apiFetch(`/estrutura/empresa/${tipo === "modulo" ? "modulos" : tipo === "menu" ? "menus" : "rotinas"}/${id}`, {
+        method: "PATCH",
+        body: { telaPequena },
+      }),
+  });
+  const alternarCelular = (tipo: NivelEstrutura, id: string, nome: string, value: boolean) =>
+    celularEmpresa
+      .mutateAsync({ tipo, id, telaPequena: value })
+      .then(() => {
+        invalidate();
+        toast.success(value ? `"${nome}" liberado no celular` : `"${nome}" bloqueado no celular`);
+      })
+      .catch((err: unknown) =>
+        toast.error(err instanceof ApiError ? err.message : "Erro ao alterar o celular"),
+      );
+
   /** Liga/desliga desta empresa — não encosta no catálogo. */
   const alternarNaEmpresa = (
     tipo: "modulo" | "menu",
@@ -460,6 +516,7 @@ export default function EstruturaPage() {
         </div>
       )}
 
+      <CelularContext.Provider value={alternarCelular}>
       <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={handleDragEnd}>
         <SortableContext
           items={modulos.map((m) => m.id)}
@@ -544,6 +601,7 @@ export default function EstruturaPage() {
           </div>
         </SortableContext>
       </DndContext>
+      </CelularContext.Provider>
 
       {!modulosQuery.isLoading && modulos.length === 0 && (
         <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed border-border py-16 text-muted-foreground">
@@ -703,6 +761,12 @@ function ModuloRow({
             label={`Ligar ou desligar o módulo ${modulo.nome} nesta empresa`}
             onCheckedChange={onToggleEmpresaModulo}
           />
+          <CelularSwitch
+            tipo="modulo"
+            id={modulo.id}
+            nome={modulo.nome}
+            checked={modulo.telaPequenaNaEmpresa}
+          />
           {podeCatalogo && (
             <>
               <Button variant="outline" size="sm" onClick={onCreateMenu}>
@@ -731,7 +795,7 @@ function ModuloRow({
                     onCheckedChange={onToggleTelaPequenaModulo}
                     onSelect={(event) => event.preventDefault()}
                   >
-                    Disponível no celular
+                    Celular: padrão do catálogo
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem variant="destructive" onClick={onDeleteModulo}>
@@ -937,6 +1001,12 @@ function MenuRow({
             label={`Ligar ou desligar o menu ${menu.nome} nesta empresa`}
             onCheckedChange={onToggleEmpresa}
           />
+          <CelularSwitch
+            tipo="menu"
+            id={menu.id}
+            nome={menu.nome}
+            checked={menu.telaPequenaNaEmpresa}
+          />
           {podeCatalogo && (
             <>
               <Button variant="ghost" size="sm" onClick={onCreateRotina}>
@@ -996,7 +1066,7 @@ function MenuRow({
                     onCheckedChange={onToggleTelaPequena}
                     onSelect={(event) => event.preventDefault()}
                   >
-                    Disponível no celular
+                    Celular: padrão do catálogo
                   </DropdownMenuCheckboxItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem variant="destructive" onClick={onDelete}>
@@ -1074,7 +1144,7 @@ function RotinaRow({
   onToggleTelaPequena,
   onDelete,
 }: {
-  rotina: Rotina;
+  rotina: RotinaArvore;
   podeCatalogo: boolean;
   onEdit: () => void;
   onToggleAtivo: (value: boolean) => void;
@@ -1091,8 +1161,15 @@ function RotinaRow({
         </code>
         {!rotina.ativo && !podeCatalogo && <Badge variant="secondary">Desligada</Badge>}
       </div>
-      {podeCatalogo && (
-        <div className="flex shrink-0 items-center gap-2">
+      <div className="flex shrink-0 items-center gap-2">
+        <CelularSwitch
+          tipo="rotina"
+          id={rotina.id}
+          nome={rotina.nome}
+          checked={rotina.telaPequenaNaEmpresa}
+        />
+        {podeCatalogo && (
+          <>
           <SwitchDeLinha
             rotulo="Ativo"
             checked={rotina.ativo}
@@ -1114,7 +1191,7 @@ function RotinaRow({
                 onCheckedChange={onToggleTelaPequena}
                 onSelect={(event) => event.preventDefault()}
               >
-                Disponível no celular
+                Celular: padrão do catálogo
               </DropdownMenuCheckboxItem>
               <DropdownMenuSeparator />
               <DropdownMenuItem variant="destructive" onClick={onDelete}>
@@ -1122,8 +1199,9 @@ function RotinaRow({
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
-        </div>
-      )}
+          </>
+        )}
+      </div>
     </div>
   );
 }

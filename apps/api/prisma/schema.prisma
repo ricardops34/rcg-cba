@@ -561,6 +561,8 @@ model EmpresaModulo {
   empresaId String
   moduloId  String
   ativo     Boolean @default(true)
+  // null = segue o catálogo; true/false = decisão desta empresa para o celular.
+  telaPequena Boolean?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -581,6 +583,8 @@ model EmpresaMenu {
   empresaId String
   menuId    String
   ativo     Boolean @default(true)
+  // null = segue o catálogo; true/false = decisão desta empresa para o celular.
+  telaPequena Boolean?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -600,6 +604,8 @@ model EmpresaRotina {
   empresaId String
   rotinaId  String
   ativo     Boolean @default(true)
+  // null = segue o catálogo; true/false = decisão desta empresa para o celular.
+  telaPequena Boolean?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

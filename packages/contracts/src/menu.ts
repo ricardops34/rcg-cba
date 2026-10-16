@@ -62,9 +62,18 @@ export type Menu = z.infer<typeof menuSchema>;
  * `ativo` do catálogo, que é global. Só `ativo`: qual empresa vem do token, e
  * qual módulo/menu vem da URL.
  */
-export const empresaEstruturaToggleSchema = z.object({
-  ativo: z.boolean().describe("Se este módulo/menu fica disponível nesta empresa"),
-});
+export const empresaEstruturaToggleSchema = z
+  .object({
+    ativo: z.boolean().optional().describe("Se este módulo/menu/rotina fica disponível nesta empresa"),
+    telaPequena: z
+      .boolean()
+      .nullable()
+      .optional()
+      .describe("Disponível no celular nesta empresa; null volta a seguir o catálogo"),
+  })
+  .refine((v) => v.ativo !== undefined || v.telaPequena !== undefined, {
+    message: "Informe ativo ou telaPequena",
+  });
 export type EmpresaEstruturaToggle = z.infer<typeof empresaEstruturaToggleSchema>;
 
 export const rotinaCreateSchema = z.object({
