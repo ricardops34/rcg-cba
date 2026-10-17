@@ -800,10 +800,17 @@ export function PosicaoClienteConteudo({
   const { cliente, resumo } = posicao;
   // Na cortina, cada aba é o que rola quando o conteúdo dela não encolhe
   // (Histórico, Sugestão); as listagens encolhem e rolam só a tabela.
-  const rolagemAba = preencherAltura ? "flex min-h-0 flex-col overflow-y-auto" : undefined;
+  // Só no computador: no celular a cortina inteira rola e as listas crescem.
+  const rolagemAba = preencherAltura ? "md:flex md:min-h-0 md:flex-col md:overflow-y-auto" : undefined;
 
   return (
-    <div className={preencherAltura ? "flex min-h-0 flex-1 flex-col gap-4" : "space-y-4"}>
+    <div
+      className={
+        preencherAltura
+          ? "flex flex-col gap-4 max-md:shrink-0 md:min-h-0 md:flex-1"
+          : "space-y-4"
+      }
+    >
       <div
         className="flex min-w-0 items-center gap-3"
         data-tour="posicao-cliente-detalhe-cabecalho"
@@ -929,7 +936,7 @@ export function PosicaoClienteConteudo({
       <Tabs
         defaultValue="notas"
         data-tour="posicao-cliente-detalhe-conteudo"
-        className={preencherAltura ? "min-h-[280px] flex-1" : undefined}
+        className={preencherAltura ? "md:min-h-[280px] md:flex-1" : undefined}
       >
         <div
           className="-mx-1 overflow-x-auto overflow-y-hidden px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden"
