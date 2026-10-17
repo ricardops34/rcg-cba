@@ -119,3 +119,85 @@ export const roteiroPreviaSchema = z.object({
   }),
 });
 export type RoteiroPrevia = z.infer<typeof roteiroPreviaSchema>;
+
+const motivoTexto = z
+  .string()
+  .trim()
+  .min(5, "Informe o motivo (ao menos 5 caracteres)")
+  .max(300);
+
+/** Grava o roteiro que o vendedor revisou na prévia. */
+export const roteiroGravarSchema = z.object({
+  parametros: roteiroParametrosSchema,
+  /** Vira a nota de cada conversa iniciada (visível a vendedor, supervisor e gerente). */
+  textoNota: z.string().trim().min(3, "Informe o texto da nota").max(500),
+  itens: z
+    .array(
+      z.object({
+        clienteId: z.string().uuid(),
+        quando: z.coerce.date(),
+        motivos: z.array(roteiroMotivoSchema).default([]),
+        detalhe: z.string().max(300).nullable().optional(),
+      }),
+    )
+    .min(1, "Nenhum atendimento para gravar")
+    .max(200),
+});
+export type RoteiroGravar = z.infer<typeof roteiroGravarSchema>;
+
+/** Cancelar um ou vários itens: o motivo é obrigatório e a supervisão é avisada. */
+export const roteiroCancelarSchema = z.object({
+  itemIds: z.array(z.string().uuid()).min(1).max(200),
+  motivo: motivoTexto,
+});
+export type RoteiroCancelar = z.infer<typeof roteiroCancelarSchema>;
+
+/** Remarcar um item para outro horário livre: o motivo é obrigatório. */
+export const roteiroRemarcarSchema = z.object({
+  quando: z.coerce.date(),
+  motivo: motivoTexto,
+});
+export type RoteiroRemarcar = z.infer<typeof roteiroRemarcarSchema>;
+
+export const ROTEIRO_ITEM_STATUS = [
+  "agendado",
+  "confirmado",
+  "iniciado",
+  "finalizado",
+  "cancelado",
+  "erro",
+] as const;
+export const roteiroItemStatusSchema = z.enum(ROTEIRO_ITEM_STATUS);
+export type RoteiroItemStatus = z.infer<typeof roteiroItemStatusSchema>;
+
+export const ROTEIRO_ITEM_STATUS_ROTULO: Record<RoteiroItemStatus, string> = {
+  agendado: "Aguardando confirmação",
+  confirmado: "Confirmado",
+  iniciado: "Em atendimento",
+  finalizado: "Finalizado",
+  cancelado: "Cancelado",
+  erro: "Não iniciou",
+};
+
+/** Item de roteiro como a Agenda o mostra. */
+export const roteiroItemSchema = z.object({
+  id: z.string().uuid(),
+  roteiroId: z.string().uuid(),
+  atividadeId: z.string().uuid().nullable(),
+  clienteId: z.string().uuid(),
+  clienteNome: z.string(),
+  conversaId: z.string().uuid().nullable(),
+  quando: z.string().datetime(),
+  status: roteiroItemStatusSchema,
+  motivos: z.array(roteiroMotivoSchema),
+  erro: z.string().nullable(),
+  resultado: z.string().nullable(),
+  motivoCancelamento: z.string().nullable(),
+});
+export type RoteiroItem = z.infer<typeof roteiroItemSchema>;
+
+export const roteiroItensQuerySchema = z.object({
+  de: dia,
+  ate: dia,
+});
+export type RoteiroItensQuery = z.infer<typeof roteiroItensQuerySchema>;

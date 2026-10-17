@@ -46,6 +46,10 @@ import {
   WhatsappEtiquetaUpdateDto,
   WhatsappDefinirEtiquetasDto,
   RoteiroParametrosDto,
+  RoteiroGravarDto,
+  RoteiroCancelarDto,
+  RoteiroRemarcarDto,
+  RoteiroItensQueryDto,
   WhatsappAnotarDto,
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
@@ -744,6 +748,67 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.roteiros.previa(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Gravar o roteiro semanal revisado',
+    description:
+      'Cada cliente precisa ser da carteira do vendedor e cada horário é conferido de novo ' +
+      '(dia útil, expediente, sem conflito na agenda). Cria um compromisso na agenda por ' +
+      'atendimento. Nada é enviado ao cliente agora. Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('roteiros')
+  gravarRoteiro(
+    @Body() dto: RoteiroGravarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roteiros.gravar(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Itens do roteiro no período',
+    description: 'Os do próprio usuário, para a Agenda. Requer whatsapp-conversas.visualizar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('roteiros/itens')
+  listarItensDoRoteiro(
+    @Query() query: RoteiroItensQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roteiros.listarItens(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Cancelar atendimentos do roteiro (um ou em lote)',
+    description:
+      'Motivo obrigatório. Só os que ainda não começaram; saem da agenda e a supervisão e a ' +
+      'gerência são avisadas. Requer whatsapp-conversas.cadastrar.',
+  })
+  @ApiBodyExample({ itemIds: ['0d1e2f3a-4b5c-4d6e-7f80-91a2b3c4d5e6'], motivo: 'Cliente pediu para ligar na próxima semana' })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('roteiros/itens/cancelar')
+  cancelarItensDoRoteiro(
+    @Body() dto: RoteiroCancelarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roteiros.cancelar(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Remarcar um atendimento do roteiro',
+    description:
+      'Novo horário conferido (dia útil, expediente, sem conflito) e motivo obrigatório; ' +
+      'volta a aguardar confirmação. Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Patch('roteiros/itens/:id/remarcar')
+  remarcarItemDoRoteiro(
+    @Param('id') id: string,
+    @Body() dto: RoteiroRemarcarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roteiros.remarcar(user.empresaAtivaId, user, id, dto);
   }
 
   @ApiOperation({

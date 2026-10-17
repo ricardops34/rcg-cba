@@ -28,6 +28,14 @@ export const NOTIFICACAO_TIPOS = [
   "clientes_receita_atualizados",
   /** Chegou a hora de um atendimento agendado por WhatsApp. */
   "atendimento_agendado",
+  /** Antes de iniciar os atendimentos do roteiro do dia, o vendedor confirma. */
+  "roteiro_confirmar",
+  /** A conversa do roteiro foi iniciada. */
+  "roteiro_iniciado",
+  /** Supervisão: o vendedor cancelou atendimentos do roteiro. */
+  "roteiro_cancelado",
+  /** Supervisão: o horário passou sem o atendimento ser feito. */
+  "roteiro_atraso",
 ] as const;
 export const notificacaoTipoSchema = z.enum(NOTIFICACAO_TIPOS);
 export type NotificacaoTipo = z.infer<typeof notificacaoTipoSchema>;

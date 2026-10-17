@@ -5236,6 +5236,14 @@ enum NotificacaoTipo {
   clientes_receita_atualizados
   /// Chegou a hora de um atendimento agendado por WhatsApp.
   atendimento_agendado
+  /// Antes de iniciar os atendimentos do roteiro do dia, o vendedor confirma.
+  roteiro_confirmar
+  /// A conversa do roteiro foi iniciada (saudação enviada).
+  roteiro_iniciado
+  /// Supervisão/gerência: atendimentos do roteiro cancelados pelo vendedor.
+  roteiro_cancelado
+  /// Supervisão/gerência: o horário do atendimento passou sem ele ser feito.
+  roteiro_atraso
 }
 
 /// Em que ponto o lead está. Deliberadamente curto: um funil de lead com sete
@@ -5706,6 +5714,8 @@ model WhatsappRoteiroItem {
   canceladoEm        DateTime?
   /// Quando a supervisão foi avisada de que o horário passou sem atendimento.
   avisoAtrasoEm      DateTime?
+  /// Remarcações e outras mudanças, com o motivo: [{ tipo, de, para, motivo, por, em }].
+  ajustes            Json      @default("[]")
 
   roteiro WhatsappRoteiro @relation(fields: [roteiroId], references: [id], onDelete: Cascade)
 

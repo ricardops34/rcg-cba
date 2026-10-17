@@ -49,6 +49,10 @@ const ICONE: Record<NotificacaoTipo, typeof Bell> = {
   sugestao_compra_calculada: Lightbulb,
   clientes_receita_atualizados: Building2,
   atendimento_agendado: CalendarClock,
+  roteiro_confirmar: CalendarClock,
+  roteiro_iniciado: MessageCircle,
+  roteiro_cancelado: CircleX,
+  roteiro_atraso: AlarmClockOff,
 };
 
 /** O que aparece em vermelho: prazo estourado ou algo que falhou. */
@@ -67,6 +71,10 @@ const URGENTE: Record<NotificacaoTipo, boolean> = {
   sugestao_compra_calculada: false,
   clientes_receita_atualizados: false,
   atendimento_agendado: false,
+  roteiro_confirmar: false,
+  roteiro_iniciado: false,
+  roteiro_cancelado: true,
+  roteiro_atraso: true,
   titulo_vencido: true,
 };
 

@@ -34,6 +34,10 @@ import {
   whatsappRecadoCriarSchema,
   whatsappRecadoEditarSchema,
   roteiroParametrosSchema,
+  roteiroGravarSchema,
+  roteiroCancelarSchema,
+  roteiroRemarcarSchema,
+  roteiroItensQuerySchema,
 } from '@plataforma/contracts';
 
 export class WhatsappConfigUpdateDto extends createZodDto(
@@ -127,4 +131,10 @@ export class WhatsappAnotarDto extends createZodDto(whatsappAnotarSchema) {}
 
 export class RoteiroParametrosDto extends createZodDto(
   roteiroParametrosSchema,
+) {}
+export class RoteiroGravarDto extends createZodDto(roteiroGravarSchema) {}
+export class RoteiroCancelarDto extends createZodDto(roteiroCancelarSchema) {}
+export class RoteiroRemarcarDto extends createZodDto(roteiroRemarcarSchema) {}
+export class RoteiroItensQueryDto extends createZodDto(
+  roteiroItensQuerySchema,
 ) {}
