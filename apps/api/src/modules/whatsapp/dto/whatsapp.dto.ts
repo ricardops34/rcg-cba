@@ -33,6 +33,7 @@ import {
   whatsappVincularSchema,
   whatsappRecadoCriarSchema,
   whatsappRecadoEditarSchema,
+  roteiroParametrosSchema,
 } from '@plataforma/contracts';
 
 export class WhatsappConfigUpdateDto extends createZodDto(
@@ -123,3 +124,7 @@ export class WhatsappRecadoEditarDto extends createZodDto(
 ) {}
 
 export class WhatsappAnotarDto extends createZodDto(whatsappAnotarSchema) {}
+
+export class RoteiroParametrosDto extends createZodDto(
+  roteiroParametrosSchema,
+) {}

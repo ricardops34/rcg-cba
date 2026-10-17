@@ -188,6 +188,7 @@ model Empresa {
   whatsappReacoes            WhatsappReacao[]
   whatsappAgendadas          WhatsappMensagemAgendada[]
   whatsappEtiquetas          WhatsappEtiqueta[]
+  whatsappRoteiros           WhatsappRoteiro[]
   whatsappAcoes              WhatsappAcaoRegistro[]
   whatsappVinculos           WhatsappVinculoFuncionario[]
   whatsappTemplates          WhatsappTemplate[]
@@ -3915,6 +3916,8 @@ model Atividade {
   automatica     Boolean       @default(false)
   /// Marcado pelo vendedor como importante: ganha destaque na agenda e nas listas.
   importante     Boolean       @default(false)
+  /// Item de roteiro semanal que esta atividade representa na agenda.
+  roteiroItemId  String?
   tipo           TipoAtividade @default(tarefa)
   titulo         String
   descricao      String?
@@ -5633,4 +5636,82 @@ model WhatsappContatoEtiqueta {
   @@id([contatoId, etiquetaId])
   @@index([empresaId, etiquetaId])
   @@map("whatsapp_contato_etiquetas")
+}
+
+enum WhatsappRoteiroItemStatus {
+  /// Gravado, esperando o vendedor confirmar o dia.
+  agendado
+  /// O vendedor confirmou: na hora, o sistema inicia a conversa.
+  confirmado
+  /// Saudação enviada e nota gravada; o atendimento está com o vendedor.
+  iniciado
+  /// O vendedor finalizou e registrou o resultado.
+  finalizado
+  /// Cancelado (com motivo) — individualmente ou em lote.
+  cancelado
+  /// Não deu para iniciar (WhatsApp desconectado, sem contato…). Fica visível.
+  erro
+}
+
+/// Roteiro semanal de atendimentos por WhatsApp: a **geração** — de quem, para
+/// qual período, com qual intervalo e quais critérios de clientes. Cada cliente
+/// do roteiro é um item (e uma atividade na agenda do vendedor).
+/// Ver docs/planos/2026-10-16-agendamentos-whatsapp.md (§7).
+model WhatsappRoteiro {
+  id           String   @id @default(uuid())
+  empresaId    String
+  usuarioId    String
+  vendedorId   String
+  periodoInicio DateTime @db.Date
+  periodoFim    DateTime @db.Date
+  intervaloMin Int
+  /// Critérios usados na seleção (para a auditoria e para regerar).
+  criterios    Json
+  /// Texto informado na geração: vira a nota de cada conversa iniciada.
+  textoNota    String
+  criadoEm     DateTime @default(now())
+
+  empresa Empresa                @relation(fields: [empresaId], references: [id])
+  itens   WhatsappRoteiroItem[]
+
+  @@index([empresaId, usuarioId, criadoEm])
+  @@map("whatsapp_roteiros")
+}
+
+model WhatsappRoteiroItem {
+  id         String @id @default(uuid())
+  empresaId  String
+  roteiroId  String
+  /// A atividade que representa o item na Agenda.
+  atividadeId String?
+  clienteId  String
+  contatoId  String?
+  conversaId String?
+  /// O horário do atendimento (instante).
+  quando     DateTime
+  status     WhatsappRoteiroItemStatus @default(agendado)
+  /// Por que o cliente entrou (ex.: titulo_vencido, sem_compra, nao_comprou_no_mes).
+  motivos    Json
+
+  confirmadoEm DateTime?
+  iniciadoEm   DateTime?
+  finalizadoEm DateTime?
+  /// O que o vendedor registrou ao finalizar.
+  resultado    String?
+  /// Preenchido quando o início falha.
+  erro         String?
+
+  motivoCancelamento String?
+  canceladoPor       String?
+  canceladoEm        DateTime?
+  /// Quando a supervisão foi avisada de que o horário passou sem atendimento.
+  avisoAtrasoEm      DateTime?
+
+  roteiro WhatsappRoteiro @relation(fields: [roteiroId], references: [id], onDelete: Cascade)
+
+  // A rotina varre por (status, quando) a cada minuto.
+  @@index([status, quando])
+  @@index([empresaId, roteiroId])
+  @@index([empresaId, clienteId])
+  @@map("whatsapp_roteiro_itens")
 }

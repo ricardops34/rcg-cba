@@ -26,12 +26,13 @@ describe('WhatsappConversasService.marcarFixada', () => {
     };
     const servico = Object.create(
       WhatsappConversasService.prototype,
-    ) as WhatsappConversasService & Record<string, unknown>;
-    servico['prisma'] = {
+    ) as WhatsappConversasService;
+    const interno = servico as unknown as Record<string, unknown>;
+    interno['prisma'] = {
       withTenant: (_e: string, fn: (t: typeof tx) => unknown) => fn(tx),
     };
     // Só quem pode falar na conversa (dono da conexão) fixa.
-    servico['conversaParaEnvio'] = jest
+    interno['conversaParaEnvio'] = jest
       .fn()
       .mockResolvedValue({ id: 'c1', sessaoId: 's1', ...conversa });
     return { servico, tx };

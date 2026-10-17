@@ -29,6 +29,7 @@ import { WhatsappAgendaService } from './whatsapp-agenda.service';
 import { WhatsappAcoesService } from './whatsapp-acoes.service';
 import { WhatsappAgendamentoService } from './whatsapp-agendamento.service';
 import { WhatsappEtiquetasService } from './whatsapp-etiquetas.service';
+import { WhatsappRoteiroService } from './roteiro/whatsapp-roteiro.service';
 import {
   WhatsappConectarDto,
   WhatsappConectarEmpresaDto,
@@ -44,6 +45,7 @@ import {
   WhatsappEtiquetaCreateDto,
   WhatsappEtiquetaUpdateDto,
   WhatsappDefinirEtiquetasDto,
+  RoteiroParametrosDto,
   WhatsappAnotarDto,
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
@@ -91,6 +93,7 @@ export class WhatsappController {
     private readonly acoes: WhatsappAcoesService,
     private readonly agendamento: WhatsappAgendamentoService,
     private readonly etiquetas: WhatsappEtiquetasService,
+    private readonly roteiros: WhatsappRoteiroService,
     private readonly funcionarios: WhatsappFuncionarioService,
     private readonly recados: WhatsappRecadoService,
   ) {}
@@ -725,6 +728,22 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.conversas.eventosGerencial(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Prévia do roteiro semanal de atendimentos',
+    description:
+      'Escolhe clientes da carteira do próprio vendedor pelos critérios e propõe um por horário ' +
+      'livre da agenda (dia útil, dentro do expediente). **Não grava nada.** ' +
+      'Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('roteiros/previa')
+  previaDoRoteiro(
+    @Body() dto: RoteiroParametrosDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roteiros.previa(user.empresaAtivaId, user, dto);
   }
 
   @ApiOperation({

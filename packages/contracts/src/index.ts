@@ -129,3 +129,4 @@ export * from "./sms";
 export * from "./email-config";
 export * from "./equipamento-comodato";
 export * from "./relatorios";
+export * from "./roteiro";

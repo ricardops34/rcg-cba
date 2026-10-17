@@ -12,6 +12,7 @@ import { WhatsappAgendaService } from './whatsapp-agenda.service';
 import { WhatsappAcoesService } from './whatsapp-acoes.service';
 import { WhatsappAgendamentoService } from './whatsapp-agendamento.service';
 import { WhatsappEtiquetasService } from './whatsapp-etiquetas.service';
+import { WhatsappRoteiroService } from './roteiro/whatsapp-roteiro.service';
 import { WhatsappRecadoService } from './whatsapp-recado.service';
 import { WhatsappEvolutionController } from './whatsapp-evolution.controller';
 import { ClientesModule } from '../clientes/clientes.module';
@@ -59,6 +60,7 @@ import { WhatsappRespostasRapidasService } from './whatsapp-respostas-rapidas.se
     WhatsappAcoesService,
     WhatsappAgendamentoService,
     WhatsappEtiquetasService,
+    WhatsappRoteiroService,
     // Recado interno para a equipe, com agendamento proprio: o agendamento de
     // conversa exige conversaId, e recado interno nao tem conversa.
     WhatsappRecadoService,

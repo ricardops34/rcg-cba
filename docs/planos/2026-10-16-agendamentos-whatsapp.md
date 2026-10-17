@@ -136,7 +136,7 @@ Desenho e fases em **§7**. Respostas completas: [2026-10-16-questionario-roteir
 
 | Fase | Entrega | Situação |
 |---|---|---|
-| F6.1 | Modelo de dados, contratos e **prévia** (clientes, critérios, horários livres) com testes | ⬜ |
+| F6.1 | Modelo de dados, contratos e **prévia** (clientes, critérios, horários livres) com testes | ✅ (22 testes) |
 | F6.2 | **Gravar** o roteiro; cancelar/remarcar individual e em lote com motivo e aviso à supervisão | ⬜ |
 | F6.3 | **Confirmação do dia**, início automático (saudação + nota) e aviso de atraso | ⬜ |
 | F6.4 | **Finalizar** atendimento e histórico | ⬜ |
