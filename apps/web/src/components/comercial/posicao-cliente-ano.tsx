@@ -94,7 +94,7 @@ export function FiltroAno({
 }) {
   return (
     <Select value={valor} onValueChange={onChange}>
-      <SelectTrigger className="w-36" aria-label="Ano">
+      <SelectTrigger className="w-36 max-sm:flex-1" aria-label="Ano">
         <SelectValue />
       </SelectTrigger>
       <SelectContent>
@@ -148,6 +148,59 @@ export function CorpoPorAno<T>({
         );
       })}
     </TableBody>
+  );
+}
+
+/**
+ * A mesma lista de `CorpoPorAno`, em cartões, para o **celular**: a tabela de
+ * seis colunas obrigava a rolar para o lado. Cada cartão é o que o chamador
+ * desenha; o título do ano repete a regra da tabela.
+ */
+export function CartoesPorAno<T>({
+  itens,
+  data,
+  resumo,
+  chave,
+  aoAbrir,
+  children,
+}: {
+  itens: T[];
+  data: (t: T) => string | null | undefined;
+  resumo: Map<string | null, string>;
+  chave: (t: T) => string;
+  aoAbrir: (t: T) => void;
+  children: (t: T) => React.ReactNode;
+}) {
+  return (
+    <div className="min-h-0 flex-1 overflow-auto rounded-lg border md:hidden">
+      {itens.map((item, i) => {
+        const ano = anoDe(data(item));
+        const novoAno = i === 0 || anoDe(data(itens[i - 1])) !== ano;
+        return (
+          <Fragment key={chave(item)}>
+            {novoAno && (
+              <div className="sticky top-0 z-10 border-b bg-muted px-3 py-1.5 text-xs font-semibold text-muted-foreground">
+                {resumo.get(ano) ?? ano ?? "Sem data"}
+              </div>
+            )}
+            <div
+              role="button"
+              tabIndex={0}
+              onClick={() => aoAbrir(item)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  aoAbrir(item);
+                }
+              }}
+              className="cursor-pointer border-b px-3 py-3 last:border-b-0 active:bg-muted/60"
+            >
+              {children(item)}
+            </div>
+          </Fragment>
+        );
+      })}
+    </div>
   );
 }
 

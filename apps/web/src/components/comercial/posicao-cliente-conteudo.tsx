@@ -34,6 +34,7 @@ import {
 import { HistoricoAtendimento } from "@/components/comercial/historico-atendimento";
 import { Paginacao } from "@/components/crud/paginacao";
 import {
+  CartoesPorAno,
   CorpoPorAno,
   FiltroAno,
   TODOS_OS_ANOS,
@@ -105,9 +106,9 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
 
 function Metrica({ label, value }: { label: string; value: string }) {
   return (
-    <div className="rounded-xl border border-border/70 bg-card p-4">
+    <div className="min-w-0 rounded-xl border border-border/70 bg-card p-3 md:p-4">
       <p className="text-xs font-medium tracking-wide text-muted-foreground uppercase">{label}</p>
-      <p className="mt-1 text-2xl font-semibold tracking-tight">{value}</p>
+      <p className="mt-1 text-lg font-semibold tracking-tight md:text-2xl">{value}</p>
     </div>
   );
 }
@@ -233,7 +234,7 @@ function TabelaNotas({
             />
           </div>
           <Select value={tipo} onValueChange={(v) => onTipoChange(v as NotaTipoFiltro)}>
-            <SelectTrigger className="w-40">
+            <SelectTrigger className="w-40 max-sm:flex-1">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -245,10 +246,38 @@ function TabelaNotas({
           <FiltroAno anos={anos} valor={ano} onChange={onAnoChange} />
         </div>
 
+        {notas.length > 0 && (
+          <CartoesPorAno
+            itens={itens}
+            data={(n) => n.dtEmissao}
+            resumo={resumo}
+            chave={(n) => n.id}
+            aoAbrir={(n) => onSelecionar(n.id)}
+          >
+            {(n) => (
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 space-y-0.5">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <LinkNota numero={n.numero} serie={n.serie} onAbrir={() => onSelecionar(n.id)} />
+                    {n.comodato ? <Badge variant="secondary">Comodato</Badge> : null}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    {dataBr(n.dtEmissao)}
+                    {n.vendedor ? ` · ${n.vendedor.nomeReduzido || n.vendedor.nome}` : ""}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-1">
+                  <span className="text-sm font-semibold tabular-nums">{moeda(n.vlrBruto)}</span>
+                  <SegundaViaNota notaId={n.id} numero={n.numero} temXml={n.temXml} />
+                </div>
+              </div>
+            )}
+          </CartoesPorAno>
+        )}
         {notas.length === 0 ? (
           <p className="text-sm text-muted-foreground">{mensagemVazio}</p>
         ) : (
-          <div className="min-h-0 flex-1 overflow-auto rounded-lg border [&>[data-slot=table-container]]:overflow-visible">
+          <div className="min-h-0 flex-1 overflow-auto rounded-lg border max-md:hidden [&>[data-slot=table-container]]:overflow-visible">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
@@ -385,12 +414,45 @@ function TabelaDevolucoes({
           <FiltroAno anos={anos} valor={ano} onChange={onAnoChange} />
         </div>
 
+        {devolucoes.length > 0 && (
+          <CartoesPorAno
+            itens={itens}
+            data={(d) => d.dtEmissao}
+            resumo={resumo}
+            chave={(d) => d.id}
+            aoAbrir={(d) => onSelecionar(d.id)}
+          >
+            {(d) => (
+              <div className="space-y-1">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <LinkNota numero={d.numero} serie={d.serie} onAbrir={() => onSelecionar(d.id)} />
+                    <p className="text-xs text-muted-foreground">{dataBr(d.dtEmissao)}</p>
+                  </div>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums">{moeda(d.vlrBruto)}</span>
+                </div>
+                {d.itens.length > 0 && (
+                  <ul className="space-y-0.5 text-xs text-muted-foreground">
+                    {d.itens.map((it) => (
+                      <li key={it.id}>
+                        {it.quantidade.toLocaleString("pt-BR")}
+                        {it.produto?.unidade ? ` ${it.produto.unidade}` : ""}
+                        {" · "}
+                        {it.produto?.descricao ?? "Produto não identificado"}
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </div>
+            )}
+          </CartoesPorAno>
+        )}
         {devolucoes.length === 0 ? (
           <p className="text-sm text-muted-foreground">
             Nenhuma devolução deste cliente.
           </p>
         ) : (
-          <div className="min-h-0 flex-1 overflow-auto rounded-lg border [&>[data-slot=table-container]]:overflow-visible">
+          <div className="min-h-0 flex-1 overflow-auto rounded-lg border max-md:hidden [&>[data-slot=table-container]]:overflow-visible">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
@@ -850,7 +912,7 @@ export function PosicaoClienteConteudo({
       </Card>
 
       <div
-        className={`grid grid-cols-2 gap-4 ${compacto ? "" : "lg:grid-cols-4"}`}
+        className={`grid grid-cols-2 gap-2 md:gap-4 ${compacto ? "" : "lg:grid-cols-4"}`}
         data-tour="posicao-cliente-detalhe-resumo"
       >
         <Metrica label="Notas fiscais" value={resumo.totalNotas.toLocaleString("pt-BR")} />
@@ -945,7 +1007,7 @@ export function PosicaoClienteConteudo({
                   value={tituloSituacao}
                   onValueChange={(v) => setTituloSituacao(v as TituloSituacaoFiltro)}
                 >
-                  <SelectTrigger className="w-40">
+                  <SelectTrigger className="w-40 max-sm:flex-1">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -1002,10 +1064,57 @@ export function PosicaoClienteConteudo({
                 )}
               </div>
 
+              {titulosOrdenados.length > 0 && (
+                <CartoesPorAno
+                  itens={titulosPagina.itens}
+                  data={(t) => t.vencimento}
+                  resumo={resumoTitulos}
+                  chave={(t) => t.id}
+                  aoAbrir={(t) => setTituloSelecionadoId(t.id)}
+                >
+                  {(t) => (
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0 space-y-0.5">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="font-mono text-sm font-medium">
+                            {t.prefixo && `${t.prefixo}-`}
+                            {t.numero}
+                            {t.parcela && `/${t.parcela}`}
+                          </span>
+                          <TituloStatusBadge status={t.status} />
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Vence {dataBr(t.vencimento)}
+                          {t.vencimentoEfetivo && t.vencimentoEfetivo !== t.vencimento
+                            ? ` (dia útil ${dataBr(t.vencimentoEfetivo)})`
+                            : ""}
+                        </p>
+                        {t.dtBaixa ? (
+                          <p className="text-xs text-muted-foreground">Baixa {dataBr(t.dtBaixa)}</p>
+                        ) : null}
+                      </div>
+                      <div className="flex shrink-0 flex-col items-end gap-0.5">
+                        <span className="text-sm font-semibold tabular-nums">{moeda(t.valor)}</span>
+                        {t.saldo !== t.valor ? (
+                          <span className="text-xs text-muted-foreground tabular-nums">
+                            saldo {moeda(t.saldo)}
+                          </span>
+                        ) : null}
+                        <SegundaViaTitulo
+                          tituloId={t.id}
+                          numero={t.numero}
+                          temBoleto={t.temBoleto}
+                          status={t.status}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </CartoesPorAno>
+              )}
               {titulosOrdenados.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum título encontrado.</p>
               ) : (
-                <div className="min-h-0 flex-1 overflow-auto rounded-lg border [&>[data-slot=table-container]]:overflow-visible">
+                <div className="min-h-0 flex-1 overflow-auto rounded-lg border max-md:hidden [&>[data-slot=table-container]]:overflow-visible">
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-card">
                       <TableRow>
@@ -1130,10 +1239,44 @@ export function PosicaoClienteConteudo({
                 />
               </div>
 
+              {mixOrdenado.length > 0 && (
+                <div className="min-h-0 flex-1 overflow-auto rounded-lg border md:hidden">
+                  {mixPagina.itens.map((m) => (
+                    <div
+                      key={m.produtoId}
+                      role="button"
+                      tabIndex={0}
+                      onClick={() => setProdutoSelecionadoId(m.produtoId)}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault();
+                          setProdutoSelecionadoId(m.produtoId);
+                        }
+                      }}
+                      className="cursor-pointer space-y-1 border-b px-3 py-3 last:border-b-0 active:bg-muted/60"
+                    >
+                      <div className="flex items-start gap-2">
+                        <p className="min-w-0 flex-1 text-sm font-medium break-words">
+                          {m.descricao}
+                          {m.unidade && <span className="text-xs text-muted-foreground"> ({m.unidade})</span>}
+                        </p>
+                        <StatusDot active={m.ativo} />
+                      </div>
+                      <p className="font-mono text-xs text-muted-foreground">{m.codigoErp}</p>
+                      <div className="flex flex-wrap gap-x-4 gap-y-0.5 text-xs text-muted-foreground">
+                        <span>Últ. preço {moeda(m.ultimoPrecoUnitario)}</span>
+                        <span>Desc. {percentual(m.ultimoDesconto)}</span>
+                        <span>Tabela {moeda(m.precoTabela)}</span>
+                        <span>Últ. compra {dataBr(m.ultimaCompra)}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
               {mixOrdenado.length === 0 ? (
                 <p className="text-sm text-muted-foreground">Nenhum produto encontrado.</p>
               ) : (
-                <div className="min-h-0 flex-1 overflow-auto rounded-lg border [&>[data-slot=table-container]]:overflow-visible">
+                <div className="min-h-0 flex-1 overflow-auto rounded-lg border max-md:hidden [&>[data-slot=table-container]]:overflow-visible">
                   <Table>
                     <TableHeader className="sticky top-0 z-10 bg-card">
                       <TableRow>

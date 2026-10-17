@@ -182,7 +182,7 @@ export function TabelaEquipamentos({
             />
           </div>
           <Select value={situacao} onValueChange={(v) => setSituacao(v as SituacaoFiltro)}>
-            <SelectTrigger className="w-52">
+            <SelectTrigger className="w-52 max-sm:w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -194,7 +194,7 @@ export function TabelaEquipamentos({
             </SelectContent>
           </Select>
           <Select value={categoria} onValueChange={setCategoria}>
-            <SelectTrigger className="w-56">
+            <SelectTrigger className="w-56 max-sm:w-full">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

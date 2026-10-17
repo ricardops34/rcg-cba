@@ -46,6 +46,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
@@ -286,6 +287,63 @@ export default function PosicaoClientePage() {
     setPage(1);
   };
 
+  // Mesmo menu na tabela (computador) e no cartão (celular).
+  const menuAcoes = (c: PosicaoClienteListRow) => (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="size-8"
+          onClick={(ev) => ev.stopPropagation()}
+        >
+          <MoreHorizontal className="size-4" />
+        </Button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent
+        align="end"
+        onClick={(ev) => ev.stopPropagation()}
+      >
+        <DropdownMenuItem
+          onClick={() => setClienteSheet({ id: c.id, modo: "visualizar" })}
+        >
+          <Eye className="size-4" /> Visualizar Cliente
+        </DropdownMenuItem>
+        {podeEditarCliente && (
+          <DropdownMenuItem
+            onClick={() => setClienteSheet({ id: c.id, modo: "alterar" })}
+          >
+            <Pencil className="size-4" /> Alterar Cliente
+          </DropdownMenuItem>
+        )}
+        <DropdownMenuItem
+          onClick={() => setPosicaoClienteId(c.id)}
+        >
+          <ClipboardList className="size-4" /> Posição do Cliente
+        </DropdownMenuItem>
+        {podeVerOrcamentos && (
+          <DropdownMenuItem onClick={() => setOrcamentoClienteId(c.id)}>
+            <FileText className="size-4" /> Orçamentos
+          </DropdownMenuItem>
+        )}
+        {/* Abre a conversa deste cliente numa janela flutuante, ou a opção
+            de vincular um WhatsApp a ele quando ainda não há conversa.
+            Só com WhatsApp ligado e instância própria do usuário — ver
+            useAtendimentoDisponivel. */}
+        {atendimentoDisponivel && (
+          <DropdownMenuItem
+            onClick={() =>
+              abrirAtendimento({ id: c.id, nome: c.razaoSocial })
+            }
+          >
+            <IconeWhatsapp className="size-4 text-[#00A884]" /> Atendimento
+          </DropdownMenuItem>
+        )}
+      </DropdownMenuContent>
+    </DropdownMenu>
+
+  );
+
   const columns: ColumnDef<PosicaoClienteListRow>[] = [
     {
       header: "Títulos",
@@ -421,60 +479,7 @@ export default function PosicaoClientePage() {
     {
       header: "",
       className: "w-10",
-      cell: (c) => (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon"
-              className="size-8"
-              onClick={(ev) => ev.stopPropagation()}
-            >
-              <MoreHorizontal className="size-4" />
-            </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
-            align="end"
-            onClick={(ev) => ev.stopPropagation()}
-          >
-            <DropdownMenuItem
-              onClick={() => setClienteSheet({ id: c.id, modo: "visualizar" })}
-            >
-              <Eye className="size-4" /> Visualizar Cliente
-            </DropdownMenuItem>
-            {podeEditarCliente && (
-              <DropdownMenuItem
-                onClick={() => setClienteSheet({ id: c.id, modo: "alterar" })}
-              >
-                <Pencil className="size-4" /> Alterar Cliente
-              </DropdownMenuItem>
-            )}
-            <DropdownMenuItem
-              onClick={() => setPosicaoClienteId(c.id)}
-            >
-              <ClipboardList className="size-4" /> Posição do Cliente
-            </DropdownMenuItem>
-            {podeVerOrcamentos && (
-              <DropdownMenuItem onClick={() => setOrcamentoClienteId(c.id)}>
-                <FileText className="size-4" /> Orçamentos
-              </DropdownMenuItem>
-            )}
-            {/* Abre a conversa deste cliente numa janela flutuante, ou a opção
-                de vincular um WhatsApp a ele quando ainda não há conversa.
-                Só com WhatsApp ligado e instância própria do usuário — ver
-                useAtendimentoDisponivel. */}
-            {atendimentoDisponivel && (
-              <DropdownMenuItem
-                onClick={() =>
-                  abrirAtendimento({ id: c.id, nome: c.razaoSocial })
-                }
-              >
-                <IconeWhatsapp className="size-4 text-[#00A884]" /> Atendimento
-              </DropdownMenuItem>
-            )}
-          </DropdownMenuContent>
-        </DropdownMenu>
-      ),
+      cell: (c) => menuAcoes(c),
     },
   ];
 
@@ -626,8 +631,10 @@ export default function PosicaoClientePage() {
       </div>
 
       <div className="flex flex-wrap items-center justify-between gap-2">
+        {/* No celular os atalhos viram uma única linha que rola para o lado,
+            em vez de ocupar metade da tela empilhados. */}
         <div
-          className="flex flex-wrap items-center gap-2"
+          className="-mx-4 flex max-w-[100vw] items-center gap-2 overflow-x-auto px-4 pb-1 md:mx-0 md:max-w-none md:flex-wrap md:overflow-visible md:px-0 md:pb-0 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden [&>*]:shrink-0"
           data-tour="posicao-cliente-filtros-rapidos"
         >
           <StatusQuickFilter
@@ -683,8 +690,28 @@ export default function PosicaoClientePage() {
         <div data-tour="posicao-cliente-filtros-avancados"></div>
       </div>
 
+      <details
+        className="group text-xs text-muted-foreground md:hidden"
+        data-tour="posicao-cliente-legenda-titulos-celular"
+      >
+        <summary className="cursor-pointer list-none font-medium">
+          <span className="font-bold text-destructive">$</span> O que significa o $?
+        </summary>
+        <div className="mt-1 flex flex-col gap-1">
+          <span><span className="font-bold text-destructive">$</span> título vencido</span>
+          <span>
+            <span className="font-bold text-blue-600 dark:text-blue-400">$</span> vencendo em até 7 dias
+          </span>
+          <span><span className="font-bold text-success">$</span> não vencido</span>
+          <span>
+            <Wrench className="inline size-3.5 text-amber-600 dark:text-amber-400" /> comodato sem
+            consumo em 30 dias
+          </span>
+          <span>Linha amarela: vendendo abaixo da própria média.</span>
+        </div>
+      </details>
       <div
-        className="flex flex-wrap items-center gap-4 text-xs text-muted-foreground"
+        className="hidden flex-wrap items-center gap-4 text-xs text-muted-foreground md:flex"
         data-tour="posicao-cliente-legenda-titulos"
       >
         <span className="font-medium">Títulos em aberto:</span>
@@ -727,6 +754,63 @@ export default function PosicaoClientePage() {
               ? "bg-amber-500/15 hover:bg-amber-500/25 dark:bg-amber-500/10 dark:hover:bg-amber-500/20"
               : undefined
           }
+          mobileCard={(c) => {
+            const indicador = tituloIndicador(c);
+            return (
+              <div className="flex items-start gap-2">
+                <div className="min-w-0 flex-1 space-y-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    {indicador ? (
+                      <span
+                        className={`text-base leading-none font-bold ${indicador.cor}`}
+                        role="img"
+                        aria-label={indicador.legenda}
+                      >
+                        $
+                      </span>
+                    ) : null}
+                    {c.comodatoSemConsumo ? (
+                      <Wrench
+                        className="size-4 text-amber-600 dark:text-amber-400"
+                        aria-label="Comodato sem consumo em 30 dias"
+                      />
+                    ) : null}
+                    <span className="font-mono text-xs text-muted-foreground">
+                      {c.codigoErp || "—"}
+                    </span>
+                    <StatusDot active={c.ativo} />
+                    {c.comodato ? <Badge variant="secondary">Comodato</Badge> : null}
+                  </div>
+                  <p className="text-sm font-medium break-words">{c.razaoSocial}</p>
+                  <p className="text-xs text-muted-foreground">
+                    {[c.municipio, mostrarFiltroVendedor ? c.vendedorNome : null]
+                      .filter(Boolean)
+                      .join(" · ") || "—"}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    Últ. compra {dataBr(c.ultimaCompra)}
+                    {c.dias != null ? ` · há ${c.dias} dias` : " · sem data"}
+                  </p>
+                </div>
+                <div className="flex shrink-0 flex-col items-end gap-0.5">
+                  <span className="text-sm font-semibold tabular-nums">
+                    {moeda(c.vendaUltimos30Dias)}
+                  </span>
+                  <span className="text-xs text-muted-foreground">30 dias</span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    média {moeda(c.vendaMedia90Dias)}
+                  </span>
+                  <span
+                    className={`text-xs tabular-nums ${c.difMesEMedia >= 0 ? "text-emerald-600" : "text-destructive"}`}
+                  >
+                    {c.difMesEMedia >= 0 ? "+" : ""}
+                    {moeda(c.difMesEMedia)}
+                  </span>
+                  {menuAcoes(c)}
+                </div>
+              </div>
+            );
+          }}
           emptyMessage="Nenhum cliente encontrado."
           sortBy={sortBy}
           sortOrder={sortOrder}
