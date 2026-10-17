@@ -1,5 +1,8 @@
 "use client";
 
+import { EtiquetaChip, useMinhasEtiquetas } from "@/components/whatsapp/marcadores-conversa";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import type { WhatsappFiltrosConversa } from "@plataforma/contracts";
 import {
   useCallback,
   useEffect,
@@ -12,6 +15,8 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
   BriefcaseBusiness,
   CalendarCheck2,
+  Flag,
+  Pin,
   Camera,
   Check,
   CheckCheck,
@@ -94,8 +99,17 @@ type ListaConversas = {
   itens: WhatsappConversa[];
 };
 
+/** Filtros que o servidor aplica: etiqueta (a do usuário), cidade e CNAE do cliente. */
+interface FiltrosAvancados {
+  etiquetaId: string;
+  cidade: string;
+  cnaeId: string;
+}
+const SEM_FILTROS_AVANCADOS: FiltrosAvancados = { etiquetaId: "", cidade: "", cnaeId: "" };
+
 type FiltroConversas =
   | "todas"
+  | "importantes"
   | "nao_lidas"
   | "sem_vinculo"
   | "retornos"
@@ -157,6 +171,8 @@ export default function AtendimentoPage() {
   const [busca, setBusca] = useState("");
   const [filtroConversas, setFiltroConversas] =
     useState<FiltroConversas>("todas");
+  const [filtrosAvancados, setFiltrosAvancados] =
+    useState<FiltrosAvancados>(SEM_FILTROS_AVANCADOS);
   const [listaPreferida, alternarPreferenciaLista] = usePainelAberto(PREF_LISTA);
 
   const [ignorandoPreferencia, setIgnorandoPreferencia] = useState(
@@ -209,11 +225,22 @@ export default function AtendimentoPage() {
   const sessaoAtiva = sessao ?? null;
 
   const { data: conversas, isLoading: carregandoConversas } = useQuery({
-    queryKey: ["whatsapp-conversas", empresaId, busca, sessaoAtivaId, filtroConversas],
+    queryKey: [
+      "whatsapp-conversas",
+      empresaId,
+      busca,
+      sessaoAtivaId,
+      filtroConversas,
+      filtrosAvancados,
+    ],
     queryFn: () => {
       const params = new URLSearchParams();
       if (busca) params.set("busca", busca);
       if (filtroConversas === "sem_vinculo") params.set("semVinculo", "true");
+      if (filtroConversas === "importantes") params.set("importantes", "true");
+      if (filtrosAvancados.etiquetaId) params.set("etiquetaId", filtrosAvancados.etiquetaId);
+      if (filtrosAvancados.cidade) params.set("cidade", filtrosAvancados.cidade);
+      if (filtrosAvancados.cnaeId) params.set("cnaeId", filtrosAvancados.cnaeId);
       if (sessaoAtivaId) params.set("sessaoId", sessaoAtivaId);
       const qs = params.toString();
       return apiFetch<ListaConversas>(
@@ -327,6 +354,8 @@ export default function AtendimentoPage() {
                 onSelecionar={abrirConversa}
                 filtro={filtroConversas}
                 onFiltroChange={setFiltroConversas}
+                filtrosAvancados={filtrosAvancados}
+                onFiltrosAvancadosChange={setFiltrosAvancados}
                 busca={busca}
                 onBuscaChange={setBusca}
                 onNovaConversa={podeEnviar ? () => setNovaConversaAberta(true) : undefined}
@@ -423,6 +452,110 @@ export default function AtendimentoPage() {
   );
 }
 
+/**
+ * Filtros por etiqueta (a do usuário), cidade e CNAE do cliente. As opções de
+ * cidade e CNAE são só as que existem nas conversas dele; o servidor é quem
+ * filtra, então valem para a lista inteira e não só para a página carregada.
+ */
+function FiltrosAvancadosConversas({
+  valor,
+  onChange,
+}: {
+  valor: FiltrosAvancados;
+  onChange: (filtros: FiltrosAvancados) => void;
+}) {
+  const [aberto, setAberto] = useState(false);
+  const etiquetas = useMinhasEtiquetas(aberto);
+  const opcoes = useQuery({
+    queryKey: ["whatsapp-filtros-conversas"],
+    queryFn: () => apiFetch<WhatsappFiltrosConversa>("/whatsapp/filtros-conversas"),
+    enabled: aberto,
+    staleTime: 60_000,
+  });
+  const ativos = [valor.etiquetaId, valor.cidade, valor.cnaeId].filter(Boolean).length;
+  const NENHUM = "__nenhum__";
+  const campo = (
+    rotulo: string,
+    atual: string,
+    opcoesDoCampo: { valor: string; rotulo: string }[],
+    alterar: (v: string) => void,
+    vazio: string,
+  ) => (
+    <label className="block space-y-1">
+      <span className="text-xs font-medium text-muted-foreground">{rotulo}</span>
+      <select
+        value={atual || NENHUM}
+        onChange={(e) => alterar(e.target.value === NENHUM ? "" : e.target.value)}
+        className="h-9 w-full rounded-md border bg-background px-2 text-sm"
+      >
+        <option value={NENHUM}>{vazio}</option>
+        {opcoesDoCampo.map((o) => (
+          <option key={o.valor} value={o.valor}>
+            {o.rotulo}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+
+  return (
+    <Popover open={aberto} onOpenChange={setAberto}>
+      <PopoverTrigger asChild>
+        <button
+          type="button"
+          title="Filtrar por etiqueta, cidade ou CNAE"
+          aria-label="Filtros"
+          className={`relative flex size-8.5 shrink-0 items-center justify-center rounded-lg border border-border/40 bg-background text-muted-foreground transition-colors hover:text-foreground dark:bg-[#111B21] ${
+            ativos > 0 ? "text-primary" : ""
+          }`}
+        >
+          <SlidersHorizontal className="size-4" />
+          {ativos > 0 ? (
+            <span className="absolute -top-1 -right-1 flex size-4 items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground">
+              {ativos}
+            </span>
+          ) : null}
+        </button>
+      </PopoverTrigger>
+      <PopoverContent align="end" className="max-h-[75dvh] w-72 space-y-3 overflow-y-auto p-3">
+        {campo(
+          "Etiqueta",
+          valor.etiquetaId,
+          (etiquetas.data ?? []).map((e) => ({ valor: e.id, rotulo: e.nome })),
+          (v) => onChange({ ...valor, etiquetaId: v }),
+          "Todas",
+        )}
+        {campo(
+          "Cidade",
+          valor.cidade,
+          (opcoes.data?.cidades ?? []).map((c) => ({ valor: c, rotulo: c })),
+          (v) => onChange({ ...valor, cidade: v }),
+          "Todas",
+        )}
+        {campo(
+          "CNAE (atividade do cliente)",
+          valor.cnaeId,
+          (opcoes.data?.cnaes ?? []).map((c) => ({
+            valor: c.id,
+            rotulo: c.codigo ? `${c.codigo} — ${c.descricao}` : c.descricao,
+          })),
+          (v) => onChange({ ...valor, cnaeId: v }),
+          "Todos",
+        )}
+        {ativos > 0 ? (
+          <button
+            type="button"
+            onClick={() => onChange(SEM_FILTROS_AVANCADOS)}
+            className="w-full rounded-md py-1.5 text-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+          >
+            Limpar filtros
+          </button>
+        ) : null}
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 function ListaDeConversas({
   carregando,
   conversas,
@@ -430,6 +563,8 @@ function ListaDeConversas({
   onSelecionar,
   filtro,
   onFiltroChange,
+  filtrosAvancados,
+  onFiltrosAvancadosChange,
   busca,
   onBuscaChange,
   onNovaConversa,
@@ -445,6 +580,8 @@ function ListaDeConversas({
   onSelecionar: (id: string) => void;
   filtro: FiltroConversas;
   onFiltroChange: (filtro: FiltroConversas) => void;
+  filtrosAvancados: FiltrosAvancados;
+  onFiltrosAvancadosChange: (filtros: FiltrosAvancados) => void;
   busca: string;
   onBuscaChange: (busca: string) => void;
   /** Ausente quando o usuário não pode iniciar conversa (`cadastrar`). */
@@ -527,6 +664,7 @@ function ListaDeConversas({
   };
 
   const visiveis = conversas.filter((conversa) => {
+    if (filtro === "importantes") return !!conversa.importante;
     if (filtro === "nao_lidas") return conversa.naoLidas > 0;
     if (filtro === "sem_vinculo") return !conversa.clienteId;
     if (filtro === "retornos") return !!conversa.proximoRetornoEm;
@@ -534,6 +672,7 @@ function ListaDeConversas({
     return true;
   });
 
+  const contagemImportantes = conversas.reduce((acc, c) => acc + (c.importante ? 1 : 0), 0);
   const contagemNaoLidas = conversas.reduce((acc, c) => acc + (c.naoLidas > 0 ? 1 : 0), 0);
   const contagemSemVinculo = conversas.reduce((acc, c) => acc + (!c.clienteId ? 1 : 0), 0);
   const contagemRetornos = conversas.reduce((acc, c) => acc + (c.proximoRetornoEm ? 1 : 0), 0);
@@ -669,8 +808,8 @@ function ListaDeConversas({
         </div>
 
         {/* Campo de pesquisa estilo WhatsApp Web */}
-        <div data-tour="atendimento-controles" className="px-3 pb-2 pt-0.5">
-          <div className="relative flex items-center rounded-lg bg-background dark:bg-[#111B21] border border-border/40 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/20 transition-all">
+        <div data-tour="atendimento-controles" className="flex items-center gap-1.5 px-3 pb-2 pt-0.5">
+          <div className="relative flex min-w-0 flex-1 items-center rounded-lg bg-background dark:bg-[#111B21] border border-border/40 focus-within:border-emerald-500/50 focus-within:ring-1 focus-within:ring-emerald-500/20 transition-all">
             <Search className="pointer-events-none absolute left-3 size-4 text-muted-foreground/70" />
             <Input
               value={busca}
@@ -689,6 +828,10 @@ function ListaDeConversas({
               </button>
             ) : null}
           </div>
+          <FiltrosAvancadosConversas
+            valor={filtrosAvancados}
+            onChange={onFiltrosAvancadosChange}
+          />
         </div>
 
         {/* Abas de filtro estilo WhatsApp Web (Pills com rolagem horizontal) */}
@@ -715,6 +858,7 @@ function ListaDeConversas({
             {(
               [
                 ["todas", "Tudo", conversas.length],
+                ["importantes", "Importantes", contagemImportantes],
                 ["nao_lidas", "Não lidas", contagemNaoLidas],
                 ["sem_vinculo", "Sem vínculo", contagemSemVinculo],
                 ["retornos", "Retornos", contagemRetornos],
@@ -809,7 +953,9 @@ function ListaDeConversas({
                 className={`relative flex w-full gap-3 p-3 text-left transition-colors cursor-pointer ${
                   selecionado
                     ? "bg-[#F0F2F5] dark:bg-[#2A3942] border-l-4 border-l-[#00A884]"
-                    : "hover:bg-[#F5F6F6] dark:hover:bg-[#202C33]"
+                    : c.importante
+                      ? "border-l-4 border-l-red-500 bg-red-50/70 hover:bg-red-50 dark:bg-red-950/20 dark:hover:bg-red-950/30"
+                      : "hover:bg-[#F5F6F6] dark:hover:bg-[#202C33]"
                 }`}
               >
                 <div className="relative shrink-0">
@@ -843,8 +989,16 @@ function ListaDeConversas({
                     >
                       {nome}
                     </span>
-                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground">
-                      {horaDaConversa(c.ultimaMensagemEm)}
+                    <span className="flex shrink-0 items-center gap-1.5">
+                      {c.importante ? (
+                        <Flag className="size-3.5 fill-red-500 text-red-500" aria-label="Importante" />
+                      ) : null}
+                      {c.fixadaEm ? (
+                        <Pin className="size-3.5 fill-muted-foreground text-muted-foreground" aria-label="Fixada no topo" />
+                      ) : null}
+                      <span className="text-[11px] tabular-nums text-muted-foreground">
+                        {horaDaConversa(c.ultimaMensagemEm)}
+                      </span>
                     </span>
                   </div>
                   <div className="flex items-center justify-between gap-2">
@@ -866,6 +1020,18 @@ function ListaDeConversas({
                     ) : null}
                   </div>
                   <SinaisDoCliente conversa={c} />
+                  {(c.etiquetas ?? []).length > 0 ? (
+                    <div className="flex flex-wrap gap-1 pt-0.5">
+                      {(c.etiquetas ?? []).slice(0, 3).map((e) => (
+                        <EtiquetaChip key={e.id} etiqueta={e} />
+                      ))}
+                      {(c.etiquetas ?? []).length > 3 ? (
+                        <span className="text-[10px] text-muted-foreground">
+                          +{(c.etiquetas ?? []).length - 3}
+                        </span>
+                      ) : null}
+                    </div>
+                  ) : null}
                 </div>
               </button>
             );

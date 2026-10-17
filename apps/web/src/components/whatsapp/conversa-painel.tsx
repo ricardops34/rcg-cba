@@ -1,5 +1,10 @@
 "use client";
 
+import {
+  BotaoEtiquetas,
+  BotaoFixar,
+  BotaoImportante,
+} from "@/components/whatsapp/marcadores-conversa";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -142,6 +147,7 @@ export function Conversa({
   onAlternarLista?: () => void;
 }) {
   const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
+  const podeCadastrar = useAuthStore((s) => s.hasPermission("whatsapp-conversas", "cadastrar"));
   const queryClient = useQueryClient();
   const [respostaPendente, setRespostaPendente] = useState<{
     conversaId: string;
@@ -324,6 +330,15 @@ export function Conversa({
         </div>
 
         <div data-tour="atendimento-acoes" className="flex shrink-0 items-center gap-1.5">
+          {/* Bandeira (importante), fixar no topo e etiquetas: um toque cada. */}
+          {conversa ? (
+            <div className="flex items-center">
+              <BotaoImportante conversa={conversa} desabilitado={!podeCadastrar} />
+              {/* Só o dono da conexão reordena a própria lista. */}
+              <BotaoFixar conversa={conversa} desabilitado={!podeCadastrar || !!somenteConsulta} />
+              <BotaoEtiquetas conversa={conversa} desabilitado={!podeCadastrar} />
+            </div>
+          ) : null}
           {clienteId ? (
             <>
               {onAbrirPosicao ? (
