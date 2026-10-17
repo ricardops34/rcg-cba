@@ -83,7 +83,7 @@ function BotaoDocumento({
     <Button
       variant="ghost"
       size="icon"
-      className="size-8"
+      className="size-8 max-md:size-10"
       disabled={!!motivoIndisponivel || baixando}
       onClick={baixar}
       aria-label={rotulo}
@@ -218,7 +218,7 @@ function BotaoEmail({
           <Button
             variant="ghost"
             size="icon"
-            className="size-8"
+            className="size-8 max-md:size-10"
             disabled={!!motivoIndisponivel || enviando}
             onClick={(ev) => {
               semPropagar(ev);
@@ -384,7 +384,7 @@ export function SegundaViaTitulo({
         <Tooltip>
           <TooltipTrigger asChild>
             <DropdownMenuTrigger asChild>
-              <Button variant="ghost" size="icon" className="size-8" disabled={baixando}>
+              <Button variant="ghost" size="icon" className="size-8 max-md:size-10" disabled={baixando}>
                 {baixando ? <Loader2 className="size-4 animate-spin" /> : <Barcode className="size-4 text-amber-600 dark:text-amber-400" />}
               </Button>
             </DropdownMenuTrigger>

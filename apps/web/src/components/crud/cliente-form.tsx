@@ -814,6 +814,8 @@ export function ClienteFormContent({
       <form id="cliente-form" onSubmit={form.handleSubmit(onSubmit)} noValidate>
         <CardContent>
           <Tabs defaultValue="identificacao">
+            {/* Oito abas não cabem no celular: a barra rola de lado, sem barra à vista. */}
+            <div className="-mx-1 overflow-x-auto overflow-y-hidden px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <TabsList>
               <TabsTrigger value="identificacao">Identificação</TabsTrigger>
               <TabsTrigger value="contato">Contato</TabsTrigger>
@@ -824,6 +826,7 @@ export function ClienteFormContent({
               {cliente && <TabsTrigger value="historico">Histórico</TabsTrigger>}
               {cliente && <TabsTrigger value="alteracoes">Alterações</TabsTrigger>}
             </TabsList>
+            </div>
             <TabsContent value="identificacao">{camposIdentificacao}</TabsContent>
             <TabsContent value="contato">{camposContato}</TabsContent>
             <TabsContent value="endereco">{camposEndereco}</TabsContent>
@@ -835,7 +838,7 @@ export function ClienteFormContent({
           </Tabs>
         </CardContent>
 
-        <CardFooter className="justify-end gap-2">
+        <CardFooter className="justify-end gap-2 max-sm:[&>button]:flex-1">
           <Button type="button" variant="outline" onClick={onClose}>
             {readOnly ? "Voltar" : "Cancelar"}
           </Button>
