@@ -201,3 +201,44 @@ export const roteiroItensQuerySchema = z.object({
   ate: dia,
 });
 export type RoteiroItensQuery = z.infer<typeof roteiroItensQuerySchema>;
+
+/**
+ * Confirma os atendimentos do roteiro de um dia (ou itens específicos). É a
+ * autorização para o sistema abrir as conversas na hora de cada um.
+ */
+export const roteiroConfirmarSchema = z
+  .object({
+    dia: dia.optional(),
+    itemIds: z.array(z.string().uuid()).min(1).max(200).optional(),
+  })
+  .refine((v) => !!v.dia || !!v.itemIds, {
+    message: "Informe o dia ou os atendimentos a confirmar",
+  });
+export type RoteiroConfirmar = z.infer<typeof roteiroConfirmarSchema>;
+
+export const roteiroConfirmacaoResultadoSchema = z.object({
+  confirmados: z.number().int(),
+  /** Não deu para preparar a conversa (número fora do WhatsApp, sem telefone…). */
+  comErro: z.array(
+    z.object({
+      itemId: z.string().uuid(),
+      clienteNome: z.string(),
+      erro: z.string(),
+    }),
+  ),
+  /** O horário passou há tempo demais: precisam ser remarcados, não confirmados. */
+  atrasados: z.array(z.string().uuid()),
+});
+export type RoteiroConfirmacaoResultado = z.infer<
+  typeof roteiroConfirmacaoResultadoSchema
+>;
+
+/** Finaliza o atendimento iniciado pelo roteiro e registra o resultado no histórico. */
+export const roteiroFinalizarSchema = z.object({
+  resultado: z
+    .string()
+    .trim()
+    .min(3, "Registre o resultado do atendimento")
+    .max(1000),
+});
+export type RoteiroFinalizar = z.infer<typeof roteiroFinalizarSchema>;

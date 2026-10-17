@@ -109,7 +109,10 @@ const montar = (o: Opcoes = {}) => {
   const prisma = {
     withTenant: (_e: string, fn: (t: typeof tx) => unknown) => fn(tx),
   };
-  return { servico: new WhatsappRoteiroService(prisma as never), tx };
+  return {
+    servico: new WhatsappRoteiroService(prisma as never, {} as never),
+    tx,
+  };
 };
 
 const gravarInput = (
@@ -391,5 +394,200 @@ describe('WhatsappRoteiroService.remarcar', () => {
         motivo: 'Preciso mudar o horário',
       }),
     ).rejects.toBeInstanceOf(BadRequestException);
+  });
+});
+
+describe('WhatsappRoteiroService.confirmar', () => {
+  const montarConfirmacao = (
+    itens: Record<string, unknown>[],
+    iniciarConversa: jest.Mock,
+  ) => {
+    const tx = {
+      whatsappRoteiroItem: {
+        findMany: jest.fn().mockResolvedValue(itens),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      cliente: {
+        findMany: jest.fn().mockResolvedValue([
+          { id: 'c1', razaoSocial: 'Um', nomeFantasia: null },
+          { id: 'c2', razaoSocial: 'Dois', nomeFantasia: null },
+          { id: 'c3', razaoSocial: 'Três', nomeFantasia: null },
+        ]),
+      },
+      atividade: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      notificacao: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+    };
+    const prisma = {
+      withTenant: (_e: string, fn: (t: typeof tx) => unknown) => fn(tx),
+    };
+    const servico = new WhatsappRoteiroService(
+      prisma as never,
+      { iniciarConversa } as never,
+    );
+    return { servico, tx };
+  };
+
+  const agora = Date.now();
+  const itens = [
+    // já tem conversa
+    {
+      id: 'i1',
+      clienteId: 'c1',
+      conversaId: 'conv1',
+      contatoId: 'ct1',
+      atividadeId: 'a1',
+      quando: new Date(agora + 3_600_000),
+    },
+    // só tem telefone no cadastro: a conversa nasce agora
+    {
+      id: 'i2',
+      clienteId: 'c2',
+      conversaId: null,
+      contatoId: null,
+      atividadeId: 'a2',
+      quando: new Date(agora + 7_200_000),
+    },
+    // o número não existe no WhatsApp
+    {
+      id: 'i3',
+      clienteId: 'c3',
+      conversaId: null,
+      contatoId: null,
+      atividadeId: 'a3',
+      quando: new Date(agora + 10_800_000),
+    },
+    // passou há mais de duas horas
+    {
+      id: 'i4',
+      clienteId: 'c1',
+      conversaId: 'conv1',
+      contatoId: 'ct1',
+      atividadeId: 'a4',
+      quando: new Date(agora - 3 * 3_600_000),
+    },
+  ];
+
+  it('confirma, cria a conversa de quem só tem cadastro e separa erro e atrasado', async () => {
+    const iniciarConversa = jest
+      .fn()
+      .mockImplementation(
+        (_e: string, _u: unknown, i: { clienteId: string }) =>
+          i.clienteId === 'c3'
+            ? Promise.reject(
+                new BadRequestException('Este número não está no WhatsApp.'),
+              )
+            : Promise.resolve({ id: 'conv2', contatoId: 'ct2' }),
+      );
+    const { servico, tx } = montarConfirmacao(itens, iniciarConversa);
+
+    const r = await servico.confirmar('e1', user, { dia: DIA });
+
+    expect(r.confirmados).toBe(2);
+    expect(r.atrasados).toEqual(['i4']);
+    expect(r.comErro).toEqual([
+      {
+        itemId: 'i3',
+        clienteNome: 'Três',
+        erro: 'Este número não está no WhatsApp.',
+      },
+    ]);
+    // A conversa só foi criada para quem não tinha.
+    expect(iniciarConversa).toHaveBeenCalledTimes(2);
+
+    const atualizacoes = (
+      tx.whatsappRoteiroItem.update.mock.calls as [
+        { where: { id: string }; data: Record<string, unknown> },
+      ][]
+    ).map(([c]) => [c.where.id, c.data.status]);
+    expect(atualizacoes).toEqual(
+      expect.arrayContaining([
+        ['i1', 'confirmado'],
+        ['i2', 'confirmado'],
+        ['i3', 'erro'],
+      ]),
+    );
+    // O atrasado fica como está: o vendedor remarca.
+    expect(atualizacoes.some(([id]) => id === 'i4')).toBe(false);
+    // O chamado do dia está atendido.
+    expect(tx.notificacao.updateMany).toHaveBeenCalled();
+  });
+
+  it('só olha o que é do próprio usuário e ainda está aguardando', async () => {
+    const { servico, tx } = montarConfirmacao([], jest.fn());
+    await servico.confirmar('e1', user, { itemIds: ['i1'] });
+    const where = (
+      tx.whatsappRoteiroItem.findMany.mock.calls as [
+        { where: Record<string, unknown> },
+      ][]
+    )[0][0].where;
+    expect(where).toMatchObject({
+      status: 'agendado',
+      roteiro: { usuarioId: 'u1' },
+      id: { in: ['i1'] },
+    });
+  });
+});
+
+describe('WhatsappRoteiroService.finalizar', () => {
+  const montarFinal = (status: string) => {
+    const tx = {
+      whatsappRoteiroItem: {
+        findFirst: jest.fn().mockResolvedValue({
+          id: 'i1',
+          status,
+          atividadeId: 'a1',
+          conversaId: 'conv1',
+        }),
+        update: jest.fn().mockResolvedValue({}),
+      },
+      atividade: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      whatsappAcaoRegistro: { create: jest.fn().mockResolvedValue({}) },
+    };
+    const prisma = {
+      withTenant: (_e: string, fn: (t: typeof tx) => unknown) => fn(tx),
+    };
+    return {
+      servico: new WhatsappRoteiroService(prisma as never, {} as never),
+      tx,
+    };
+  };
+
+  it('fecha o item, conclui a atividade e registra no histórico da conversa', async () => {
+    const { servico, tx } = montarFinal('iniciado');
+
+    await servico.finalizar('e1', user, 'i1', {
+      resultado: 'Pediu orçamento de 20 caixas; retorno quinta.',
+    });
+
+    expect(
+      (tx.whatsappRoteiroItem.update.mock.calls as Chamadas)[0][0].data,
+    ).toMatchObject({
+      status: 'finalizado',
+      resultado: 'Pediu orçamento de 20 caixas; retorno quinta.',
+    });
+    expect(
+      (tx.atividade.updateMany.mock.calls as Chamadas)[0][0].data,
+    ).toMatchObject({
+      concluida: true,
+      descricao: 'Pediu orçamento de 20 caixas; retorno quinta.',
+    });
+    expect(
+      (tx.whatsappAcaoRegistro.create.mock.calls as Chamadas)[0][0].data,
+    ).toMatchObject({
+      acao: 'atendimento_finalizado',
+      conversaId: 'conv1',
+      detalhe: {
+        resultado: 'Pediu orçamento de 20 caixas; retorno quinta.',
+        roteiro: true,
+      },
+    });
+  });
+
+  it('só finaliza o que foi iniciado', async () => {
+    const { servico, tx } = montarFinal('confirmado');
+    await expect(
+      servico.finalizar('e1', user, 'i1', { resultado: 'Resultado qualquer' }),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(tx.whatsappRoteiroItem.update).not.toHaveBeenCalled();
   });
 });

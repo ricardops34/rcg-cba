@@ -95,7 +95,10 @@ describe('WhatsappRoteiroService.previa', () => {
     const prisma = {
       withTenant: (_e: string, fn: (t: typeof tx) => unknown) => fn(tx),
     };
-    return { servico: new WhatsappRoteiroService(prisma as never), tx };
+    return {
+      servico: new WhatsappRoteiroService(prisma as never, {} as never),
+      tx,
+    };
   };
 
   it('recusa quem não tem cadastro de vendedor', async () => {

@@ -50,6 +50,8 @@ import {
   RoteiroCancelarDto,
   RoteiroRemarcarDto,
   RoteiroItensQueryDto,
+  RoteiroConfirmarDto,
+  RoteiroFinalizarDto,
   WhatsappAnotarDto,
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
@@ -777,6 +779,38 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.roteiros.listarItens(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Confirmar os atendimentos do roteiro do dia',
+    description:
+      'Autoriza o sistema a abrir as conversas na hora de cada atendimento. Sem confirmação, ' +
+      'nada é enviado ao cliente. Cria a conversa de quem só tem telefone no cadastro (e ' +
+      'confere o número no WhatsApp). Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('roteiros/confirmar')
+  confirmarRoteiro(
+    @Body() dto: RoteiroConfirmarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roteiros.confirmar(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Finalizar o atendimento iniciado pelo roteiro',
+    description:
+      'Registra o resultado, conclui a atividade da agenda e grava no histórico de ' +
+      'atendimento. Requer whatsapp-conversas.cadastrar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('roteiros/itens/:id/finalizar')
+  finalizarItemDoRoteiro(
+    @Param('id') id: string,
+    @Body() dto: RoteiroFinalizarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.roteiros.finalizar(user.empresaAtivaId, user, id, dto);
   }
 
   @ApiOperation({

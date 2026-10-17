@@ -6,6 +6,9 @@ import {
 } from '@nestjs/common';
 import type {
   RoteiroCancelar,
+  RoteiroConfirmacaoResultado,
+  RoteiroConfirmar,
+  RoteiroFinalizar,
   RoteiroGravar,
   RoteiroItem,
   RoteiroItensQuery,
@@ -14,7 +17,11 @@ import type {
   RoteiroPrevia,
   RoteiroRemarcar,
 } from '@plataforma/contracts';
-import { registrarNotificacao } from '../../notificacoes/registrar-notificacao';
+import {
+  marcarNotificacoesDaOrigem,
+  registrarNotificacao,
+} from '../../notificacoes/registrar-notificacao';
+import { WhatsappConversasService } from '../whatsapp-conversas.service';
 import {
   PrismaService,
   type TenantTx,
@@ -63,7 +70,10 @@ const temTelefone = (...telefones: (string | null | undefined)[]) =>
  */
 @Injectable()
 export class WhatsappRoteiroService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly conversas: WhatsappConversasService,
+  ) {}
 
   async previa(
     empresaId: string,
@@ -626,7 +636,7 @@ export class WhatsappRoteiroService {
   }
 
   /** Vendedor, supervisor e gerente acima dele: quem a supervisão precisa avisar. */
-  private async usuariosDaSupervisao(tx: TenantTx, vendedorId: string) {
+  async usuariosDaSupervisao(tx: TenantTx, vendedorId: string) {
     const usuarios = new Set<string>();
     let atual: string | null = vendedorId;
     // Três degraus bastam (vendedor → supervisor → gerente) e protegem contra ciclo.
@@ -800,6 +810,195 @@ export class WhatsappRoteiroService {
         });
       }
       return { remarcado: true };
+    });
+  }
+
+  /**
+   * O vendedor confirma os atendimentos do dia: é a autorização para o sistema
+   * abrir as conversas na hora de cada um. Sem isto, **nada é enviado**.
+   *
+   * É aqui, com o usuário presente, que a conversa nasce quando o cliente só
+   * tem telefone no cadastro: se o número não existe no WhatsApp, o vendedor
+   * fica sabendo agora, e não na hora do atendimento.
+   */
+  async confirmar(
+    empresaId: string,
+    user: AuthenticatedUser,
+    input: RoteiroConfirmar,
+  ): Promise<RoteiroConfirmacaoResultado> {
+    const agora = Date.now();
+    const alvo = await this.prisma.withTenant(empresaId, (tx) => {
+      const inicioDoDia = input.dia ? instanteLocal(input.dia, '00:00') : null;
+      return tx.whatsappRoteiroItem.findMany({
+        where: {
+          empresaId,
+          status: 'agendado',
+          roteiro: { usuarioId: user.id },
+          ...(input.itemIds ? { id: { in: input.itemIds } } : {}),
+          ...(inicioDoDia
+            ? {
+                quando: {
+                  gte: inicioDoDia,
+                  lt: new Date(inicioDoDia.getTime() + 86_400_000),
+                },
+              }
+            : {}),
+        },
+        orderBy: { quando: 'asc' },
+      });
+    });
+
+    // Passou há mais de duas horas: confirmar iniciaria uma conversa fora de
+    // hora. O vendedor remarca.
+    const atrasados = alvo
+      .filter((i) => i.quando.getTime() < agora - 2 * 60 * 60_000)
+      .map((i) => i.id);
+    const aConfirmar = alvo.filter((i) => !atrasados.includes(i.id));
+
+    const nomes = new Map<string, string>();
+    if (aConfirmar.length) {
+      await this.prisma.withTenant(empresaId, async (tx) => {
+        for (const c of await tx.cliente.findMany({
+          where: { id: { in: aConfirmar.map((i) => i.clienteId) } },
+          select: { id: true, razaoSocial: true, nomeFantasia: true },
+        })) {
+          nomes.set(c.id, c.nomeFantasia || c.razaoSocial);
+        }
+      });
+    }
+
+    const prontos: {
+      id: string;
+      conversaId: string;
+      contatoId: string | null;
+      atividadeId: string | null;
+    }[] = [];
+    const comErro: RoteiroConfirmacaoResultado['comErro'] = [];
+    for (const item of aConfirmar) {
+      try {
+        let conversaId = item.conversaId;
+        let contatoId = item.contatoId;
+        if (!conversaId) {
+          // Pela rede (confere o número no WhatsApp), por isso fora da transação.
+          const conversa = await this.conversas.iniciarConversa(
+            empresaId,
+            user,
+            {
+              clienteId: item.clienteId,
+            },
+          );
+          conversaId = conversa.id;
+          contatoId = conversa.contatoId;
+        }
+        prontos.push({
+          id: item.id,
+          conversaId,
+          contatoId,
+          atividadeId: item.atividadeId,
+        });
+      } catch (erro) {
+        comErro.push({
+          itemId: item.id,
+          clienteNome: nomes.get(item.clienteId) ?? 'Cliente',
+          erro: erro instanceof Error ? erro.message : String(erro),
+        });
+      }
+    }
+
+    await this.prisma.withTenant(empresaId, async (tx) => {
+      const agoraData = new Date();
+      for (const p of prontos) {
+        await tx.whatsappRoteiroItem.update({
+          where: { id: p.id },
+          data: {
+            status: 'confirmado',
+            confirmadoEm: agoraData,
+            conversaId: p.conversaId,
+            contatoId: p.contatoId,
+          },
+        });
+        if (p.atividadeId) {
+          await tx.atividade.updateMany({
+            where: { id: p.atividadeId, empresaId },
+            data: { conversaId: p.conversaId },
+          });
+        }
+      }
+      for (const e of comErro) {
+        await tx.whatsappRoteiroItem.update({
+          where: { id: e.itemId },
+          data: { status: 'erro', erro: e.erro.slice(0, 500) },
+        });
+      }
+      if (input.dia) {
+        // O chamado para confirmar deste dia está atendido.
+        await marcarNotificacoesDaOrigem(tx, {
+          empresaId,
+          tipos: ['roteiro_confirmar'],
+          referenciaId: `${user.id}:${input.dia}`,
+          usuarioId: user.id,
+        });
+      }
+    });
+
+    return { confirmados: prontos.length, comErro, atrasados };
+  }
+
+  /**
+   * Finaliza o atendimento que o roteiro iniciou e registra o resultado: o item
+   * fecha, a atividade da agenda é concluída com o resultado, e a conversa
+   * ganha o registro no histórico de atendimento.
+   */
+  async finalizar(
+    empresaId: string,
+    user: AuthenticatedUser,
+    itemId: string,
+    input: RoteiroFinalizar,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const item = await tx.whatsappRoteiroItem.findFirst({
+        where: { id: itemId, empresaId, roteiro: { usuarioId: user.id } },
+      });
+      if (!item)
+        throw new NotFoundException('Atendimento do roteiro não encontrado.');
+      if (item.status !== 'iniciado') {
+        throw new BadRequestException(
+          'Só dá para finalizar um atendimento que já foi iniciado.',
+        );
+      }
+      const agora = new Date();
+      await tx.whatsappRoteiroItem.update({
+        where: { id: itemId },
+        data: {
+          status: 'finalizado',
+          finalizadoEm: agora,
+          resultado: input.resultado,
+        },
+      });
+      if (item.atividadeId) {
+        await tx.atividade.updateMany({
+          where: { id: item.atividadeId, empresaId },
+          data: {
+            concluida: true,
+            dataConclusao: agora,
+            descricao: input.resultado,
+            updatedBy: user.id,
+          },
+        });
+      }
+      if (item.conversaId) {
+        await tx.whatsappAcaoRegistro.create({
+          data: {
+            empresaId,
+            conversaId: item.conversaId,
+            acao: 'atendimento_finalizado',
+            atividadeId: item.atividadeId,
+            detalhe: { resultado: input.resultado, roteiro: true },
+            executadaPor: user.id,
+          },
+        });
+      }
+      return { finalizado: true };
     });
   }
 
