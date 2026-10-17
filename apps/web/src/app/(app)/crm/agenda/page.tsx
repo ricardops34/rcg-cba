@@ -18,6 +18,7 @@ import {
   type CategoriaEvento,
 } from "@/components/crud/agenda-eventos";
 import { Checkbox } from "@/components/ui/checkbox";
+import { AgendaEventoSheet } from "@/components/crud/agenda-evento-sheet";
 import { RoteiroGerarDialog } from "@/components/roteiro/roteiro-gerar-dialog";
 import { RoteiroPainel } from "@/components/roteiro/roteiro-painel";
 import { Switch } from "@/components/ui/switch";
@@ -310,6 +311,14 @@ export default function AgendaPage() {
     setVendedorId(undefined);
   };
 
+  // No celular o evento abre num detalhe ali mesmo: a tela de Atividades pode não estar
+  // liberada para tela pequena, e levar até ela seria um beco sem saída.
+  const [eventoAberto, setEventoAberto] = useState<Atividade | null>(null);
+  const onSelectItemCelular = (item: AgendaItem) => {
+    if (item.kind === "atividade") setEventoAberto(item.data);
+    else onSelectItem(item);
+  };
+
   const onSelectItem = (item: AgendaItem) => {
     if (item.kind === "atividade") router.push(`/crm/atividades/${item.id}`);
     else router.push(`/crm/orcamentos/${item.id}`);
@@ -321,11 +330,11 @@ export default function AgendaPage() {
       <CrudHeader
         actions={
           <div className="flex items-center gap-2">
-            <Button variant="outline" onClick={() => setGerarRoteiro(true)}>
+            <Button variant="outline" title="Gerar roteiro de atendimentos" aria-label="Gerar roteiro de atendimentos" onClick={() => setGerarRoteiro(true)}>
               <CalendarPlus className="size-4" />
               <span className="hidden sm:inline">Gerar roteiro</span>
             </Button>
-            <Button variant="outline" onClick={() => setPainelRoteiro(true)}>
+            <Button variant="outline" title="Meu roteiro" aria-label="Meu roteiro" onClick={() => setPainelRoteiro(true)}>
               <ListChecks className="size-4" />
               <span className="hidden sm:inline">Meu roteiro</span>
             </Button>
@@ -414,7 +423,7 @@ export default function AgendaPage() {
         createLabel="Nova atividade"
       />
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h1 className="text-xl font-semibold capitalize tracking-tight">
+        <h1 className="text-xl font-semibold tracking-tight first-letter:uppercase">
           {visao === "mes" ? (
             <>
               {MESES[mesAtual.getMonth()]} de {mesAtual.getFullYear()}
@@ -486,7 +495,7 @@ export default function AgendaPage() {
               feriado={feriadosPorDia.get(toKey(ancora))}
               itens={porDiaCelular.get(toKey(ancora)) ?? []}
               isLoading={isLoading}
-              onSelectItem={onSelectItem}
+              onSelectItem={onSelectItemCelular}
               onNovo={() => router.push(`/crm/atividades/novo?data=${toKey(ancora)}`)}
             />
           </div>
@@ -547,7 +556,7 @@ export default function AgendaPage() {
                 feriado={feriadosPorDia.get(toKey(dia))}
                 itens={porDiaCelular.get(toKey(dia)) ?? []}
                 isLoading={isLoading}
-                onSelectItem={onSelectItem}
+                onSelectItem={onSelectItemCelular}
                 onNovo={() => router.push(`/crm/atividades/novo?data=${toKey(dia)}`)}
               />
             ))}
@@ -581,7 +590,7 @@ export default function AgendaPage() {
           feriado={feriadosPorDia.get(toKey(diaSelecionado))}
           itens={porDiaCelular.get(toKey(diaSelecionado)) ?? []}
           isLoading={isLoading}
-          onSelectItem={onSelectItem}
+          onSelectItem={onSelectItemCelular}
           onNovo={() =>
             router.push(`/crm/atividades/novo?data=${toKey(diaSelecionado)}`)
           }
@@ -621,6 +630,7 @@ export default function AgendaPage() {
         </>
       ) : null}
 
+      <AgendaEventoSheet atividade={eventoAberto} onClose={() => setEventoAberto(null)} />
       <RoteiroGerarDialog aberto={gerarRoteiro} onOpenChange={setGerarRoteiro} />
       <RoteiroPainel
         aberto={painelRoteiro}
@@ -753,7 +763,7 @@ function DiaDetalhe({
   return (
     <section className="space-y-2">
       <div className="flex items-center justify-between gap-2">
-        <h2 className="text-sm font-semibold capitalize">
+        <h2 className="text-sm font-semibold first-letter:uppercase">
           {dia.toLocaleDateString("pt-BR", { weekday: "long", day: "numeric", month: "long" })}
         </h2>
         <Button size="sm" variant="outline" onClick={onNovo}>

@@ -1335,13 +1335,15 @@ export function OrcamentoFormContent({
           {exigeAutorizacao && (
             <div
               data-tour="orcamento-autorizacao"
-              className={`mb-3 flex flex-wrap items-center gap-x-3 gap-y-2 rounded-lg border px-3 py-2 text-sm ${
+              className={`mb-3 flex flex-col gap-2 rounded-lg border px-3 py-2 text-sm sm:flex-row sm:flex-wrap sm:items-center sm:gap-x-3 ${
                 situacaoAutorizacao === "autorizada"
                   ? "border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
                   : "border-destructive/40 bg-destructive/10 text-destructive"
               }`}
             >
-              <TriangleAlert className="size-4 shrink-0" />
+              {/* Ícone e texto juntos; os botões descem para a linha de baixo no celular. */}
+              <div className="flex min-w-0 flex-1 items-start gap-2">
+              <TriangleAlert className="mt-0.5 size-4 shrink-0" />
               <span className="min-w-0 flex-1">
                 {situacaoAutorizacao === "autorizada"
                   ? `Desconto autorizado em ${dataHoraBr(registro?.descontoAutorizadoEm ?? null)} — PDF e efetivação liberados.`
@@ -1349,6 +1351,7 @@ export function OrcamentoFormContent({
                     ? `Autorização solicitada em ${dataHoraBr(registro?.descontoSolicitadoEm ?? null)} — aguardando liberação. PDF e efetivação seguem bloqueados.`
                     : "Há item com desconto igual ou acima do máximo da regra. PDF e efetivação ficam bloqueados até a autorização."}
               </span>
+              </div>
               {registro && situacaoAutorizacao === "nao_solicitada" && (
                 <Button
                   type="button"
@@ -2460,7 +2463,7 @@ export function OrcamentoFormContent({
               >
                 Salvar
               </Button>
-              <Button type="submit" disabled={form.formState.isSubmitting}>
+              <Button type="submit" className="col-span-2 sm:col-span-1" disabled={form.formState.isSubmitting}>
                 {registro ? "Salvar e fechar" : "Cadastrar e fechar"}
               </Button>
             </>

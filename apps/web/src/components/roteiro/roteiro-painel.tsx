@@ -175,7 +175,7 @@ export function RoteiroPainel({
                     className={cn("space-y-2 rounded-lg", dia === diaEmFoco && "ring-2 ring-primary/50 p-2")}
                   >
                     <div className="flex items-center justify-between gap-2">
-                      <h3 className="text-sm font-semibold capitalize">
+                      <h3 className="text-sm font-semibold first-letter:uppercase">
                         {new Date(`${dia}T12:00:00`).toLocaleDateString("pt-BR", {
                           weekday: "long",
                           day: "numeric",

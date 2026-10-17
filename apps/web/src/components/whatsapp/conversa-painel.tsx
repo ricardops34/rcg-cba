@@ -5,6 +5,7 @@ import {
   BotaoEtiquetas,
   BotaoFixar,
   BotaoImportante,
+  EtiquetaChip,
 } from "@/components/whatsapp/marcadores-conversa";
 import { useEffect, useRef, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
@@ -342,15 +343,6 @@ export function Conversa({
         </div>
 
         <div data-tour="atendimento-acoes" className="flex shrink-0 items-center gap-1.5">
-          {/* Bandeira (importante), fixar no topo e etiquetas: um toque cada. */}
-          {conversa ? (
-            <div className="flex items-center">
-              <BotaoImportante conversa={conversa} desabilitado={!podeCadastrar} />
-              {/* Só o dono da conexão reordena a própria lista. */}
-              <BotaoFixar conversa={conversa} desabilitado={!podeCadastrar || !!somenteConsulta} />
-              <BotaoEtiquetas conversa={conversa} desabilitado={!podeCadastrar} />
-            </div>
-          ) : null}
           {clienteId ? (
             <>
               {onAbrirPosicao ? (
@@ -401,6 +393,22 @@ export function Conversa({
           ) : null}
         </div>
       </div>
+
+      {/* Bandeira (importante), fixar no topo e etiquetas: numa barra à parte, porque o
+          cabeçalho já é apertado (na janela flutuante os ícones cobriam o texto). */}
+      {conversa ? (
+        <div className="flex shrink-0 items-center gap-1 border-b border-border/40 bg-background px-3 py-1">
+          <BotaoImportante conversa={conversa} desabilitado={!podeCadastrar} />
+          {/* Só o dono da conexão reordena a própria lista. */}
+          <BotaoFixar conversa={conversa} desabilitado={!podeCadastrar || !!somenteConsulta} />
+          <BotaoEtiquetas conversa={conversa} desabilitado={!podeCadastrar} />
+          <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1 pl-1">
+            {(conversa.etiquetas ?? []).map((e) => (
+              <EtiquetaChip key={e.id} etiqueta={e} />
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {/* Atendimento aberto pelo roteiro semanal: só aqui o vendedor o fecha, com o resultado. */}
       {itemDoRoteiro ? (

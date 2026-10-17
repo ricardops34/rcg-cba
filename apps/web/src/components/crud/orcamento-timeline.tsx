@@ -73,7 +73,7 @@ export function OrcamentoTimeline({
   return (
     <div className="relative py-1">
       {/* Trilho vertical central da linha do tempo. */}
-      <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-border" />
+      <div className="absolute inset-y-0 left-2.5 w-px bg-border md:left-1/2 md:-translate-x-1/2" />
 
       <div className="space-y-3">
         {atividades.map((a, index) => {
@@ -90,7 +90,7 @@ export function OrcamentoTimeline({
           return (
             <div key={a.id}>
               {novoDia && (
-                <div className="relative flex justify-center py-2">
+                <div className="relative flex justify-start py-2 pl-8 md:justify-center md:pl-0">
                   <span className="rounded-full border border-border/70 bg-background px-2.5 py-0.5 text-xs font-medium">
                     {dia}
                   </span>
@@ -98,8 +98,8 @@ export function OrcamentoTimeline({
               )}
 
               <div className="relative flex items-start gap-3">
-                {/* Metade esquerda: o cartão só ocupa quando é a vez dela. */}
-                <div className="flex-1">
+                {/* Computador: zig-zag. Metade esquerda: o cartão só ocupa quando é a vez dela. */}
+                <div className="hidden flex-1 md:block">
                   {aEsquerda && (
                     <Cartao atividade={a} hora={hora} destaque={desteOrcamento} alinhar="right" />
                   )}
@@ -120,10 +120,15 @@ export function OrcamentoTimeline({
                   )}
                 </span>
 
-                <div className="flex-1">
+                <div className="hidden flex-1 md:block">
                   {!aEsquerda && (
                     <Cartao atividade={a} hora={hora} destaque={desteOrcamento} alinhar="left" />
                   )}
+                </div>
+
+                {/* Celular: os cartões ficam todos à direita do trilho, na largura toda. */}
+                <div className="min-w-0 flex-1 md:hidden">
+                  <Cartao atividade={a} hora={hora} destaque={desteOrcamento} alinhar="left" />
                 </div>
               </div>
             </div>

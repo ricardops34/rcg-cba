@@ -189,6 +189,18 @@
     overflow-x: clip;
     max-width: 100%;
   }
+  /* No iPhone, os campos de data e hora têm largura intrínseca e passam da borda
+     do cartão. Sem a aparência nativa, voltam a obedecer à largura do contêiner. */
+  input[type="date"],
+  input[type="datetime-local"],
+  input[type="time"],
+  input[type="month"] {
+    -webkit-appearance: none;
+    appearance: none;
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+  }
   html {
     @apply font-sans;
     /* Nada na página pode abrir rolagem lateral: no iPhone, um elemento que
