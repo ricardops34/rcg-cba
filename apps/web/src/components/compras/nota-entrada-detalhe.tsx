@@ -46,9 +46,9 @@ const dataBr = dataCivilBr;
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm">{value ?? "—"}</p>
+      <p className="text-sm break-words">{value ?? "—"}</p>
     </div>
   );
 }
@@ -62,7 +62,7 @@ export function NotaEntradaDetalheContent({ nota }: { nota: NotaEntradaDetalhe }
   return (
     <div className="space-y-4">
       <Card>
-        <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <CardContent className="grid grid-cols-2 gap-x-3 gap-y-4 sm:gap-4 lg:grid-cols-4">
           <Info label="Emissão" value={dataBr(nota.dtEmissao)} />
           <Info label="Entrada" value={dataBr(nota.dtEntrada)} />
           <Info label="Espécie" value={nota.especieFiscal || "—"} />
@@ -94,7 +94,7 @@ export function NotaEntradaDetalheContent({ nota }: { nota: NotaEntradaDetalhe }
           <Info label="Seguro" value={moeda(nota.vlrSeguro)} />
           <Info label="Despesas" value={moeda(nota.vlrDespesa)} />
           {nota.chaveNfe && (
-            <div className="col-span-2 sm:col-span-4">
+            <div className="col-span-2 lg:col-span-4">
               <p className="text-xs text-muted-foreground">Chave NFe</p>
               <p className="font-mono text-xs">{nota.chaveNfe}</p>
             </div>
@@ -105,7 +105,38 @@ export function NotaEntradaDetalheContent({ nota }: { nota: NotaEntradaDetalhe }
       <Card>
         <CardContent>
           <p className="mb-3 text-sm font-medium">Itens ({nota.itens.length})</p>
-          <div className="overflow-x-auto">
+          <div className="space-y-2 md:hidden">
+            {nota.itens.map((it) => (
+              <div key={it.id} className="space-y-1 rounded-lg border px-3 py-2.5">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="text-sm break-words">
+                      {it.item ? <span className="text-muted-foreground">{it.item}. </span> : null}
+                      {it.produto?.descricao ?? "—"}
+                    </p>
+                    <p className="font-mono text-xs text-muted-foreground">{it.produto?.codigoErp}</p>
+                  </div>
+                  <span className="shrink-0 text-sm font-semibold tabular-nums">{moeda(it.vlrTotal)}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {it.quantidade.toLocaleString("pt-BR")}
+                  {it.produto?.unidade ? ` ${it.produto.unidade}` : ""} × {moeda(it.vlrUnitario)}
+                  {it.vlrDesconto ? ` · desc. ${moeda(it.vlrDesconto)}` : ""}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {[
+                    it.vlrIpi ? `IPI ${moeda(it.vlrIpi)}` : null,
+                    it.vlrIcmsSt ? `ICMS ST ${moeda(it.vlrIcmsSt)}` : null,
+                    it.armazem?.descricao,
+                    it.cfop ? `CFOP ${it.cfop}` : null,
+                  ]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              </div>
+            ))}
+          </div>
+          <div className="overflow-x-auto max-md:hidden">
             <Table>
               <TableHeader>
                 <TableRow>

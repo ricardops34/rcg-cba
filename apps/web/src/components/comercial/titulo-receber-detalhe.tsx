@@ -21,9 +21,9 @@ const dataBr = dataCivilBr;
 
 function Info({ label, value }: { label: string; value: React.ReactNode }) {
   return (
-    <div>
+    <div className="min-w-0">
       <p className="text-xs text-muted-foreground">{label}</p>
-      <p className="text-sm">{value ?? "—"}</p>
+      <p className="text-sm break-words">{value ?? "—"}</p>
     </div>
   );
 }
@@ -32,7 +32,7 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
 export function TituloReceberDetalheContent({ titulo }: { titulo: TituloReceberDetalhe }) {
   return (
     <Card>
-      <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <CardContent className="grid grid-cols-2 gap-x-3 gap-y-4 sm:gap-4 lg:grid-cols-4">
         <Info label="Status" value={<TituloStatusBadge status={titulo.status} />} />
         <Info label="Cliente" value={titulo.cliente?.razaoSocial ?? "—"} />
         <Info
@@ -51,7 +51,7 @@ export function TituloReceberDetalheContent({ titulo }: { titulo: TituloReceberD
         <Info label="Acréscimo" value={moeda(titulo.acrescimo)} />
         <Info label="Decréscimo" value={moeda(titulo.decrescimo)} />
         {titulo.historico && (
-          <div className="col-span-2 sm:col-span-4">
+          <div className="col-span-2 lg:col-span-4">
             <p className="text-xs text-muted-foreground">Histórico</p>
             <p className="text-sm">{titulo.historico}</p>
           </div>

@@ -201,6 +201,24 @@ export function OrcamentosClienteSheet({
                 setPage(1);
               }}
               onRowClick={(o) => setForm({ modo: "editar", id: o.id })}
+              mobileCard={(o) => (
+                <div className="flex items-start gap-2">
+                  <div className="min-w-0 flex-1 space-y-1">
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className="font-mono text-xs text-muted-foreground">Nº {numeroOrcamento(o)}</span>
+                      <Badge variant={STATUS_ORCAMENTO_VARIANT[o.status]}>{STATUS_ORCAMENTO_LABEL[o.status]}</Badge>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {dataCivilBr(o.createdAt)}
+                      {o.dataValidade ? ` · válido até ${dataCivilBr(o.dataValidade)}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex shrink-0 flex-col items-end gap-1">
+                    <span className="text-sm font-semibold tabular-nums">{moeda(o.vlrTotal)}</span>
+                    {columns[columns.length - 1].cell(o)}
+                  </div>
+                </div>
+              )}
               emptyMessage="Nenhum orçamento para este cliente."
               storageKey="orcamentos-cliente"
             />

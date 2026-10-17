@@ -158,6 +158,36 @@ export function TabelaEquipamentos({
     }
   };
 
+  // O botão de baixar/desfazer: o mesmo na tabela e no cartão do celular.
+  const acaoLinha = (e: PosicaoClienteEquipamento) => (
+    <>
+          {e.baixas.length > 0 ? (
+            <Button
+              size="sm"
+              variant="ghost"
+              disabled={desfazer.isPending}
+              onClick={() => {
+                const b = e.baixas[0];
+                if (
+                  window.confirm(
+                    `Desfazer a baixa de ${qtd(b.quantidade)} feita por ${b.autor ?? "—"} em ${dataHora(b.createdAt)}?`,
+                  )
+                )
+                  desfazer.mutate(b.id);
+              }}
+            >
+              <Undo2 className="size-4" />
+              Desfazer
+            </Button>
+          ) : e.saldo > 0 && e.produtoId ? (
+            <Button size="sm" variant="outline" onClick={() => setBaixando(e)}>
+              Baixar
+            </Button>
+          ) : null}
+
+    </>
+  );
+
   const cabecalho = (label: string, coluna: Coluna, className?: string) => (
     <SortableTableHead
       label={label}
@@ -215,7 +245,69 @@ export function TabelaEquipamentos({
               : "Nenhum equipamento encontrado com esses filtros."}
           </p>
         ) : (
-          <div className="min-h-0 flex-1 overflow-auto rounded-lg border [&>[data-slot=table-container]]:overflow-visible">
+          <>
+          <div className="min-h-0 flex-1 overflow-auto rounded-lg border md:hidden">
+            {linhas.map((e) => (
+              <div
+                key={e.produtoId ?? e.descricao}
+                role={e.produtoId ? "button" : undefined}
+                tabIndex={e.produtoId ? 0 : undefined}
+                onClick={() => e.produtoId && onSelecionarProduto(e.produtoId)}
+                className={cn(
+                  "space-y-1.5 border-b px-3 py-3 last:border-b-0",
+                  e.produtoId && "cursor-pointer active:bg-muted/60",
+                )}
+              >
+                <div className="flex items-start justify-between gap-2">
+                  <div className="min-w-0">
+                    <p className="text-sm font-medium break-words">{e.descricao}</p>
+                    <p className="font-mono text-xs text-muted-foreground">
+                      {[e.codigoErp, e.categoria].filter(Boolean).join(" · ") || "—"}
+                    </p>
+                  </div>
+                  <div className="shrink-0 text-right">
+                    <p
+                      className={cn("text-sm font-semibold tabular-nums", e.saldo < 0 && "text-destructive")}
+                    >
+                      {qtd(e.saldo)}
+                    </p>
+                    <p className="text-xs text-muted-foreground">saldo</p>
+                  </div>
+                </div>
+                {e.semConsumo && (
+                  <Badge
+                    variant="outline"
+                    className="border-amber-500/40 text-amber-700 dark:text-amber-400"
+                  >
+                    <Wrench className="size-3" /> Sem consumo
+                  </Badge>
+                )}
+                <p className="text-xs text-muted-foreground">
+                  Enviada {qtd(e.quantidadeEnviada)} · devolvida {qtd(e.quantidadeDevolvida)} · baixada{" "}
+                  {qtd(e.quantidadeBaixada)}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Última remessa {dataCivilBr(e.ultimaRemessa)} · compra aplicável{" "}
+                  {e.totalAplicaveis === 0 ? "—" : dataCivilBr(e.ultimaCompraAplicavel, "Nunca")}
+                </p>
+                {e.baixas.length > 0 && (
+                  <p className="text-xs text-muted-foreground">
+                    {e.baixas
+                      .map((b) => `Baixa de ${qtd(b.quantidade)} por ${b.autor ?? "—"} em ${dataHora(b.createdAt)}${b.motivo ? ` — ${b.motivo}` : ""}`)
+                      .join("; ")}
+                  </p>
+                )}
+                <div onClick={(ev) => ev.stopPropagation()} className="flex justify-end">
+                  {acaoLinha(e)}
+                </div>
+              </div>
+            ))}
+            <div className="bg-muted/40 px-3 py-2 text-xs font-medium">
+              Total ({linhas.length} produtos): enviada {qtd(totais.enviada)} · devolvida{" "}
+              {qtd(totais.devolvida)} · baixada {qtd(totais.baixada)} · saldo {qtd(totais.saldo)}
+            </div>
+          </div>
+          <div className="min-h-0 flex-1 overflow-auto rounded-lg border max-md:hidden [&>[data-slot=table-container]]:overflow-visible">
             <Table>
               <TableHeader className="sticky top-0 z-10 bg-card">
                 <TableRow>
@@ -295,29 +387,7 @@ export function TabelaEquipamentos({
                       )}
                     </TableCell>
                     <TableCell onClick={(ev) => ev.stopPropagation()}>
-                      {e.baixas.length > 0 ? (
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          disabled={desfazer.isPending}
-                          onClick={() => {
-                            const b = e.baixas[0];
-                            if (
-                              window.confirm(
-                                `Desfazer a baixa de ${qtd(b.quantidade)} feita por ${b.autor ?? "—"} em ${dataHora(b.createdAt)}?`,
-                              )
-                            )
-                              desfazer.mutate(b.id);
-                          }}
-                        >
-                          <Undo2 className="size-4" />
-                          Desfazer
-                        </Button>
-                      ) : e.saldo > 0 && e.produtoId ? (
-                        <Button size="sm" variant="outline" onClick={() => setBaixando(e)}>
-                          Baixar
-                        </Button>
-                      ) : null}
+                      {acaoLinha(e)}
                     </TableCell>
                   </TableRow>
                 ))}
@@ -332,6 +402,7 @@ export function TabelaEquipamentos({
               </TableBody>
             </Table>
           </div>
+          </>
         )}
       </CardContent>
 
