@@ -527,6 +527,77 @@ function compararMix(
  * cheia (`OrcamentoForm`) quanto na cortina lateral (`OrcamentoSheet`, aberta
  * sobre a cortina dos orçamentos do cliente, na Posição de Cliente).
  */
+const TEXTO_ADVERTENCIAS = "Pontos de atenção do orçamento: situação do cliente (títulos vencidos, cadastro bloqueado), desconto no limite da regra e situação de estoque (sem saldo, saldo menor que a quantidade pedida ou saldo prestes a zerar). Salvar continua liberado em todos os casos; só o desconto igual ou acima do máximo trava a proposta em PDF e a efetivação, até haver autorização.";
+
+/** Os ícones da escala de desconto — a mesma cor que aparece no ícone de cada linha da aba Itens. */
+function LegendaDescontos() {
+  return (
+    <>
+      <span className="flex items-center gap-1.5">
+        <Info className="size-3.5 text-blue-600 dark:text-blue-400" />
+        Preço acima da tabela
+      </span>
+      <span className="flex items-center gap-1.5">
+        <CircleCheck className="size-3.5 text-success" />
+        Até metade do máximo
+      </span>
+      <span className="flex items-center gap-1.5">
+        <TriangleAlert className="size-3.5 text-amber-500" />≥ 50% do máximo
+      </span>
+      <span className="flex items-center gap-1.5">
+        <TriangleAlert className="size-3.5 text-destructive" />≥ 80% do máximo
+      </span>
+      <span className="flex items-center gap-1.5 text-destructive">
+        <TriangleAlert className="size-3.5" />≥ 90% do máximo
+      </span>
+      <span className="flex items-center gap-1.5 rounded bg-destructive/10 px-1.5 text-destructive">
+        <TriangleAlert className="size-3.5" />≥ o máximo (trava PDF/efetivação)
+      </span>
+      <span className="flex items-center gap-1.5 rounded bg-destructive/10 px-1.5">
+        <TriangleAlert className="size-3.5 text-foreground" />
+        Faixa de aprovação
+      </span>
+
+    </>
+  );
+}
+
+/**
+ * Uma advertência. No computador o texto vem inteiro; no celular só o título,
+ * e o detalhe abre ao toque — o detalhe é longo (regra, percentual, o que
+ * trava) e, empilhado, ocupava a tela toda.
+ */
+function AdvertenciaLinha({
+  titulo,
+  detalhe,
+  corTitulo,
+  corIcone,
+}: {
+  titulo: string;
+  detalhe: string;
+  corTitulo: string;
+  corIcone: string;
+}) {
+  return (
+    <li className="text-sm">
+      <div className="hidden items-start gap-2 md:flex">
+        <TriangleAlert className={`mt-0.5 size-3.5 shrink-0 ${corIcone}`} />
+        <span>
+          <span className={`font-medium ${corTitulo}`}>{titulo}</span> — {detalhe}
+        </span>
+      </div>
+      <details className="group md:hidden">
+        <summary className="flex cursor-pointer list-none items-start gap-2">
+          <TriangleAlert className={`mt-0.5 size-3.5 shrink-0 ${corIcone}`} />
+          <span className={`min-w-0 flex-1 text-xs font-medium ${corTitulo}`}>{titulo}</span>
+          <span className="text-[10px] text-muted-foreground group-open:hidden">ver</span>
+        </summary>
+        <p className="mt-1 pl-5 text-xs text-muted-foreground">{detalhe}</p>
+      </details>
+    </li>
+  );
+}
+
 export function OrcamentoFormContent({
   orcamento,
   clienteIdPadrao,
@@ -1960,42 +2031,24 @@ export function OrcamentoFormContent({
                 </TabsContent>
 
                 <TabsContent value="advertencias" className="space-y-3 pt-3">
-                  <p className="text-sm text-muted-foreground">
-                    Pontos de atenção do orçamento: situação do cliente (títulos vencidos,
-                    cadastro bloqueado), desconto no limite da regra e situação de estoque (sem
-                    saldo, saldo menor que a quantidade pedida ou saldo prestes a zerar). Salvar
-                    continua liberado em todos os casos; só o desconto igual ou acima do máximo
-                    trava a proposta em PDF e a efetivação, até haver autorização.
-                  </p>
+                  {/* Celular: o texto de apoio fica recolhido — era a primeira coisa na aba, e empurrava as advertências para baixo. */}
+                  <details className="rounded-lg border border-border/70 px-3 py-2 text-xs text-muted-foreground md:hidden">
+                    <summary className="cursor-pointer font-medium">Como ler esta aba</summary>
+                    <p className="mt-1.5">{TEXTO_ADVERTENCIAS}</p>
+                  </details>
+                  <p className="hidden text-sm text-muted-foreground md:block">{TEXTO_ADVERTENCIAS}</p>
 
                   {/* Legenda da escala de desconto — a mesma cor que aparece
                       no ícone de cada linha da aba Itens. */}
-                  <div className="flex flex-wrap gap-x-4 gap-y-1.5 rounded-lg border border-border/70 px-3 py-2 text-xs">
-                    <span className="flex items-center gap-1.5">
-                      <Info className="size-3.5 text-blue-600 dark:text-blue-400" />
-                      Preço acima da tabela
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <CircleCheck className="size-3.5 text-success" />
-                      Até metade do máximo
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <TriangleAlert className="size-3.5 text-amber-500" />≥ 50% do máximo
-                    </span>
-                    <span className="flex items-center gap-1.5">
-                      <TriangleAlert className="size-3.5 text-destructive" />≥ 80% do máximo
-                    </span>
-                    <span className="flex items-center gap-1.5 text-destructive">
-                      <TriangleAlert className="size-3.5" />≥ 90% do máximo
-                    </span>
-                    <span className="flex items-center gap-1.5 rounded bg-destructive/10 px-1.5 text-destructive">
-                      <TriangleAlert className="size-3.5" />≥ o máximo (trava PDF/efetivação)
-                    </span>
-                    <span className="flex items-center gap-1.5 rounded bg-destructive/10 px-1.5">
-                      <TriangleAlert className="size-3.5 text-foreground" />
-                      Faixa de aprovação
-                    </span>
+                  <div className="hidden flex-wrap gap-x-4 gap-y-1.5 rounded-lg border border-border/70 px-3 py-2 text-xs md:flex">
+                    <LegendaDescontos />
                   </div>
+                  <details className="rounded-lg border border-border/70 px-3 py-2 text-xs md:hidden">
+                    <summary className="cursor-pointer font-medium text-muted-foreground">Legenda dos ícones</summary>
+                    <div className="mt-2 flex flex-col gap-1.5">
+                      <LegendaDescontos />
+                    </div>
+                  </details>
 
                   {totalAdvertencias === 0 && (
                     <p className="rounded-lg border border-emerald-500/30 bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">
@@ -2015,13 +2068,13 @@ export function OrcamentoFormContent({
                       </p>
                       <ul className="space-y-1.5">
                         {advertenciasDoCliente.map((a) => (
-                          <li key={a.titulo} className="flex items-start gap-2 text-sm">
-                            <TriangleAlert className="mt-0.5 size-3.5 shrink-0 text-destructive" />
-                            <span>
-                              <span className="font-medium text-destructive">{a.titulo}</span>{" "}
-                              — {a.detalhe}
-                            </span>
-                          </li>
+                          <AdvertenciaLinha
+                            key={a.titulo}
+                            titulo={a.titulo}
+                            detalhe={a.detalhe}
+                            corTitulo="text-destructive"
+                            corIcone="text-destructive"
+                          />
                         ))}
                       </ul>
                     </div>
@@ -2031,7 +2084,7 @@ export function OrcamentoFormContent({
                     l.advertencias.length === 0 ? null : (
                       <div
                         key={linhas.fields[index]?.id ?? index}
-                        className={`space-y-2 rounded-lg border px-3 py-2.5 ${
+                        className={`space-y-1.5 rounded-lg border px-3 py-2 md:space-y-2 md:py-2.5 ${
                           l.temCritico
                             ? "border-destructive/40 bg-destructive/5"
                             : "border-amber-500/30 bg-amber-500/5"
@@ -2046,7 +2099,7 @@ export function OrcamentoFormContent({
                             {moeda(l.quantidade * l.vlrUnitario)}
                           </p>
                         </div>
-                        <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
+                        <div className="hidden flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground md:flex">
                           <span>Preço de tabela: {moeda(l.vlrTabela)}</span>
                           <span>Desconto: {percentual(l.desconto)}</span>
                           <span>Estoque: {numero(l.info?.saldoEstoque)}</span>
@@ -2054,25 +2107,17 @@ export function OrcamentoFormContent({
                         </div>
                         <ul className="space-y-1.5">
                           {l.advertencias.map((a) => (
-                            <li key={a.titulo} className="flex items-start gap-2 text-sm">
-                              <TriangleAlert
-                                className={`mt-0.5 size-3.5 shrink-0 ${
-                                  a.nivel === "critico" ? "text-destructive" : "text-amber-500"
-                                }`}
-                              />
-                              <span>
-                                <span
-                                  className={`font-medium ${
-                                    a.nivel === "critico"
-                                      ? "text-destructive"
-                                      : "text-amber-700 dark:text-amber-400"
-                                  }`}
-                                >
-                                  {a.titulo}
-                                </span>{" "}
-                                — {a.detalhe}
-                              </span>
-                            </li>
+                            <AdvertenciaLinha
+                              key={a.titulo}
+                              titulo={a.titulo}
+                              detalhe={a.detalhe}
+                              corTitulo={
+                                a.nivel === "critico"
+                                  ? "text-destructive"
+                                  : "text-amber-700 dark:text-amber-400"
+                              }
+                              corIcone={a.nivel === "critico" ? "text-destructive" : "text-amber-500"}
+                            />
                           ))}
                         </ul>
                       </div>
