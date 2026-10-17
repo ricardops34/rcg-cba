@@ -562,11 +562,7 @@ function LegendaDescontos() {
   );
 }
 
-/**
- * Uma advertência. No computador o texto vem inteiro; no celular só o título,
- * e o detalhe abre ao toque — o detalhe é longo (regra, percentual, o que
- * trava) e, empilhado, ocupava a tela toda.
- */
+/** Uma advertência, com o detalhe inteiro: é aqui, na aba Advertências, que ele mora. */
 function AdvertenciaLinha({
   titulo,
   detalhe,
@@ -579,21 +575,11 @@ function AdvertenciaLinha({
   corIcone: string;
 }) {
   return (
-    <li className="text-sm">
-      <div className="hidden items-start gap-2 md:flex">
-        <TriangleAlert className={`mt-0.5 size-3.5 shrink-0 ${corIcone}`} />
-        <span>
-          <span className={`font-medium ${corTitulo}`}>{titulo}</span> — {detalhe}
-        </span>
-      </div>
-      <details className="group md:hidden">
-        <summary className="flex cursor-pointer list-none items-start gap-2">
-          <TriangleAlert className={`mt-0.5 size-3.5 shrink-0 ${corIcone}`} />
-          <span className={`min-w-0 flex-1 text-xs font-medium ${corTitulo}`}>{titulo}</span>
-          <span className="text-[10px] text-muted-foreground group-open:hidden">ver</span>
-        </summary>
-        <p className="mt-1 pl-5 text-xs text-muted-foreground">{detalhe}</p>
-      </details>
+    <li className="flex items-start gap-2 text-sm">
+      <TriangleAlert className={`mt-0.5 size-3.5 shrink-0 ${corIcone}`} />
+      <span>
+        <span className={`font-medium ${corTitulo}`}>{titulo}</span> — {detalhe}
+      </span>
     </li>
   );
 }
@@ -728,6 +714,8 @@ export function OrcamentoFormContent({
   // sistema (Administração > Parâmetros) — só na primeira carga, o vendedor pode
   // ajustar a data livremente depois.
   const [validadePadraoAplicada, setValidadePadraoAplicada] = useState(false);
+  // Aba aberta: o ícone de aviso do item leva à aba Advertências.
+  const [aba, setAba] = useState("orcamento");
   const diasValidade = orcamentoConfigQuery.data?.diasValidade;
   useEffect(() => {
     if (!orcamento && !validadePadraoAplicada && diasValidade != null) {
@@ -1455,7 +1443,7 @@ export function OrcamentoFormContent({
               edita — Orçamento, Itens e o "adicionar" do Mix. Envolver as
               abas inteiras desativava também os botões das abas, e não dava
               nem para consultar os itens. */}
-          <Tabs defaultValue="orcamento">
+          <Tabs value={aba} onValueChange={setAba}>
             <TabsList data-tour="orcamento-abas">
               <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
               <TabsTrigger data-tour="orcamento-itens" value="itens">Itens ({linhas.fields.length})</TabsTrigger>
@@ -1977,20 +1965,20 @@ export function OrcamentoFormContent({
                               </span>
                             </div>
 
-                            {/* No computador o aviso é um tooltip no ícone; no
-                                toque não há hover, então ele vira texto. */}
+                            {/* No computador o aviso é um tooltip no ícone; no toque não há hover.
+                                Aqui fica só o ícone, na cor da gravidade: o texto longo mora na
+                                aba Advertências, e o toque leva até lá. */}
                             {corSinal && (nivel || advertencias.length > 0) && (
-                              <div className={`flex items-start gap-2 text-xs ${corSinal}`}>
-                                <IconeSinal className="mt-0.5 size-3.5 shrink-0" />
-                                <ul className="space-y-0.5">
-                                  {nivel && <li>{nivel.legenda}</li>}
-                                  {advertencias.map((a) => (
-                                    <li key={a.titulo}>
-                                      <span className="font-medium">{a.titulo}</span> — {a.detalhe}
-                                    </li>
-                                  ))}
-                                </ul>
-                              </div>
+                              <button
+                                type="button"
+                                onClick={() => setAba("advertencias")}
+                                className={`flex items-center gap-1.5 text-xs font-medium ${corSinal}`}
+                              >
+                                <IconeSinal className="size-4 shrink-0" />
+                                {advertencias.length > 0
+                                  ? `${advertencias.length} ${advertencias.length === 1 ? "advertência" : "advertências"} — ver detalhes`
+                                  : "Ver detalhes"}
+                              </button>
                             )}
 
                             <details className="text-xs">
