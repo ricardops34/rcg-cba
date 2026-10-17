@@ -21,6 +21,7 @@ import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { Flag } from "lucide-react";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -70,6 +71,7 @@ export function AtividadeForm({
     concluida: false,
     dataConclusao: null,
     ativo: true,
+    importante: false,
   };
   const form = useForm<AtividadeCreate>({
     resolver: zodResolver(schema as typeof atividadeCreateSchema),
@@ -85,6 +87,7 @@ export function AtividadeForm({
           concluida: atividade.concluida,
           dataConclusao: atividade.dataConclusao ? new Date(atividade.dataConclusao) : null,
           ativo: atividade.ativo,
+          importante: atividade.importante ?? false,
         }
       : empty,
   });
@@ -276,6 +279,14 @@ export function AtividadeForm({
                     onCheckedChange={(v) => form.setValue("ativo", v === true)}
                   />
                   Ativa
+                </label>
+                <label className="flex cursor-pointer items-center gap-2 text-sm">
+                  <Checkbox
+                    checked={form.watch("importante") ?? false}
+                    onCheckedChange={(v) => form.setValue("importante", v === true)}
+                  />
+                  <Flag className="size-3.5 fill-red-500 text-red-500" />
+                  Importante
                 </label>
               </div>
             </FieldGroup>

@@ -46,7 +46,7 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { AlertTriangle, ChevronLeft, ChevronRight, Plus } from "lucide-react";
+import { AlertTriangle, ChevronLeft, ChevronRight, Flag, Plus } from "lucide-react";
 
 type Visao = "mes" | "semana" | "dia";
 type AgendaItem =
@@ -136,6 +136,8 @@ export default function AgendaPage() {
   );
   // Computador: orçamento vencido ou faturado entra ou não. No celular nunca.
   const [incluirEncerrados, setIncluirEncerrados] = useState(true);
+  // Só o que o vendedor marcou como importante (bandeira vermelha).
+  const [somenteImportantes, setSomenteImportantes] = useState(false);
   const todasAsCategorias = categorias.length === CATEGORIAS_EVENTO.length;
   const alternarCategoria = (c: CategoriaEvento, ligada: boolean) =>
     setCategorias((atual) => (ligada ? [...atual, c] : atual.filter((x) => x !== c)));
@@ -175,6 +177,7 @@ export default function AgendaPage() {
     ...(vendedorId ? { vendedorId } : {}),
     ...(clienteId ? { clienteId } : {}),
     ...(somentePendentes || celular ? { concluida: false } : {}),
+    ...(somenteImportantes ? { importante: true } : {}),
   });
 
   // Orçamentos entram na Agenda pela data de criação — registro do que foi
@@ -209,13 +212,19 @@ export default function AgendaPage() {
     const hojeKey = toKey(new Date());
     for (const o of orcamentosQuery.data?.data ?? []) {
       const item: AgendaItem = { kind: "orcamento", id: o.id, data: o };
-      if (!categorias.includes("orcamento")) continue;
+      if (!categorias.includes("orcamento") || somenteImportantes) continue;
       // Vencido e faturado só entram se o filtro deixar (no celular, nunca).
       if (!incluirEncerrados && !orcamentoAgendado(o, hojeKey)) continue;
       add(toKey(new Date(o.createdAt)), item);
     }
     return mapa;
-  }, [atividadesQuery.data, orcamentosQuery.data, categorias, incluirEncerrados]);
+  }, [
+    atividadesQuery.data,
+    orcamentosQuery.data,
+    categorias,
+    incluirEncerrados,
+    somenteImportantes,
+  ]);
 
   // O que o celular mostra: **agendamentos**. Atividade ainda por fazer e
   // orçamento com retorno marcado que segue de pé. Concluída, orçamento vencido
@@ -236,7 +245,7 @@ export default function AgendaPage() {
       add(toKey(new Date(a.dataVencimento!)), item);
     }
 
-    if (celular && categorias.includes("orcamento")) {
+    if (celular && categorias.includes("orcamento") && !somenteImportantes) {
       const hojeKey = toKey(new Date());
       // O retorno do orçamento já gera uma atividade de ligação: se ela está
       // na lista, é ela que representa o retorno — mostrar os dois seria
@@ -251,7 +260,7 @@ export default function AgendaPage() {
       }
     }
     return mapa;
-  }, [atividadesQuery.data, orcamentosQuery.data, celular, categorias]);
+  }, [atividadesQuery.data, orcamentosQuery.data, celular, categorias, somenteImportantes]);
 
   const hoje = new Date();
   // A semana vai de domingo a sábado, como a grade do mês. No celular a
@@ -277,10 +286,12 @@ export default function AgendaPage() {
       ? `${a.getDate()} a ${b.getDate()} de ${MESES[b.getMonth()]} de ${b.getFullYear()}`
       : `${a.getDate()} de ${MESES[a.getMonth()].slice(0, 3)} a ${b.getDate()} de ${MESES[b.getMonth()].slice(0, 3)} de ${b.getFullYear()}`;
 
-  const filtrosAtivos = !todasAsCategorias || !incluirEncerrados || !!vendedorId;
+  const filtrosAtivos =
+    !todasAsCategorias || !incluirEncerrados || !!vendedorId || somenteImportantes;
   const limparFiltros = () => {
     setCategorias(CATEGORIAS_EVENTO.map((c) => c.value));
     setIncluirEncerrados(true);
+    setSomenteImportantes(false);
     setVendedorId(undefined);
   };
 
@@ -320,6 +331,14 @@ export default function AgendaPage() {
                 ))}
               </div>
             </div>
+
+            <label className="flex cursor-pointer items-center justify-between gap-3 text-sm">
+              <span className="flex items-center gap-1.5">
+                <Flag className="size-3.5 fill-red-500 text-red-500" />
+                Só os importantes
+              </span>
+              <Switch checked={somenteImportantes} onCheckedChange={setSomenteImportantes} />
+            </label>
 
             <label className="flex cursor-pointer items-start justify-between gap-3 text-sm">
               <span>
@@ -653,7 +672,11 @@ function MesCompacto({
                   itens.slice(0, 3).map((item) => (
                     <span
                       key={`${item.kind}-${item.id}`}
-                      className={`size-1.5 rounded-full ${corDoItem(item)}`}
+                      className={`size-1.5 rounded-full ${corDoItem(item)} ${
+                        item.kind === "atividade" && item.data.importante
+                          ? "ring-2 ring-red-500"
+                          : ""
+                      }`}
                     />
                   ))}
               </span>
@@ -683,6 +706,10 @@ function DiaDetalhe({
 }) {
   // Com hora primeiro, em ordem; o resto (dia inteiro, orçamentos) depois.
   const ordenados = [...itens].sort((a, b) => {
+    // Importantes no alto do dia.
+    const ia = a.kind === "atividade" && a.data.importante ? 1 : 0;
+    const ib = b.kind === "atividade" && b.data.importante ? 1 : 0;
+    if (ia !== ib) return ib - ia;
     const ha = horaDoItem(a);
     const hb = horaDoItem(b);
     if (ha && hb) return ha.localeCompare(hb);
@@ -720,6 +747,7 @@ function DiaDetalhe({
             const hora = horaDoItem(item);
             const vencida = item.kind === "atividade" && estaVencida(item.data);
             const concluida = item.kind === "atividade" && item.data.concluida;
+            const importante = item.kind === "atividade" && !!item.data.importante;
             const detalhe =
               item.kind === "atividade"
                 ? [ROTULO_EVENTO_UNITARIO[categoriaDoEvento(item)], item.data.cliente?.razaoSocial]
@@ -731,7 +759,9 @@ function DiaDetalhe({
                 <button
                   type="button"
                   onClick={() => onSelectItem(item)}
-                  className="flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/50"
+                  className={`flex min-h-14 w-full items-center gap-3 px-3 py-2 text-left hover:bg-muted/50 ${
+                    importante ? "border-l-4 border-l-red-500 bg-red-50/70 dark:bg-red-950/20" : ""
+                  }`}
                 >
                   <span className={`size-2.5 shrink-0 rounded-full ${corDoItem(item)}`} />
                   <span className="w-11 shrink-0 text-xs tabular-nums text-muted-foreground">
@@ -753,6 +783,9 @@ function DiaDetalhe({
                       {detalhe}
                     </span>
                   </span>
+                  {importante ? (
+                    <Flag className="size-4 shrink-0 fill-red-500 text-red-500" aria-label="Importante" />
+                  ) : null}
                   <ChevronRight className="size-4 shrink-0 text-muted-foreground/50" />
                 </button>
               </li>
@@ -901,6 +934,9 @@ function AgendaItemChip({
       }`}
     >
       <span className={`size-1.5 shrink-0 rounded-full ${cor}`} />
+      {item.kind === "atividade" && item.data.importante ? (
+        <Flag className="size-3 shrink-0 fill-red-500 text-red-500" aria-label="Importante" />
+      ) : null}
       {hora && (
         <span className="shrink-0 tabular-nums text-muted-foreground">
           {hora}

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { CalendarClock, Pencil, X } from "lucide-react";
+import { CalendarClock, Flag, Pencil, X } from "lucide-react";
 import type {
   WhatsappAtendimentoAgendado,
   WhatsappMensagemAgendada,
@@ -37,6 +37,8 @@ function Linha({
   detalhe,
   quando,
   erro,
+  importante,
+  onImportante,
   onEditar,
   onCancelar,
   ocupado,
@@ -45,6 +47,9 @@ function Linha({
   detalhe?: string | null;
   quando: string;
   erro?: string | null;
+  importante?: boolean;
+  /** Liga e desliga a bandeira; ausente = sem o botão. */
+  onImportante?: () => void;
   onEditar?: () => void;
   onCancelar: () => void;
   ocupado: boolean;
@@ -60,6 +65,21 @@ function Linha({
         </p>
       </div>
       <div className="flex shrink-0 items-center gap-1">
+        {onImportante ? (
+          <button
+            type="button"
+            title={importante ? "Importante — toque para desmarcar" : "Marcar como importante"}
+            aria-label="Importante"
+            aria-pressed={!!importante}
+            disabled={ocupado}
+            onClick={onImportante}
+            className="rounded p-1 hover:bg-muted"
+          >
+            <Flag
+              className={`size-4 ${importante ? "fill-red-500 text-red-500" : "text-muted-foreground"}`}
+            />
+          </button>
+        ) : null}
         {onEditar ? (
           <button
             type="button"
@@ -132,10 +152,18 @@ export function MensagensAgendadasLista({
       apiFetch(`/whatsapp/conversas/${conversaId}/agendamentos/${id}`, { method: "DELETE" }),
     ...atualizar("Agendamento cancelado"),
   });
+  const marcar = useMutation({
+    mutationFn: ({ id, importante }: { id: string; importante: boolean }) =>
+      apiFetch(`/whatsapp/conversas/${conversaId}/agendamentos/${id}`, {
+        method: "PATCH",
+        body: { importante },
+      }),
+    ...atualizar("Agendamento atualizado"),
+  });
 
   const itens = query.data ?? [];
   if (itens.length === 0) return null;
-  const ocupado = salvar.isPending || cancelar.isPending;
+  const ocupado = salvar.isPending || cancelar.isPending || marcar.isPending;
 
   return (
     <div className="space-y-2 rounded-md border p-2">
@@ -169,6 +197,13 @@ export function MensagensAgendadasLista({
             titulo={a.texto}
             quando={a.enviarEm}
             erro={a.status === "erro" ? a.erro : null}
+            importante={a.importante}
+            // A bandeira é da agenda: só a pendente tem atividade para marcar.
+            onImportante={
+              a.status === "pendente"
+                ? () => marcar.mutate({ id: a.id, importante: !a.importante })
+                : undefined
+            }
             ocupado={ocupado}
             // Só a pendente se altera; a que falhou só se cancela (e agenda-se outra).
             onEditar={
@@ -236,10 +271,18 @@ export function AtendimentosAgendadosLista({
       }),
     ...depois("Atendimento cancelado"),
   });
+  const marcar = useMutation({
+    mutationFn: ({ id, importante }: { id: string; importante: boolean }) =>
+      apiFetch(`/whatsapp/conversas/${conversaId}/atendimentos-agendados/${id}`, {
+        method: "PATCH",
+        body: { importante },
+      }),
+    ...depois("Atendimento atualizado"),
+  });
 
   const itens = query.data ?? [];
   if (itens.length === 0) return null;
-  const ocupado = salvar.isPending || cancelar.isPending;
+  const ocupado = salvar.isPending || cancelar.isPending || marcar.isPending;
 
   return (
     <div className="space-y-2 rounded-md border p-2">
@@ -276,6 +319,8 @@ export function AtendimentosAgendadosLista({
             titulo={a.titulo}
             detalhe={a.descricao}
             quando={a.dataVencimento}
+            importante={a.importante}
+            onImportante={() => marcar.mutate({ id: a.id, importante: !a.importante })}
             ocupado={ocupado}
             onEditar={() => {
               setEditando(a.id);

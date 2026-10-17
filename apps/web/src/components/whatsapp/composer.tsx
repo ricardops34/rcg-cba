@@ -1,4 +1,6 @@
 "use client";
+import { Flag } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
 import { MensagensAgendadasLista } from "@/components/whatsapp/agendamentos-lista";
 import { useAgente } from "@/components/agente/use-agente";
 import { useEffect, useRef, useState } from "react";
@@ -677,6 +679,7 @@ function AgendarMensagemDialog({
   const queryClient = useQueryClient();
   const [texto, setTexto] = useState(textoInicial);
   const [quando, setQuando] = useState("");
+  const [importante, setImportante] = useState(false);
 
   const chave = ["whatsapp-agendamentos", conversaId];
 
@@ -686,12 +689,13 @@ function AgendarMensagemDialog({
         method: "POST",
         // `datetime-local` não tem fuso: o navegador monta a data na hora
         // local de quem digitou, que é o que o vendedor quis dizer.
-        body: { texto, enviarEm: new Date(quando).toISOString() },
+        body: { texto, enviarEm: new Date(quando).toISOString(), importante },
       }),
     onSuccess: () => {
       toast.success("Mensagem agendada");
       setQuando("");
       setTexto("");
+      setImportante(false);
       onAgendada();
       void queryClient.invalidateQueries({ queryKey: chave });
     },
@@ -723,6 +727,12 @@ function AgendarMensagemDialog({
             onChange={(e) => setQuando(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">Feriados e fins de semana serão ajustados para o próximo dia útil, mantendo o horário.</p>
+
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <Checkbox checked={importante} onCheckedChange={(v) => setImportante(v === true)} />
+            <Flag className="size-3.5 fill-red-500 text-red-500" />
+            Marcar como importante na agenda
+          </label>
 
           <MensagensAgendadasLista conversaId={conversaId} aberto={aberto} />
         </div>

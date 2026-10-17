@@ -1,5 +1,6 @@
 "use client";
 
+import { Flag } from "lucide-react";
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -396,6 +397,7 @@ function AgendarDialog({
   const [quando, setQuando] = useState("");
   // Ligado por padrão: agendar atendimento é, quase sempre, para ser lembrado na hora.
   const [avisar, setAvisar] = useState(true);
+  const [importante, setImportante] = useState(false);
 
   const agendar = useMutation({
     mutationFn: () =>
@@ -407,6 +409,7 @@ function AgendarDialog({
           descricao: descricao || undefined,
           dataVencimento: quando ? new Date(quando).toISOString() : null,
           iniciarConversa: avisar && !!quando,
+          importante,
         },
       }),
     onSuccess: () => {
@@ -422,6 +425,7 @@ function AgendarDialog({
       setTitulo("");
       setDescricao("");
       setQuando("");
+      setImportante(false);
       onOpenChange(false);
       void queryClient.invalidateQueries({
         queryKey: ["whatsapp-eventos", conversaId],
@@ -473,6 +477,12 @@ function AgendarDialog({
                 Nada é enviado ao cliente. Precisa de data e hora.
               </span>
             </span>
+          </label>
+
+          <label className="flex cursor-pointer items-center gap-2 text-sm">
+            <Checkbox checked={importante} onCheckedChange={(v) => setImportante(v === true)} />
+            <Flag className="size-3.5 fill-red-500 text-red-500" />
+            Marcar como importante
           </label>
 
           <AtendimentosAgendadosLista conversaId={conversaId} aberto={aberto} />
