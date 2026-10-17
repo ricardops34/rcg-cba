@@ -7,9 +7,9 @@
 > avisa o vendedor na plataforma e inicia uma conversa por WhatsApp.
 > Todos os agendamentos se registram em **Atendimentos** e **Agenda**, e podem ser **alterados ou cancelados antes do envio**.
 
-## ⚠ Perguntas em aberto
+## Decisões do roteiro semanal (questionário respondido em 2026-10-16)
 
-**Responda o questionário:** [2026-10-16-questionario-roteiro-semanal.md](2026-10-16-questionario-roteiro-semanal.md) — são 8 perguntas em linguagem simples, para marcar `[x]`. Cobre a pergunta D3 (quem recebe o aviso) e o roteiro semanal (R1 a R7). Respondido, eu registro as decisões aqui e implemento.
+Desenho e fases em **§7**. Respostas completas: [2026-10-16-questionario-roteiro-semanal.md](2026-10-16-questionario-roteiro-semanal.md).
 
 ## 1. O que já existe (verificado no código em 2026-10-16)
 
@@ -82,14 +82,66 @@
 - **Endpoints novos:** `PATCH conversas/:id/agendamentos/:agendamentoId`, `GET/PATCH/DELETE conversas/:id/atendimentos-agendados[/:atividadeId]`.
 - **Migration:** `20261016130000_agendamentos_whatsapp` — **aplicada em dev; produção precisa de `migrate deploy` antes do deploy** (a API consulta as colunas novas).
 
-## 7. F6 — Gerador de roteiro semanal (pedido em 2026-10-16)
+## 7. F6 — Roteiro semanal de atendimentos (decidido em 2026-10-16)
 
-> *"Gerar atendimento de WhatsApp, gravando na agenda do vendedor, atendimentos para a semana com intervalos parametrizáveis entre conversas, e critérios de escolha de clientes. Segunda 08:00 Cliente X, Segunda 08:30 Cliente Y, Segunda 09:00 Cliente W."*
+> *"Gerar atendimento de WhatsApp, gravando na agenda do vendedor, atendimentos para a semana com intervalos parametrizáveis entre conversas, e critérios de escolha de clientes. Segunda 08:00 Cliente X, 08:30 Cliente Y, 09:00 Cliente W."*
 
-É a F2 em lote: cada linha do roteiro é um **atendimento agendado** (Atividade com `iniciarConversa`), e o que se agendou vale o aviso na hora e abrir a conversa. Falta decidir:
+### 7.1 O que foi decidido
 
-As perguntas desta fase (R1 a R7) estão no quadro **"Perguntas em aberto"**, no topo deste documento.
+| Tema | Decisão |
+|---|---|
+| Quem gera | **Cada vendedor** gera o próprio roteiro |
+| Onde fica | **Dentro da Agenda** (botão "Gerar roteiro") |
+| Período | Dias úteis dentro de um intervalo de datas informado nos parâmetros, **no máximo 15 dias** |
+| Dias e horários | Só **dias úteis** (sem feriado) e **dias/horários de trabalho do cadastro do usuário**; almoço é o que o horário do usuário já deixa de fora |
+| Intervalo entre conversas | **Digitado na geração** (varia a cada vez) |
+| Horários | **Somente horários livres** da agenda do vendedor |
+| Máximo por dia | **Sem teto** (o limite são os horários livres) |
+| Critérios de clientes | (a) não compram há N dias; (b) título vencido; (c) compraram no mês passado e **ainda não neste mês**; (d) compraram **no mesmo período do mês passado** |
+| Cliente sem conversa | Só entra quem **já tem vínculo** (criado pelo usuário) **ou pode ser gerado a partir do cadastro** (telefone). Os demais ficam fora, listados |
+| Prévia | **Sim**: lista editável (tirar cliente, trocar horário) antes de gravar |
+| Gerar de novo | **Só em horários vagos**; precisa **excluir agendamentos individualmente e em lote** |
+| Avisos | Vendedor recebe o aviso; **supervisor/gerente** são avisados se o atendimento **passar do horário sem ser feito** e quando houver **cancelamento** |
+| Motivo | **Obrigatório** ao cancelar, desmarcar ou remarcar |
+| Confirmação | **Antes de iniciar os atendimentos do dia/período, o vendedor confirma**; se não for iniciar, desmarca/remarca (com motivo) |
+| Mensagem de abertura | **Automática, com comportamento humano** ("Bom dia, tudo bem?" ou saudação semelhante), enviada pelo WhatsApp do vendedor — **muda a regra anterior** de "não enviar nada" |
+| Nota automática | Cada conversa iniciada ganha uma **nota** com o **texto informado na geração** (visível a vendedor, supervisor e gerente; não vai ao cliente) |
+| Finalizar | Conversa iniciada automaticamente precisa de uma forma de **finalizar**, registrando no **histórico de atendimento** |
 
+### 7.2 Desenho
+
+**Modelo.** `whatsapp_roteiros` (a geração: vendedor, período, intervalo, critérios, texto da nota) e `whatsapp_roteiro_itens` (um por cliente/horário: atividade da Agenda, conversa, `status`: agendado → confirmado → iniciado → finalizado, ou cancelado/remarcado, com motivo e datas). Cada item é também uma **Atividade** (aparece na Agenda e no histórico).
+
+**Geração.** (1) *Prévia*: seleciona clientes da carteira pelos critérios, ordena por prioridade e distribui nos **horários livres** (horário de trabalho do usuário − atividades já marcadas − feriados), um por intervalo. (2) *Gravar*: cria roteiro, itens e atividades; cria a conversa (a partir do cadastro) quando não existe.
+
+**Execução.**
+1. **Confirmação do dia:** antes do primeiro atendimento do dia, aviso no sino com a escolha **Iniciar / Remarcar / Cancelar** (os dois últimos pedem motivo). **Sem confirmação, nada é enviado.**
+2. **Na hora de cada item confirmado:** o sistema pede presença de digitação, espera um intervalo curto e variável, envia a saudação (de acordo com o horário) pelo WhatsApp do vendedor, grava a **nota** e avisa o vendedor com o link da conversa. WhatsApp desconectado → item vira "erro" visível, com aviso.
+3. **Atraso:** item que passa do horário sem ser iniciado/feito avisa **supervisor e gerente** (uma vez).
+4. **Finalizar:** ação na conversa registra o resultado, conclui a atividade e grava no histórico de atendimento.
+5. **Cancelar / remarcar:** individual ou em lote, com **motivo obrigatório**; avisa supervisor/gerente.
+
+### 7.3 Pontos assumidos (corrigir se não forem isso)
+
+| # | Assumi | 
+|---|---|
+| A1 | "Mesmo período do mês passado" = comprou entre o mesmo dia inicial e final do intervalo, **no mês anterior**, e ainda não comprou no período atual |
+| A2 | Como só há horários livres, a **prioridade** é: título vencido → não compra há mais tempo → não compraram neste mês → mesmo período do mês passado |
+| A3 | Cada atendimento ocupa **um intervalo** inteiro (do horário até o próximo) para efeito de "horário livre" |
+| A4 | Usuário **sem horário de trabalho cadastrado** informa o início e o fim do dia na geração (padrão 08:00–18:00) |
+| A5 | A saudação é escolhida pelo horário (Bom dia / Boa tarde / Boa noite) numa lista curta; o texto livre da geração vai na **nota**, não na mensagem ao cliente |
+| A6 | "Finalizar" pede um **resultado** (texto) e, opcionalmente, o próximo retorno |
+
+### 7.4 Fases
+
+| Fase | Entrega | Situação |
+|---|---|---|
+| F6.1 | Modelo de dados, contratos e **prévia** (clientes, critérios, horários livres) com testes | ⬜ |
+| F6.2 | **Gravar** o roteiro; cancelar/remarcar individual e em lote com motivo e aviso à supervisão | ⬜ |
+| F6.3 | **Confirmação do dia**, início automático (saudação + nota) e aviso de atraso | ⬜ |
+| F6.4 | **Finalizar** atendimento e histórico | ⬜ |
+| F6.5 | Tela na Agenda: gerar (parâmetros e prévia), lista do roteiro, seleção em lote | ⬜ |
+| F6.6 | Conferência em aparelho e com um WhatsApp real | ⬜ |
 
 ## 8. Registro
 
