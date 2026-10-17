@@ -140,7 +140,7 @@ Desenho e fases em **§7**. Respostas completas: [2026-10-16-questionario-roteir
 | F6.2 | **Gravar** o roteiro; cancelar/remarcar individual e em lote com motivo e aviso à supervisão | ✅ API (36 testes de roteiro) |
 | F6.3 | **Confirmação do dia**, início automático (saudação + nota) e aviso de atraso | ✅ API (rotina a cada 1 min; 56 testes de roteiro) |
 | F6.4 | **Finalizar** atendimento e histórico | ✅ API |
-| F6.5 | Tela na Agenda: gerar (parâmetros e prévia), lista do roteiro, seleção em lote | ⬜ |
+| F6.5 | Tela na Agenda: gerar (parâmetros e prévia), painel do roteiro (confirmar, remarcar, cancelar em lote com motivo, finalizar) e faixa de finalizar dentro da conversa | ✅ código |
 | F6.6 | Conferência em aparelho e com um WhatsApp real | ⬜ |
 
 ## 8. Registro

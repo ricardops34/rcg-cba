@@ -2,7 +2,7 @@
 import { CrudHeader } from "@/components/crud/crud-header";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import type { Atividade, Orcamento } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { useFeriadosAgenda } from "@/hooks/use-feriados-agenda";
@@ -18,6 +18,8 @@ import {
   type CategoriaEvento,
 } from "@/components/crud/agenda-eventos";
 import { Checkbox } from "@/components/ui/checkbox";
+import { RoteiroGerarDialog } from "@/components/roteiro/roteiro-gerar-dialog";
+import { RoteiroPainel } from "@/components/roteiro/roteiro-painel";
 import { Switch } from "@/components/ui/switch";
 import {
   STATUS_ORCAMENTO_COR,
@@ -46,7 +48,15 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFiltrosUrl } from "@/hooks/use-filtros-url";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { AlertTriangle, ChevronLeft, ChevronRight, Flag, Plus } from "lucide-react";
+import {
+  AlertTriangle,
+  CalendarPlus,
+  ChevronLeft,
+  ChevronRight,
+  Flag,
+  ListChecks,
+  Plus,
+} from "lucide-react";
 
 type Visao = "mes" | "semana" | "dia";
 type AgendaItem =
@@ -110,6 +120,11 @@ function orcamentoAgendado(o: Orcamento, hojeKey: string) {
 
 export default function AgendaPage() {
   const router = useRouter();
+  const parametrosUrl = useSearchParams();
+  // Roteiro semanal: gerar (parâmetros e prévia) e o painel de confirmar/remarcar/cancelar.
+  const [gerarRoteiro, setGerarRoteiro] = useState(false);
+  const [painelRoteiro, setPainelRoteiro] = useState(() => parametrosUrl.get("roteiro") === "confirmar");
+  const diaDoRoteiro = parametrosUrl.get("dia");
   // No celular a Agenda é de agendamentos: só o que ainda está por fazer.
   const celular = useIsMobile();
   // Celular abre no dia (o que importa na rua); computador, no mês. A tela só
@@ -305,6 +320,15 @@ export default function AgendaPage() {
       {feriadosQuery.isError && <p role="alert" className="text-sm text-destructive">Não foi possível consultar os feriados. Atualize a agenda para tentar novamente.</p>}
       <CrudHeader
         actions={
+          <div className="flex items-center gap-2">
+            <Button variant="outline" onClick={() => setGerarRoteiro(true)}>
+              <CalendarPlus className="size-4" />
+              <span className="hidden sm:inline">Gerar roteiro</span>
+            </Button>
+            <Button variant="outline" onClick={() => setPainelRoteiro(true)}>
+              <ListChecks className="size-4" />
+              <span className="hidden sm:inline">Meu roteiro</span>
+            </Button>
           <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
             <div className="space-y-2">
               <div className="flex items-center justify-between">
@@ -378,6 +402,7 @@ export default function AgendaPage() {
               </div>
             )}
           </FiltersPopover>
+          </div>
         }
         onRefresh={() => {
           void atividadesQuery.refetch();
@@ -595,6 +620,13 @@ export default function AgendaPage() {
       </div>
         </>
       ) : null}
+
+      <RoteiroGerarDialog aberto={gerarRoteiro} onOpenChange={setGerarRoteiro} />
+      <RoteiroPainel
+        aberto={painelRoteiro}
+        onOpenChange={setPainelRoteiro}
+        diaEmFoco={diaDoRoteiro}
+      />
     </div>
   );
 }

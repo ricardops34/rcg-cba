@@ -37,6 +37,8 @@ export const atividadeSchema = z.object({
   /** Mensagem agendada: o sistema envia sozinho, não é tarefa do vendedor. */
   automatica: z.boolean().optional(),
   importante: z.boolean().optional(),
+  /** Atendimento do roteiro semanal que esta atividade representa. */
+  roteiroItemId: z.string().nullable().optional(),
   vendedorId: z.string().uuid(),
   tipo: tipoAtividadeSchema,
   titulo: z.string(),

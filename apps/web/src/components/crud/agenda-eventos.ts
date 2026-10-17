@@ -12,12 +12,14 @@ export type CategoriaEvento =
   | "retorno_orcamento"
   | "atendimento_whatsapp"
   | "mensagem_whatsapp"
+  | "roteiro_atendimento"
   | TipoAtividade;
 
 export const CATEGORIAS_EVENTO: { value: CategoriaEvento; label: string }[] = [
   { value: "orcamento", label: "Orçamentos" },
   { value: "retorno_orcamento", label: "Retornos de orçamento" },
   { value: "atendimento_whatsapp", label: "Atendimentos por WhatsApp" },
+  { value: "roteiro_atendimento", label: "Atendimentos do roteiro" },
   { value: "mensagem_whatsapp", label: "Mensagens agendadas (WhatsApp)" },
   { value: "reuniao", label: "Reuniões" },
   { value: "visita", label: "Visitas" },
@@ -35,6 +37,7 @@ export const ROTULO_EVENTO_UNITARIO: Record<CategoriaEvento, string> = {
   orcamento: "Orçamento",
   retorno_orcamento: "Retorno de orçamento",
   atendimento_whatsapp: "Atendimento por WhatsApp",
+  roteiro_atendimento: "Atendimento do roteiro",
   mensagem_whatsapp: "Mensagem agendada",
   reuniao: "Reunião",
   visita: "Visita",
@@ -51,6 +54,8 @@ export type EventoDaAgenda =
 export function categoriaDoEvento(item: EventoDaAgenda): CategoriaEvento {
   if (item.kind === "orcamento") return "orcamento";
   const a = item.data;
+  // O atendimento do roteiro também é `automatica` (o sistema abre a conversa), mas é outra coisa.
+  if (a.roteiroItemId) return "roteiro_atendimento";
   if (a.automatica) return "mensagem_whatsapp";
   if (a.iniciarConversa) return "atendimento_whatsapp";
   if (a.orcamentoId && a.titulo.startsWith("Retorno:")) return "retorno_orcamento";

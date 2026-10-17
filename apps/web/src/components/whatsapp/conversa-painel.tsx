@@ -1,5 +1,6 @@
 "use client";
 
+import { FinalizarDialog, useItensDoRoteiro } from "@/components/roteiro/roteiro-painel";
 import {
   BotaoEtiquetas,
   BotaoFixar,
@@ -117,6 +118,11 @@ function ConversaVazia({
   );
 }
 
+const diaDeHoje = () => {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+};
+
 export function Conversa({
   conversaId,
   conversa,
@@ -147,6 +153,12 @@ export function Conversa({
   onAlternarLista?: () => void;
 }) {
   const empresaId = useAuthStore((s) => s.user?.empresaAtivaId);
+  const [finalizandoRoteiro, setFinalizandoRoteiro] = useState(false);
+  // Os atendimentos do roteiro de hoje: o que pertence a esta conversa e está em andamento.
+  const hojeKey = diaDeHoje();
+  const itensDoRoteiro = useItensDoRoteiro(hojeKey, hojeKey, !!conversaId);
+  const itemDoRoteiro =
+    itensDoRoteiro.data?.find((i) => i.conversaId === conversaId && i.status === "iniciado") ?? null;
   const podeCadastrar = useAuthStore((s) => s.hasPermission("whatsapp-conversas", "cadastrar"));
   const queryClient = useQueryClient();
   const [respostaPendente, setRespostaPendente] = useState<{
@@ -390,6 +402,18 @@ export function Conversa({
         </div>
       </div>
 
+      {/* Atendimento aberto pelo roteiro semanal: só aqui o vendedor o fecha, com o resultado. */}
+      {itemDoRoteiro ? (
+        <div className="flex shrink-0 flex-wrap items-center justify-between gap-2 border-b border-emerald-500/30 bg-emerald-500/10 px-3.5 py-2 text-xs text-emerald-900 dark:text-emerald-200">
+          <span>
+            Atendimento do <strong>roteiro</strong> em andamento. Quando terminar, finalize e registre o resultado.
+          </span>
+          <Button type="button" size="sm" className="h-7" onClick={() => setFinalizandoRoteiro(true)}>
+            Finalizar atendimento
+          </Button>
+        </div>
+      ) : null}
+
       {/* Rolo de mensagens com papel de parede característico do WhatsApp */}
       <div className="min-h-0 flex-1 space-y-3 overflow-y-auto bg-[#EFEAE2] dark:bg-[#0B141A] bg-[radial-gradient(#0000000a_1px,transparent_1px)] dark:bg-[radial-gradient(#ffffff0a_1px,transparent_1px)] [background-size:16px_16px] p-4">
         {carregandoMensagens && mensagens.length === 0 ? (
@@ -498,6 +522,11 @@ export function Conversa({
           </div>
         </div>
       )}
+      <FinalizarDialog
+        item={finalizandoRoteiro ? itemDoRoteiro : null}
+        onClose={() => setFinalizandoRoteiro(false)}
+        onFeito={() => void itensDoRoteiro.refetch()}
+      />
     </div>
   );
 }
