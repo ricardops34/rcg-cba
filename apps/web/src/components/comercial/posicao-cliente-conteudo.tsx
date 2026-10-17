@@ -44,6 +44,7 @@ import {
   resumoPorAno,
   usePaginaLocal,
 } from "@/components/comercial/posicao-cliente-ano";
+import { useIsMobile } from "@/hooks/use-mobile";
 import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import { ArrowLeft, Loader2, Mail, MessageCircle, MessageSquareText, Search, Wrench } from "lucide-react";
 
@@ -557,6 +558,7 @@ export function PosicaoClienteConteudo({
   aoAbrirConversa?: (conversaId: string) => void;
 }) {
   const id = clienteId;
+  const celular = useIsMobile();
   const router = useRouter();
   const abrirAtendimento = useAtendimentoJanelaStore((s) => s.abrir);
 
@@ -803,6 +805,116 @@ export function PosicaoClienteConteudo({
   // Só no computador: no celular a cortina inteira rola e as listas crescem.
   const rolagemAba = preencherAltura ? "md:flex md:min-h-0 md:flex-col md:overflow-y-auto" : undefined;
 
+  const dadosDoCliente = (
+    <>
+        <Card data-tour="posicao-cliente-detalhe-cadastro">
+          <CardContent
+            className={`grid grid-cols-2 gap-4 ${compacto ? "" : "sm:grid-cols-4"}`}
+          >
+            <Info label="Código ERP" value={cliente.codigoErp || "—"} />
+            <Info label="Nome fantasia" value={cliente.nomeFantasia || "—"} />
+            <Info label="CNPJ/CPF" value={cliente.cnpjCpf || "—"} />
+            <Info
+              label="Vendedor"
+              value={cliente.vendedor ? cliente.vendedor.nomeReduzido || cliente.vendedor.nome : "—"}
+            />
+            <Info label="Tabela de preço" value={cliente.tabelaPreco?.descricao || "—"} />
+            <Info
+              label="Município/UF"
+              value={[cliente.municipio, cliente.uf].filter(Boolean).join("/") || "—"}
+            />
+            <div className={compacto ? "col-span-2" : "col-span-2 sm:col-span-4"}>
+              <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
+                Contatos
+              </p>
+              <div className="overflow-hidden rounded-lg border">
+                <div className="hidden grid-cols-[1.2fr_1fr_1fr_1.4fr_auto] gap-3 bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
+                  <span>Nome</span>
+                  <span>Tipo</span>
+                  <span>Número</span>
+                  <span>E-mail</span>
+                  <span className="sr-only">Ação</span>
+                </div>
+                {posicao.whatsapp.length > 0 ? (
+                  posicao.whatsapp.map((contato) => (
+                    <div
+                      key={contato.conversaId}
+                      className="grid gap-1 border-t px-3 py-2 first:border-t-0 md:grid-cols-[1.2fr_1fr_1fr_1.4fr_auto] md:items-center md:gap-3"
+                    >
+                      <span className="flex items-center gap-2 text-sm font-medium">
+                        {contato.fotoUrl ? (
+                          // eslint-disable-next-line @next/next/no-img-element
+                          <img
+                            src={assetUrl(contato.fotoUrl) ?? undefined}
+                            alt=""
+                            className="size-7 rounded-full object-cover"
+                          />
+                        ) : null}
+                        {contato.nome || "—"}
+                      </span>
+                      <Badge variant="secondary" className="w-fit">
+                        {TIPO_CONTATO_LABEL[contato.tipo]}
+                      </Badge>
+                      <span className="text-sm">{telefoneBr(contato.telefone)}</span>
+                      <span className="break-all text-sm text-muted-foreground">
+                        {contato.email || "—"}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="w-fit gap-1.5"
+                        onClick={() =>
+                          aoAbrirConversa
+                            ? aoAbrirConversa(contato.conversaId)
+                            : abrirAtendimento({
+                                id: cliente.id,
+                                nome: cliente.razaoSocial,
+                                conversaId: contato.conversaId,
+                              })
+                        }
+                      >
+                        <MessageCircle className="size-4" />
+                        Abrir
+                      </Button>
+                    </div>
+                  ))
+                ) : (
+                  <p className="px-3 py-3 text-sm text-muted-foreground">
+                    Nenhum WhatsApp vinculado.
+                  </p>
+                )}
+              </div>
+              {(cliente.contato || cliente.telefone || cliente.email) && (
+                <p className="mt-2 text-xs text-muted-foreground">
+                  Cadastro legado: {[cliente.contato, cliente.telefone, cliente.email]
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
+            </div>
+            <Info label="Primeira compra" value={dataBr(cliente.primeiraCompra)} />
+            <Info label="Última compra" value={dataBr(cliente.ultimaCompra)} />
+          </CardContent>
+        </Card>
+
+        <div
+          className={`grid grid-cols-2 gap-2 md:gap-4 ${compacto ? "" : "lg:grid-cols-4"}`}
+          data-tour="posicao-cliente-detalhe-resumo"
+        >
+          <Metrica label="Notas fiscais" value={resumo.totalNotas.toLocaleString("pt-BR")} />
+          <Metrica label="Total comprado" value={moeda(resumo.totalComprado)} />
+          <Metrica label="Títulos em aberto" value={moeda(resumo.totalTitulosAberto)} />
+          <Metrica label="Títulos vencidos" value={moeda(resumo.totalTitulosVencido)} />
+          {/* Só aparece quando há devolução: um "R$ 0,00" fixo ocuparia uma
+              célula da grade em todo cliente para dizer que nada aconteceu. */}
+          {resumo.totalDevolucoes > 0 && (
+            <Metrica label="Total devolvido" value={moeda(resumo.totalDevolvido)} />
+          )}
+        </div>
+    </>
+  );
+
   return (
     <div
       className={
@@ -827,111 +939,8 @@ export function PosicaoClienteConteudo({
         {!cliente.ativo && <Badge variant="destructive">Inativo</Badge>}
       </div>
 
-      <Card data-tour="posicao-cliente-detalhe-cadastro">
-        <CardContent
-          className={`grid grid-cols-2 gap-4 ${compacto ? "" : "sm:grid-cols-4"}`}
-        >
-          <Info label="Código ERP" value={cliente.codigoErp || "—"} />
-          <Info label="Nome fantasia" value={cliente.nomeFantasia || "—"} />
-          <Info label="CNPJ/CPF" value={cliente.cnpjCpf || "—"} />
-          <Info
-            label="Vendedor"
-            value={cliente.vendedor ? cliente.vendedor.nomeReduzido || cliente.vendedor.nome : "—"}
-          />
-          <Info label="Tabela de preço" value={cliente.tabelaPreco?.descricao || "—"} />
-          <Info
-            label="Município/UF"
-            value={[cliente.municipio, cliente.uf].filter(Boolean).join("/") || "—"}
-          />
-          <div className={compacto ? "col-span-2" : "col-span-2 sm:col-span-4"}>
-            <p className="mb-2 text-xs font-medium tracking-wide text-muted-foreground uppercase">
-              Contatos
-            </p>
-            <div className="overflow-hidden rounded-lg border">
-              <div className="hidden grid-cols-[1.2fr_1fr_1fr_1.4fr_auto] gap-3 bg-muted/40 px-3 py-2 text-xs font-medium text-muted-foreground md:grid">
-                <span>Nome</span>
-                <span>Tipo</span>
-                <span>Número</span>
-                <span>E-mail</span>
-                <span className="sr-only">Ação</span>
-              </div>
-              {posicao.whatsapp.length > 0 ? (
-                posicao.whatsapp.map((contato) => (
-                  <div
-                    key={contato.conversaId}
-                    className="grid gap-1 border-t px-3 py-2 first:border-t-0 md:grid-cols-[1.2fr_1fr_1fr_1.4fr_auto] md:items-center md:gap-3"
-                  >
-                    <span className="flex items-center gap-2 text-sm font-medium">
-                      {contato.fotoUrl ? (
-                        // eslint-disable-next-line @next/next/no-img-element
-                        <img
-                          src={assetUrl(contato.fotoUrl) ?? undefined}
-                          alt=""
-                          className="size-7 rounded-full object-cover"
-                        />
-                      ) : null}
-                      {contato.nome || "—"}
-                    </span>
-                    <Badge variant="secondary" className="w-fit">
-                      {TIPO_CONTATO_LABEL[contato.tipo]}
-                    </Badge>
-                    <span className="text-sm">{telefoneBr(contato.telefone)}</span>
-                    <span className="break-all text-sm text-muted-foreground">
-                      {contato.email || "—"}
-                    </span>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      className="w-fit gap-1.5"
-                      onClick={() =>
-                        aoAbrirConversa
-                          ? aoAbrirConversa(contato.conversaId)
-                          : abrirAtendimento({
-                              id: cliente.id,
-                              nome: cliente.razaoSocial,
-                              conversaId: contato.conversaId,
-                            })
-                      }
-                    >
-                      <MessageCircle className="size-4" />
-                      Abrir
-                    </Button>
-                  </div>
-                ))
-              ) : (
-                <p className="px-3 py-3 text-sm text-muted-foreground">
-                  Nenhum WhatsApp vinculado.
-                </p>
-              )}
-            </div>
-            {(cliente.contato || cliente.telefone || cliente.email) && (
-              <p className="mt-2 text-xs text-muted-foreground">
-                Cadastro legado: {[cliente.contato, cliente.telefone, cliente.email]
-                  .filter(Boolean)
-                  .join(" · ")}
-              </p>
-            )}
-          </div>
-          <Info label="Primeira compra" value={dataBr(cliente.primeiraCompra)} />
-          <Info label="Última compra" value={dataBr(cliente.ultimaCompra)} />
-        </CardContent>
-      </Card>
-
-      <div
-        className={`grid grid-cols-2 gap-2 md:gap-4 ${compacto ? "" : "lg:grid-cols-4"}`}
-        data-tour="posicao-cliente-detalhe-resumo"
-      >
-        <Metrica label="Notas fiscais" value={resumo.totalNotas.toLocaleString("pt-BR")} />
-        <Metrica label="Total comprado" value={moeda(resumo.totalComprado)} />
-        <Metrica label="Títulos em aberto" value={moeda(resumo.totalTitulosAberto)} />
-        <Metrica label="Títulos vencidos" value={moeda(resumo.totalTitulosVencido)} />
-        {/* Só aparece quando há devolução: um "R$ 0,00" fixo ocuparia uma
-            célula da grade em todo cliente para dizer que nada aconteceu. */}
-        {resumo.totalDevolucoes > 0 && (
-          <Metrica label="Total devolvido" value={moeda(resumo.totalDevolvido)} />
-        )}
-      </div>
+      {/* No celular, cadastro e totais viram a aba "Dados": a lista ganha a tela. */}
+      {!celular && dadosDoCliente}
 
       <Tabs
         defaultValue="notas"
@@ -943,6 +952,7 @@ export function PosicaoClienteConteudo({
           data-tour="posicao-cliente-detalhe-abas"
         >
           <TabsList>
+            {celular && <TabsTrigger value="dados">Dados</TabsTrigger>}
             <TabsTrigger value="notas">Notas fiscais ({notasEComodatos.length})</TabsTrigger>
             <TabsTrigger value="devolucoes">Devoluções ({devolucoes.length})</TabsTrigger>
             <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
@@ -961,6 +971,12 @@ export function PosicaoClienteConteudo({
             <TabsTrigger value="historico">Histórico de atendimento</TabsTrigger>
           </TabsList>
         </div>
+
+        {celular && (
+          <TabsContent value="dados" className="space-y-4">
+            {dadosDoCliente}
+          </TabsContent>
+        )}
 
         <TabsContent value="notas" className={rolagemAba}>
           <TabelaNotas
