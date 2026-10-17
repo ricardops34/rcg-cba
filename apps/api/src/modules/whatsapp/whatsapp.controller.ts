@@ -28,6 +28,7 @@ import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { WhatsappAgendaService } from './whatsapp-agenda.service';
 import { WhatsappAcoesService } from './whatsapp-acoes.service';
 import { WhatsappAgendamentoService } from './whatsapp-agendamento.service';
+import { WhatsappEtiquetasService } from './whatsapp-etiquetas.service';
 import {
   WhatsappConectarDto,
   WhatsappConectarEmpresaDto,
@@ -39,6 +40,10 @@ import {
   WhatsappAtualizarAgendamentoDto,
   WhatsappAtualizarAtendimentoDto,
   WhatsappMarcarImportanteDto,
+  WhatsappMarcarFixadaDto,
+  WhatsappEtiquetaCreateDto,
+  WhatsappEtiquetaUpdateDto,
+  WhatsappDefinirEtiquetasDto,
   WhatsappAnotarDto,
   WhatsappAgendarVisitaDto,
   WhatsappEnviarArquivoDto,
@@ -85,6 +90,7 @@ export class WhatsappController {
     private readonly agenda: WhatsappAgendaService,
     private readonly acoes: WhatsappAcoesService,
     private readonly agendamento: WhatsappAgendamentoService,
+    private readonly etiquetas: WhatsappEtiquetasService,
     private readonly funcionarios: WhatsappFuncionarioService,
     private readonly recados: WhatsappRecadoService,
   ) {}
@@ -719,6 +725,93 @@ export class WhatsappController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.conversas.eventosGerencial(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Opções dos filtros de cidade e CNAE',
+    description:
+      'Só cidades e atividades econômicas que existem nas conversas do usuário. ' +
+      'Requer whatsapp-conversas.visualizar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('filtros-conversas')
+  filtrosDeConversas(@CurrentUser() user: AuthenticatedUser) {
+    return this.conversas.filtros(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({
+    summary: 'Fixar ou soltar a conversa no topo da lista',
+    description:
+      'Até 4 por conexão, e só o dono da conexão fixa. Requer whatsapp-conversas.cadastrar.',
+  })
+  @ApiBodyExample({ fixada: true })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Patch('conversas/:id/fixada')
+  marcarFixada(
+    @Param('id') id: string,
+    @Body() dto: WhatsappMarcarFixadaDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.conversas.marcarFixada(user.empresaAtivaId, user, id, dto.fixada);
+  }
+
+  @ApiOperation({
+    summary: 'Minhas etiquetas de contato',
+    description: 'Etiquetas pessoais: cada usuário vê só as dele. Requer whatsapp-conversas.visualizar.',
+  })
+  @RequirePermission('whatsapp-conversas', 'visualizar')
+  @Get('etiquetas')
+  listarEtiquetas(@CurrentUser() user: AuthenticatedUser) {
+    return this.etiquetas.listar(user.empresaAtivaId, user);
+  }
+
+  @ApiOperation({ summary: 'Criar etiqueta', description: 'Requer whatsapp-conversas.cadastrar.' })
+  @ApiBodyExample({ nome: 'Pós-venda', cor: 'verde' })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Post('etiquetas')
+  criarEtiqueta(
+    @Body() dto: WhatsappEtiquetaCreateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.etiquetas.criar(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({ summary: 'Renomear ou trocar a cor da etiqueta', description: 'Requer whatsapp-conversas.cadastrar.' })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Patch('etiquetas/:id')
+  atualizarEtiqueta(
+    @Param('id') id: string,
+    @Body() dto: WhatsappEtiquetaUpdateDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.etiquetas.atualizar(user.empresaAtivaId, user, id, dto);
+  }
+
+  @ApiOperation({ summary: 'Excluir etiqueta', description: 'Sai de todos os contatos. Requer whatsapp-conversas.cadastrar.' })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Delete('etiquetas/:id')
+  excluirEtiqueta(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.etiquetas.excluir(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Definir as etiquetas do contato da conversa',
+    description:
+      'Por inteiro: as minhas que não vierem saem do contato. Etiquetas de outros usuários ' +
+      'não são tocadas. Requer whatsapp-conversas.cadastrar.',
+  })
+  @ApiBodyExample({ etiquetaIds: [] })
+  @RequirePermission('whatsapp-conversas', 'cadastrar')
+  @Put('conversas/:id/etiquetas')
+  definirEtiquetasDaConversa(
+    @Param('id') id: string,
+    @Body() dto: WhatsappDefinirEtiquetasDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.etiquetas.definirDaConversa(user.empresaAtivaId, user, id, dto.etiquetaIds);
   }
 
   @ApiOperation({

@@ -95,6 +95,9 @@ const CONTATO_DE_ATENDIMENTO = {
  * vendedor com o cliente na carteira leria a conversa que **outro** vendedor
  * teve com esse mesmo cliente.
  */
+/** Conversas que cada conexão pode manter fixadas no topo da lista. */
+export const LIMITE_CONVERSAS_FIXADAS = 4;
+
 @Injectable()
 export class WhatsappConversasService {
   private readonly logger = new Logger(WhatsappConversasService.name);
@@ -400,6 +403,41 @@ export class WhatsappConversasService {
         andConditions.push({ clienteId: null });
       }
 
+      if (query.importantes) {
+        andConditions.push({ importante: true });
+      }
+
+      // A etiqueta é pessoal: só casa a do próprio usuário, mesmo que o
+      // identificador de outra pessoa seja informado.
+      if (query.etiquetaId) {
+        andConditions.push({
+          contato: {
+            etiquetas: {
+              some: {
+                etiquetaId: query.etiquetaId,
+                etiqueta: { usuarioId: user.id },
+              },
+            },
+          },
+        });
+      }
+
+      if (query.cidade) {
+        andConditions.push({
+          cliente: {
+            municipio: { equals: query.cidade, mode: 'insensitive' as const },
+          },
+        });
+      }
+
+      if (query.cnaeId) {
+        andConditions.push({
+          cliente: {
+            cnaes: { some: { cnaeId: query.cnaeId, deletedAt: null } },
+          },
+        });
+      }
+
       if (query.busca) {
         andConditions.push({
           OR: [
@@ -433,7 +471,7 @@ export class WhatsappConversasService {
         tx.whatsappConversa.findMany({
           where,
           include: {
-            contato: true,
+            contato: { include: this.etiquetasDoUsuario(user.id) },
             cliente: {
               select: {
                 razaoSocial: true,
@@ -463,7 +501,12 @@ export class WhatsappConversasService {
               select: { conteudo: true, tipo: true },
             },
           },
-          orderBy: [{ ultimaMensagemEm: 'desc' }, { updatedAt: 'desc' }],
+          // Fixadas primeiro (a mais antiga fixada no alto), depois por atividade.
+          orderBy: [
+            { fixadaEm: { sort: 'asc', nulls: 'last' } },
+            { ultimaMensagemEm: 'desc' },
+            { updatedAt: 'desc' },
+          ],
           skip: (query.pagina - 1) * query.tamanho,
           take: query.tamanho,
         }),
@@ -513,6 +556,8 @@ export class WhatsappConversasService {
           naoLidas: c.naoLidas,
           arquivada: c.arquivada,
           importante: c.importante,
+          fixadaEm: c.fixadaEm,
+          etiquetas: c.contato.etiquetas.map((e) => e.etiqueta),
           vendedorId: c.sessao.vendedorId,
           vendedorNome: c.sessao.vendedor?.nome ?? "Empresa",
           clienteVendedorNome: c.cliente?.vendedor?.nome ?? null,
@@ -541,7 +586,7 @@ export class WhatsappConversasService {
       const c = await tx.whatsappConversa.findUnique({
         where: { id },
         include: {
-          contato: true,
+          contato: { include: this.etiquetasDoUsuario(user.id) },
           cliente: {
             select: {
               razaoSocial: true,
@@ -604,7 +649,9 @@ export class WhatsappConversasService {
         ultimaMensagemPrevia: this.previa(c.mensagens[0]),
         naoLidas: c.naoLidas,
         arquivada: c.arquivada,
-          importante: c.importante,
+        importante: c.importante,
+        fixadaEm: c.fixadaEm,
+        etiquetas: c.contato.etiquetas.map((e) => e.etiqueta),
         vendedorId: c.sessao.vendedorId,
         vendedorNome: c.sessao.vendedor?.nome ?? 'Empresa',
         clienteVendedorNome: c.cliente?.vendedor?.nome ?? null,
@@ -1724,6 +1771,99 @@ export class WhatsappConversasService {
         },
       });
       return this.eventosDaConversa(tx, conversaId);
+    });
+  }
+
+  /** O que se inclui do contato para trazer **só as etiquetas do próprio usuário**. */
+  private etiquetasDoUsuario(usuarioId: string) {
+    return {
+      etiquetas: {
+        where: { etiqueta: { usuarioId } },
+        include: { etiqueta: { select: { id: true, nome: true, cor: true } } },
+      },
+    } as const;
+  }
+
+  /**
+   * Fixa ou solta a conversa no topo da lista.
+   *
+   * Só quem pode **falar** na conversa (o dono da conexão) fixa: é a lista dele
+   * que se organiza, e o supervisor não reordena a lista do vendedor. O teto é
+   * de 4 por conexão — mais do que isso deixa de ser "fixado" e vira uma
+   * segunda lista.
+   */
+  async marcarFixada(
+    empresaId: string,
+    user: AuthenticatedUser,
+    conversaId: string,
+    fixada: boolean,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const conversa = await this.conversaParaEnvio(
+        tx,
+        empresaId,
+        user,
+        conversaId,
+      );
+      if (fixada && !conversa.fixadaEm) {
+        const fixadas = await tx.whatsappConversa.count({
+          where: { sessaoId: conversa.sessaoId, fixadaEm: { not: null } },
+        });
+        if (fixadas >= LIMITE_CONVERSAS_FIXADAS) {
+          throw new BadRequestException(
+            `Você já tem ${LIMITE_CONVERSAS_FIXADAS} conversas fixadas. Solte uma para fixar outra.`,
+          );
+        }
+      }
+      const fixadaEm = fixada ? (conversa.fixadaEm ?? new Date()) : null;
+      await tx.whatsappConversa.update({
+        where: { id: conversaId },
+        data: { fixadaEm },
+      });
+      return { fixadaEm };
+    });
+  }
+
+  /** Cidades e CNAEs que existem nas conversas do usuário — as opções dos filtros. */
+  async filtros(empresaId: string, user: AuthenticatedUser) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const filtro = await this.filtroSessao(tx, empresaId, user);
+      const linhas = await tx.whatsappConversa.findMany({
+        where: { AND: [filtro, { arquivada: false }, { clienteId: { not: null } }] },
+        select: {
+          cliente: {
+            select: {
+              municipio: true,
+              cnaes: {
+                where: { deletedAt: null },
+                select: {
+                  cnae: { select: { id: true, codigoErp: true, descricao: true } },
+                },
+              },
+            },
+          },
+        },
+        take: 3000,
+      });
+      const cidades = new Map<string, string>();
+      const cnaes = new Map<string, { id: string; codigo: string | null; descricao: string }>();
+      for (const { cliente } of linhas) {
+        const cidade = cliente?.municipio?.trim();
+        if (cidade && !cidades.has(cidade.toLowerCase())) {
+          cidades.set(cidade.toLowerCase(), cidade);
+        }
+        for (const { cnae } of cliente?.cnaes ?? []) {
+          cnaes.set(cnae.id, {
+            id: cnae.id,
+            codigo: cnae.codigoErp,
+            descricao: cnae.descricao,
+          });
+        }
+      }
+      return {
+        cidades: [...cidades.values()].sort((a, b) => a.localeCompare(b, 'pt-BR')),
+        cnaes: [...cnaes.values()].sort((a, b) => a.descricao.localeCompare(b.descricao, 'pt-BR')),
+      };
     });
   }
 

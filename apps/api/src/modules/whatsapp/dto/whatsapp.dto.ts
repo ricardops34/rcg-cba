@@ -5,6 +5,10 @@ import {
   whatsappAtualizarAgendamentoSchema,
   whatsappAtualizarAtendimentoSchema,
   whatsappMarcarImportanteSchema,
+  whatsappMarcarFixadaSchema,
+  whatsappEtiquetaCreateSchema,
+  whatsappEtiquetaUpdateSchema,
+  whatsappDefinirEtiquetasSchema,
   whatsappAnotarSchema,
   whatsappAgendarVisitaSchema,
   whatsappConectarSchema,
@@ -72,6 +76,18 @@ export class WhatsappAtualizarAtendimentoDto extends createZodDto(
 ) {}
 export class WhatsappMarcarImportanteDto extends createZodDto(
   whatsappMarcarImportanteSchema,
+) {}
+export class WhatsappMarcarFixadaDto extends createZodDto(
+  whatsappMarcarFixadaSchema,
+) {}
+export class WhatsappEtiquetaCreateDto extends createZodDto(
+  whatsappEtiquetaCreateSchema,
+) {}
+export class WhatsappEtiquetaUpdateDto extends createZodDto(
+  whatsappEtiquetaUpdateSchema,
+) {}
+export class WhatsappDefinirEtiquetasDto extends createZodDto(
+  whatsappDefinirEtiquetasSchema,
 ) {}
 export class WhatsappAgendarVisitaDto extends createZodDto(
   whatsappAgendarVisitaSchema,

@@ -187,6 +187,7 @@ model Empresa {
   whatsappMensagens          WhatsappMensagem[]
   whatsappReacoes            WhatsappReacao[]
   whatsappAgendadas          WhatsappMensagemAgendada[]
+  whatsappEtiquetas          WhatsappEtiqueta[]
   whatsappAcoes              WhatsappAcaoRegistro[]
   whatsappVinculos           WhatsappVinculoFuncionario[]
   whatsappTemplates          WhatsappTemplate[]
@@ -4622,6 +4623,7 @@ model WhatsappContato {
   cliente        Cliente?           @relation(fields: [clienteId], references: [id])
   clienteContato ClienteContato?    @relation(fields: [clienteContatoId], references: [id])
   conversas      WhatsappConversa[]
+  etiquetas      WhatsappContatoEtiqueta[]
 
   @@unique([empresaId, jid])
   @@index([empresaId, telefoneNormalizado])
@@ -4652,6 +4654,8 @@ model WhatsappConversa {
   arquivada        Boolean   @default(false)
   /// Marcada como importante por quem atende: destaque e filtro na lista de conversas.
   importante       Boolean   @default(false)
+  /// Fixada no topo da lista (no máximo 4 por conexão). A hora ordena os fixados: o mais antigo primeiro.
+  fixadaEm         DateTime?
 
   /// Em que ponto do atendimento esta conversa está.
   ///
@@ -5593,4 +5597,40 @@ model SenhaRedefinicao {
 
   @@index([usuarioId])
   @@map("senha_redefinicoes")
+}
+
+/// Etiqueta **pessoal** de contato do WhatsApp: cada usuário cria as suas, com
+/// nome e cor, e as aplica aos contatos. Só quem criou vê e filtra por ela —
+/// a organização do atendimento é de cada um, não da empresa.
+model WhatsappEtiqueta {
+  id        String   @id @default(uuid())
+  empresaId String
+  usuarioId String
+  nome      String
+  /// Nome da cor do conjunto fixo da tela (vermelho, laranja, amarelo, verde, azul, roxo, rosa, cinza).
+  cor       String   @default("azul")
+  criadaEm  DateTime @default(now())
+
+  empresa  Empresa                   @relation(fields: [empresaId], references: [id])
+  contatos WhatsappContatoEtiqueta[]
+
+  @@unique([empresaId, usuarioId, nome])
+  @@index([empresaId, usuarioId])
+  @@map("whatsapp_etiquetas")
+}
+
+/// Etiqueta aplicada a um contato. A conversa herda: filtrar por etiqueta é
+/// filtrar pelos contatos que a têm.
+model WhatsappContatoEtiqueta {
+  empresaId  String
+  contatoId  String
+  etiquetaId String
+  criadaEm   DateTime @default(now())
+
+  contato  WhatsappContato  @relation(fields: [contatoId], references: [id], onDelete: Cascade)
+  etiqueta WhatsappEtiqueta @relation(fields: [etiquetaId], references: [id], onDelete: Cascade)
+
+  @@id([contatoId, etiquetaId])
+  @@index([empresaId, etiquetaId])
+  @@map("whatsapp_contato_etiquetas")
 }

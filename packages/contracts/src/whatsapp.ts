@@ -495,6 +495,10 @@ export const whatsappConversaSchema = z.object({
   arquivada: z.boolean(),
   /** Marcada como importante por quem atende. */
   importante: z.boolean().optional(),
+  /** Fixada no topo da lista; nula quando solta. */
+  fixadaEm: z.string().datetime().nullable().optional(),
+  /** Etiquetas **do usuário logado** neste contato (as dos outros não aparecem). */
+  etiquetas: z.array(z.lazy(() => whatsappEtiquetaSchema)).optional(),
   /**
    * De quem é a conversa — e, como cada vendedor tem uma conexão só
    * (`@@unique(empresaId, vendedorId)` em `whatsapp_sessoes`), também **por
@@ -579,6 +583,13 @@ export const whatsappConversaQuerySchema = z.object({
   clienteId: z.string().uuid().optional(),
   // Filtro operacional estrito por sessão conectada (aparelho específico).
   sessaoId: z.string().uuid().optional(),
+  importantes: z.coerce.boolean().optional().describe("Só as marcadas como importantes"),
+  /** Etiqueta pessoal do usuário (a dele; a de outro nunca casa). */
+  etiquetaId: z.string().uuid().optional(),
+  /** Cidade do cadastro do cliente (sem diferenciar maiúsculas). */
+  cidade: z.string().trim().min(1).optional(),
+  /** Atividade econômica do cliente. */
+  cnaeId: z.string().uuid().optional(),
   pagina: z.coerce.number().int().min(1).default(1),
   tamanho: z.coerce.number().int().min(1).max(100).default(30),
 });
@@ -1162,6 +1173,61 @@ export const whatsappAtualizarAtendimentoSchema = z
 export type WhatsappAtualizarAtendimento = z.infer<
   typeof whatsappAtualizarAtendimentoSchema
 >;
+
+export const WHATSAPP_ETIQUETA_CORES = [
+  "vermelho",
+  "laranja",
+  "amarelo",
+  "verde",
+  "azul",
+  "roxo",
+  "rosa",
+  "cinza",
+] as const;
+export type WhatsappEtiquetaCor = (typeof WHATSAPP_ETIQUETA_CORES)[number];
+
+/** Etiqueta pessoal: o usuário cria as dele e aplica aos contatos. */
+export const whatsappEtiquetaSchema = z.object({
+  id: z.string().uuid(),
+  nome: z.string(),
+  cor: z.enum(WHATSAPP_ETIQUETA_CORES),
+});
+export type WhatsappEtiqueta = z.infer<typeof whatsappEtiquetaSchema>;
+
+export const whatsappEtiquetaCreateSchema = z.object({
+  nome: z.string().trim().min(1, "Dê um nome à etiqueta").max(30, "Use até 30 caracteres"),
+  cor: z.enum(WHATSAPP_ETIQUETA_CORES).default("azul"),
+});
+export type WhatsappEtiquetaCreate = z.infer<typeof whatsappEtiquetaCreateSchema>;
+
+export const whatsappEtiquetaUpdateSchema = z.object({
+  nome: z.string().trim().min(1, "Dê um nome à etiqueta").max(30, "Use até 30 caracteres").optional(),
+  cor: z.enum(WHATSAPP_ETIQUETA_CORES).optional(),
+});
+export type WhatsappEtiquetaUpdate = z.infer<typeof whatsappEtiquetaUpdateSchema>;
+
+/** As etiquetas do contato da conversa, por inteiro: o que não vem, sai. */
+export const whatsappDefinirEtiquetasSchema = z.object({
+  etiquetaIds: z.array(z.string().uuid()).max(20),
+});
+export type WhatsappDefinirEtiquetas = z.infer<typeof whatsappDefinirEtiquetasSchema>;
+
+/** Fixa ou solta a conversa no topo da lista (até 4 por conexão). */
+export const whatsappMarcarFixadaSchema = z.object({ fixada: z.boolean() });
+export type WhatsappMarcarFixada = z.infer<typeof whatsappMarcarFixadaSchema>;
+
+/** Opções dos filtros de cidade e CNAE: só o que existe nas conversas do usuário. */
+export const whatsappFiltrosConversaSchema = z.object({
+  cidades: z.array(z.string()),
+  cnaes: z.array(
+    z.object({
+      id: z.string().uuid(),
+      codigo: z.string().nullable(),
+      descricao: z.string(),
+    }),
+  ),
+});
+export type WhatsappFiltrosConversa = z.infer<typeof whatsappFiltrosConversaSchema>;
 
 /** Marca ou desmarca a conversa como importante. */
 export const whatsappMarcarImportanteSchema = z.object({
