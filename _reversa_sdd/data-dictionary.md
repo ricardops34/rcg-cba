@@ -2547,3 +2547,79 @@ Texto, opcional, até 100.000 caracteres, Markdown ou HTML. Sem versão, sem ace
 ### DTOs 🟢
 
 `iniciarTourInputSchema` (`versao`, `origem`), `atualizarTourInputSchema` (`passoAtual` ≥ 0, `status`), `tourEstadoSchema` (`deveIniciarAutomaticamente`, `ultimaExecucao`).
+
+---
+
+## `inicio`
+
+### Tabela `comunicados` (RLS por `empresaId`) 🟢
+
+| Campo | Tipo | Obrigatório | Observação |
+|---|---|---|---|
+| `id` | uuid | sim | Identificador único |
+| `empresaId` | texto | sim | FK `empresas`, RESTRICT |
+| `titulo` | texto | sim | Título do comunicado (até 120 caracteres no DTO) |
+| `texto` | texto | sim | Conteúdo textual completo |
+| `inicioEm` | data/hora | sim, padrão now | Data a partir da qual o comunicado se torna visível |
+| `fimEm` | data/hora | não | Data de expiração; nulo indica vigência permanente |
+| `fixado` | booleano | sim, padrão false | Prioridade no mural (destaque no topo) |
+| `ativo` | booleano | sim, padrão true | Indicador de publicação ativa |
+| `createdAt` | data/hora | sim | Data de cadastro |
+| `updatedAt` | data/hora | sim | Última alteração |
+| `deletedAt` | data/hora | não | Soft delete |
+| `createdBy`, `updatedBy`, `deletedBy` | texto | não | Auditoria de autoria |
+
+Índices: `(empresaId, ativo, inicioEm)`.
+
+### Tabela `comunicado_perfis` (RLS por `empresaId`) 🟢
+
+| Campo | Tipo | Obrigatório | Observação |
+|---|---|---|---|
+| `empresaId` | texto | sim | FK `empresas`, RESTRICT; isola a linha para a policy de RLS |
+| `comunicadoId` | texto | sim | FK `comunicados`, onDelete Cascade |
+| `perfilId` | texto | sim | FK `perfis`, RESTRICT |
+
+Chave primária: composta `(comunicadoId, perfilId)`. Índice: `(empresaId, perfilId)`.
+
+### DTOs e Contratos 🟢
+
+- `comunicadoCreateSchema`: `titulo` (trim, 1..120), `texto` (trim, min 1), `inicioEm` (coerção Date), `fimEm` (coerção Date nulo/opcional), `fixado` (booleano), `ativo` (booleano), `perfisIds` (uuid array opcional).
+- `comunicadoUpdateSchema`: parcial de `comunicadoCreateSchema`.
+- `comunicadoQuerySchema`: extensão de paginação (`page`, `limit`, `sortBy`, `sortOrder`, `search`) com `ativo` (booleano opcional).
+- `comunicadoMuralSchema`: `id`, `titulo`, `texto`, `fixado`, `publicadoEm` (string ISO).
+- `aniversarianteSchema`: `id` (uuid), `nome` (string), `dia` (1..31), `mes` (1..12), `emDias` (inteiro >= 0).
+- `statusIntegracaoSchema`: `ultimaColeta` (ISO ou nulo), `ultimoEnvio` (ISO ou nulo), `ultimaComunicacao` (ISO ou nulo).
+
+---
+
+## `demo`
+
+*Não introduz tabelas próprias no banco de dados*: opera diretamente sobre as entidades de negócio existentes via prefixo `'DEMO-'` e gerencia a higienização em cascata de dados.
+
+### Estruturas de Dados e DTOs 🟢
+
+#### `demoResumoSchema` (Resumo da geração)
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `empresa` | texto | Nome/Razão social da empresa populada |
+| `periodo` | array de textos | Meses gerados no formato `MM/AAAA` (8 meses) |
+| `usuarios` | inteiro | Quantidade de usuários demo criados (4 perfis) |
+| `adminVirouVendedor` | booleano | Indica se o administrador ganhou cadastro na tabela `vendedores` |
+| `clientes` | inteiro | Quantidade de clientes demo gerados (15) |
+| `produtos` | inteiro | Quantidade de produtos demo gerados (30) |
+| `notas` | inteiro | Quantidade de notas fiscais de saída geradas |
+| `titulos` | inteiro | Quantidade de títulos a receber gerados |
+| `titulosComBoleto` | inteiro | Títulos com dados bancários completos do Bradesco para 2ª via |
+| `orcamentos` | inteiro | Orçamentos em aberto e aprovados gerados |
+| `conversas` | inteiro | Histórico de conversas de WhatsApp simuladas |
+| `atividades` | inteiro | Tarefas e follow-ups de CRM |
+| `senha` | texto | Senha padrão de acesso dos usuários demo (`demo1234`) |
+| `acessos` | array de objetos | Lista com `{ email, perfil }` dos logins demo gerados |
+
+#### `demoLimpezaSchema` (Resumo da limpeza de base)
+| Campo | Tipo | Descrição |
+|---|---|---|
+| `apagados` | array de objetos | Lista contendo `{ tabela: string, linhas: number }` para cada tabela que teve registros deletados |
+| `total` | inteiro | Soma total de linhas excluídas em todas as tabelas |
+
+

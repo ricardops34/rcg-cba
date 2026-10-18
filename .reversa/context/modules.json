@@ -3442,6 +3442,148 @@
       ],
       "complexity": "low",
       "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "inicio",
+      "path": "apps/api/src/modules/inicio",
+      "responsibility": "Porta de entrada do sistema: mural de comunicados vigentes por perfil, aniversariantes ativos da equipe nos próximos 30 dias (sem ano) e status de sincronização com o ERP, além do CRUD administrativo de comunicados corporativos.",
+      "files": [
+        "inicio.module.ts",
+        "inicio.controller.ts",
+        "comunicados.service.ts",
+        "aniversariantes.service.ts",
+        "status-integracao.service.ts",
+        "dto/comunicado.dto.ts",
+        "web: app/(app)/page.tsx",
+        "web: app/(app)/admin/comunicados/page.tsx"
+      ],
+      "entities": [
+        "Comunicado",
+        "ComunicadoPerfil"
+      ],
+      "main_functions": [
+        "InicioController.mural",
+        "InicioController.listarAniversariantes",
+        "InicioController.obterStatusIntegracao",
+        "ComunicadosController.findAll/findOne/create/update/remove",
+        "ComunicadosService.mural",
+        "AniversariantesService.listar",
+        "StatusIntegracaoService.obterStatus"
+      ],
+      "dependencies": [
+        "PrismaService (withTenant)",
+        "@plataforma/contracts",
+        "garantirPerfisDoGrupo"
+      ],
+      "consumers": [
+        "Dashboard Inicial (apps/web/src/app/(app)/page.tsx)",
+        "CRUD Administrativo de Comunicados (apps/web/src/app/(app)/admin/comunicados/page.tsx)"
+      ],
+      "business_rules": [
+        {
+          "description": "Leituras da tela inicial (mural, aniversários, status do ERP) exigem apenas login ativo, sem checagem de permissão RBAC específica",
+          "location": "inicio.controller.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Comunicados com lista vazia de perfis são globais para todos os usuários da empresa; comunicados com perfis filtram estritamente pelo perfilId do vínculo ativo",
+          "location": "comunicados.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Aniversariantes calculados em UTC com projeção no ano seguinte para virada dezembro/janeiro; ano de nascimento e idade nunca são expostos",
+          "location": "aniversariantes.service.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Status da integração ERP usa cascata de fallbacks: parâmetro ULTIMA_COMUNICACAO_ERP, chaves de API e tabelas operacionais sincronizadas",
+          "location": "status-integracao.service.ts",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "comunicados.service não possui testes unitários",
+        "status-integracao é consultado a cada 30s por todos os clientes sem camada de cache no backend, podendo disparar 6 queries de fallback repetitivas",
+        "comunicados não possuem rastreamento de leitura ou confirmação individual de visualização"
+      ],
+      "test_files": [
+        "aniversariantes.service.spec.ts",
+        "status-integracao.service.spec.ts"
+      ],
+      "complexity": "low",
+      "confidence": "CONFIRMADO"
+    },
+    {
+      "name": "demo",
+      "path": "apps/api/src/modules/demo",
+      "responsibility": "Geração controlada de dados fictícios para demonstração comercial (8 meses de histórico com prefixo DEMO-, XML de NF-e, boletos Bradesco e carteiras) e limpeza total da base de negócio da empresa com proteção DMMF.",
+      "files": [
+        "demo.module.ts",
+        "demo.controller.ts",
+        "demo.service.ts",
+        "demo-gerador.ts",
+        "demo-limpeza.ts",
+        "demo-nfe-xml.ts",
+        "web: components/empresa/demo-dados-empresa.tsx",
+        "script: prisma/demo-dados.ts"
+      ],
+      "entities": [],
+      "main_functions": [
+        "DemoController.gerar",
+        "DemoController.removerDemo",
+        "DemoController.limparBase",
+        "DemoService.gerar",
+        "DemoService.removerDemo",
+        "DemoService.limparBase",
+        "gerarDemo",
+        "apagarDemo",
+        "limparBaseDaEmpresa",
+        "conferirClassificacao",
+        "montarXmlNfe"
+      ],
+      "dependencies": [
+        "PrismaService (withTenant)",
+        "@prisma/client (Prisma.dmmf)",
+        "PlatformAdminGuard",
+        "@plataforma/contracts",
+        "bcryptjs"
+      ],
+      "consumers": [
+        "Administração > Empresas > DemoDadosEmpresa",
+        "Script CLI (prisma/demo-dados.ts)"
+      ],
+      "business_rules": [
+        {
+          "description": "Apenas administradores da plataforma com alcance sobre a empresa podem invocar rotas de demo (throttle de 2 requisições por 5 minutos)",
+          "location": "demo.controller.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Geração demo roda em transação única com timeout estendido de 10 minutos, populando 8 meses de dados com prefixo DEMO- e XML de NF-e estruturado",
+          "location": "demo-gerador.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "Limpar Base exige confirmação textual exata da razão social e valida contra o DMMF se 100% das tabelas com empresaId estão classificadas",
+          "location": "demo.controller.ts e demo-limpeza.ts",
+          "confidence": "CONFIRMADO"
+        },
+        {
+          "description": "A limpeza total preserva estritamente acessos, sessões, auditoria, backups, configurações e pareamentos de mensageria",
+          "location": "demo-limpeza.ts",
+          "confidence": "CONFIRMADO"
+        }
+      ],
+      "gaps": [
+        "Tempo de execução de geração/limpeza em transações longas pode colidir com o timeout de proxies HTTP externos (Nginx/Cloudflare 60s/120s)",
+        "demo-nfe-xml não possui testes unitários dedicados para validação da integridade do XML contra o parser do DANFE",
+        "Acesso à limpeza da base é irreversível e depende exclusivamente da confirmação por texto no corpo da requisição"
+      ],
+      "test_files": [
+        "demo-limpeza.spec.ts"
+      ],
+      "complexity": "medium",
+      "confidence": "CONFIRMADO"
     }
   ]
 }

@@ -7003,3 +7003,164 @@ Definições no front: `TourDefinicao {codigo, versao, rota, modoRota (exata|des
 ### 7. Dependências e testes
 
 `PrismaService` (`withTenant`). Consumidores: `TourProvider` no layout do app, botão de replay na barra superior e a ajuda contextual (mesmo conteúdo). A limpeza do modo demonstração apaga `TourExecucao`. **Testes cobrem só o service, com mocks.**
+
+---
+
+## Módulo `inicio`
+
+**Caminho:** `apps/api/src/modules/inicio/` (`inicio.module.ts`, `inicio.controller.ts`, `comunicados.service.ts`, `aniversariantes.service.ts`, `status-integracao.service.ts`, `dto/comunicado.dto.ts`) + `packages/contracts/src/inicio.ts`. Front: `apps/web/src/app/(app)/page.tsx` (478 linhas) e tela administrativa em `apps/web/src/app/(app)/admin/comunicados/page.tsx`.
+**Testes:** `aniversariantes.service.spec.ts` (1 caso), `status-integracao.service.spec.ts` (2 casos). **Sem teste** de `comunicados.service.ts`, de controllers nem de front.
+
+### 1. Responsabilidade 🟢
+
+Porta de entrada do sistema: provê o conteúdo exibido na tela inicial (`/`) para qualquer usuário autenticado sem exigir permissão de rotina RBAC para as leituras (mural de comunicados vigentes, aniversariantes da equipe nos próximos 30 dias e status de sincronização com o ERP). Também engloba o CRUD administrativo de comunicados corporativos internos da empresa (`/comunicados`), com segmentação por perfil e controle temporal de vigência.
+
+### 2. Fluxo de controle — serviços e rotas principais 🟢
+
+| Rota / Serviço | Permissão | Comportamento |
+|---|---|---|
+| `GET /inicio/mural` | Nenhuma (só login) | Retorna até 5 comunicados vigentes (`inicioEm <= agora`, `fimEm is null` ou `>= agora`), filtrados para o perfil do usuário ou gerais ("para todos"), fixados primeiro |
+| `GET /inicio/aniversariantes` | Nenhuma (só login) | Retorna aniversariantes ativos da empresa nos próximos 30 dias com `dia`, `mes` e `emDias`; ano de nascimento **nunca** é devolvido |
+| `GET /inicio/status-integracao` | Nenhuma (só login) | Retorna timestamps de `ultimaColeta`, `ultimoEnvio` e `ultimaComunicacao` (parâmetro `ULTIMA_COMUNICACAO_ERP`) do ERP |
+| `GET /comunicados` | `comunicados.visualizar` | Listagem paginada administrativa de comunicados da empresa com busca por título/texto e filtro de status ativo |
+| `GET /comunicados/:id` | `comunicados.visualizar` | Detalhe completo de um comunicado com lista de `perfisIds` vinculados |
+| `POST /comunicados` | `comunicados.cadastrar` | Publica comunicado; valida se os perfis informados pertencem ao grupo econômico da empresa (`garantirPerfisDoGrupo`); se `perfisIds` for vazio, vale para todos |
+| `PATCH /comunicados/:id` | `comunicados.editar` | Atualiza dados e substitui integralmente a lista de perfis de destino (`deleteMany` + `create`) |
+| `DELETE /comunicados/:id` | `comunicados.excluir` | Soft delete: seta `deletedAt`, `deletedBy` e força `ativo = false` |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Mural sem barreira de permissão e sem vazamento entre perfis 🟢
+
+- As rotas sob `/inicio/*` usam `JwtAuthGuard` e `PermissionsGuard`, porém os métodos de leitura não têm o decorador `@RequirePermission`: qualquer usuário com login válido tem acesso aos dados da sua empresa ativa. O comentário do código explica o motivo: exigir permissão deixaria a tela de boas-vindas vazia para perfis operacionais básicos.
+- Segmentação no mural: um comunicado com lista de perfis vazia (`perfis: { none: {} }`) é considerado global da empresa. Se tiver perfis associados, só aparece para o usuário cujo `usuario.perfilId` na empresa coincidir com algum dos cadastrados (`perfis: { some: { perfilId } }`).
+- O administrador da empresa não burla essa regra no mural: ele enxerga o mural condizente com o seu próprio perfil pessoal (caso contrário veria avisos operacionais irrelevantes misturados com os de gestão). Para ver todos os comunicados cadastrados, utiliza a tela administrativa `/admin/comunicados`.
+- O limite do mural é fixado em 5 itens (`LIMITE_MURAL = 5`), com ordenação prioritária por `fixado: desc` e depois `inicioEm: desc`.
+
+#### 3.2 Aniversariantes com isolamento UTC e virada de ano 🟢
+
+- A data de nascimento é armazenada no banco como timestamp. O cálculo de dia e mês usa estritamente `getUTCDate()` e `getUTCMonth() + 1`, neutralizando deslocamentos de fuso horário local que fariam aniversários à meia-noite retrocederem para a véspera.
+- Suporte à transição anual: a próxima ocorrência é projetada no ano corrente (`Date(hoje.getFullYear(), mes - 1, dia)`). Se essa data já passou em relação a `hoje`, projeta automaticamente para `anoCorrente + 1`, garantindo que em dezembro aniversariantes de janeiro sejam computados corretamente sem lógicas de exceção.
+- Privacidade e LGPD: a query projeta apenas `dia`, `mes` e `emDias`. A idade e o ano de nascimento nunca trafegam na rede.
+
+#### 3.3 Cascata de fallbacks para status da integração ERP 🟢
+
+- O endpoint `/inicio/status-integracao` resolve a saúde da sincronização em três camadas:
+  1. Consulta o parâmetro `ULTIMA_COMUNICACAO_ERP` gravado na tabela `parametros_empresa` pelo script de sincronização do ERP ao final do ciclo.
+  2. Inspeciona os campos `ultimaColeta` e `ultimoEnvio` gravados em `integracao_api_keys`.
+  3. Caso os campos da chave estejam nulos (ex.: chaves legadas ou cargas batch manuais), executa uma consulta paralela em `Promise.all` buscando o maior timestamp de atualização nas tabelas operacionais sincronizadas: `estoque` (`dataEnvio`/`updatedAt`), `notas_saida`, `titulos_receber`, `produtos`, `clientes` (para coleta) e `orcamentos` com `codigoErp` não nulo (para envio).
+
+### 4. Achados e lacunas
+
+#### 4.1 `comunicados.service` não possui testes unitários 🟡
+
+Ao contrário de `aniversariantes` e `status-integracao`, o serviço de comunicados não tem arquivo `.spec.ts`. Regras críticas como a substituição total de perfis no update (`deleteMany` + `create`) e o duplo `OR` do mural (vigência + perfil) não contam com garantia automatizada contra regressão.
+
+#### 4.2 Falta de cache no mural e no status de integração 🟡
+
+O endpoint `/inicio/status-integracao` é consultado pelo frontend a cada 30 segundos (`refetchInterval: 30_000`) por todos os usuários logados. Quando a chave de API não possui as datas gravadas, o fallback executa 6 consultas simultâneas no banco de dados por usuário. Um cache de 30 a 60 segundos por empresa evitaria concorrência desnecessária no Postgres.
+
+#### 4.3 Comunicados não possuem confirmação de leitura 🟡
+
+O modelo é estritamente unidirecional ("mural"). Não há tabela de `comunicado_leituras` para rastrear quem leu ou dispensou avisos corporativos importantes (ao contrário dos termos de uso, que exigem aceite formal).
+
+### 5. Estruturas de dados 🟢
+
+- `Comunicado` (tabela `comunicados`, RLS por `empresaId`, soft delete).
+- `ComunicadoPerfil` (tabela `comunicado_perfis`, PK composta `[comunicadoId, perfilId]`, isolada por `empresaId` com RLS própria).
+- DTOs: `comunicadoCreateSchema`, `comunicadoUpdateSchema`, `comunicadoQuerySchema`, `comunicadoMuralSchema`, `aniversarianteSchema`, `statusIntegracaoSchema`.
+
+### 6. Metadados e configurações 🟢
+
+- `LIMITE_MURAL`: 5 registros.
+- `ANIVERSARIANTES_JANELA_DIAS`: 30 dias.
+- `PARAMETRO_ULTIMA_COMUNICACAO_ERP`: `'ULTIMA_COMUNICACAO_ERP'`.
+- `ATALHOS`: 13 atalhos curados no frontend com limite de exibição de até 8 (`MAX_ATALHOS = 8`) e ocultação inteligente no mobile (`rotaDisponivelNoCelular`).
+
+### 7. Dependências e testes 🟢
+
+`PrismaService` (`withTenant`), `garantirPerfisDoGrupo`, `@plataforma/contracts`. Consumidores: Dashboard Inicial (`apps/web/src/app/(app)/page.tsx`), CRUD de Comunicados (`apps/web/src/app/(app)/admin/comunicados/page.tsx`). Testes unitários parciais em `aniversariantes.service.spec.ts` e `status-integracao.service.spec.ts`.
+
+---
+
+## Módulo `demo`
+
+**Caminho:** `apps/api/src/modules/demo/` (`demo.module.ts`, `demo.controller.ts`, `demo.service.ts`, `demo-gerador.ts`, `demo-limpeza.ts`, `demo-nfe-xml.ts`) + script CLI `apps/api/prisma/demo-dados.ts` e contratos `packages/contracts/src/demo.ts`. Front: `apps/web/src/components/empresa/demo-dados-empresa.tsx` (incorporado na tela de edição da empresa).
+**Testes:** `demo-limpeza.spec.ts` (2 casos cobrindo completude das listas contra o DMMF do Prisma). **Sem teste** do gerador, do controller, de XML nem de front.
+
+### 1. Responsabilidade 🟢
+
+Geração controlada de massa de demonstração e limpeza de dados de uma empresa específica. Permite que administradores da plataforma demonstrem o sistema em produção ou homologação com dados realistas, com volume suficiente para dashboards, curva ABC, sugestão de compra e emissão de 2ª via de DANFE e boletos. Também fornece a operação destrutiva e irreversível de "Limpar Base", que expurga todo o dado de negócio preservando estritamente configurações, acessos, credenciais e a trilha de auditoria.
+
+### 2. Fluxo de controle — serviços e rotas principais 🟢
+
+As rotas são protegidas por `JwtAuthGuard`, `PlatformAdminGuard` e throttling estrito (2 requisições por 5 minutos). RLS por empresa é reforçada pelo `withTenant`.
+
+| Rota / Serviço | Permissão | Timeout | Comportamento |
+|---|---|---|---|
+| `POST /empresas/:id/demo/dados` | Administrador da Plataforma | 10 min | Executa `gerarDemo` em transação única: cria 8 meses de histórico com prefixo `DEMO-`, 4 usuários fictícios, produtos, clientes com CNAE, notas com XML, títulos com boleto Bradesco, CRM e conversas |
+| `DELETE /empresas/:id/demo/dados` | Administrador da Plataforma | 5 min | Executa `apagarDemo`: remove estritamente os registros com prefixo `DEMO-`, mantendo intactos cadastros reais feitos manualmente |
+| `DELETE /empresas/:id/demo/base` | Administrador da Plataforma | 5 min | Executa `limparBaseDaEmpresa`: valida que a razão social digitada no corpo coincide com a empresa; verifica completude pelo DMMF e executa `deleteMany` em cascata filho-pai |
+
+### 3. Algoritmos e lógica não-trivial
+
+#### 3.1 Geração direta no Prisma sem violação de regras temporais (`demo-gerador.ts`) 🟢
+
+- O módulo propositalmente não importa nem reutiliza os `Service`s de negócio do sistema (ex.: `NotasSaidaService`, `OrcamentosService`). Ele opera diretamente sobre a transação do Prisma (`Prisma.TransactionClient`).
+- Motivação arquitetural: os services normais rejeitariam a criação de notas fiscais com datas retroativas de 6 meses atrás ou com numerações arbitrárias. O gerador cria o estado final do banco diretamente, confiando na RLS do `withTenant` para isolar a empresa.
+- Vendedor fictício para o Administrador: durante a geração, o usuário administrador ganha um registro vinculado na tabela `vendedores`. Sem isso, ao logar para demonstrar a plataforma, as telas baseadas em carteira (`Meus Atendimentos`, `Conversas`) apareceriam vazias.
+- Prefixo `DEMO-`: todos os registros possuem `codigoErp` iniciado por `DEMO-` (ou chave estrangeira correspondente), o que viabiliza a exclusão seletiva idempotente (`apagarDemo`) sem colisão com dados reais.
+
+#### 3.2 DANFE e Boletos Reemitíveis com XML estruturado e Módulo 11 (`demo-nfe-xml.ts`) 🟢
+
+- A plataforma não armazena PDFs de notas: a 2ª via do DANFE é gerada em tempo de execução a partir do XML gravado em `nota_saida_xml`. Sem XML, a tela de notas não demonstra o recurso de impressão.
+- O gerador constrói um XML de NF-e 4.00 completo e sintaticamente válido (`ide`, `emit`, `dest`, `det` para cada item com tributação ICMS, `total`, `cobr` com duplicatas e protocolo `infProt`). A chave de acesso de 44 dígitos tem o dígito verificador real calculado via algoritmo Módulo 11.
+- Os títulos a receber demo são gerados com conta de cobrança do Bradesco (código 237), nosso número, carteira 09 e linha digitável válida, permitindo a emissão imediata da 2ª via de boleto em PDF no navegador.
+
+#### 3.3 Trava em tempo de compilação/teste contra modelos órfãos (`conferirClassificacao`) 🟢
+
+- A função `conferirClassificacao()` analisa o metadado `Prisma.dmmf.datamodel.models` em busca de todas as entidades que contenham o campo `empresaId`.
+- Ela valida em tempo de execução e no teste `demo-limpeza.spec.ts` se cada modelo pertence exatamente a um dos dois conjuntos: `PRESERVADOS` ou `ORDEM_DE_EXCLUSAO`.
+- Se um desenvolvedor criar uma nova migration adicionando uma tabela multi-tenant e esquecer de classificá-la em `demo-limpeza.ts`, o build/teste quebra e a função `limparBaseDaEmpresa` aborta com exceção antes de executar qualquer `DELETE`.
+- Ordem de exclusão: 55 modelos são excluídos numa sequência estrita em que tabelas dependentes (filhas) são limpas antes de suas tabelas de domínio (pais), impedindo falhas de integridade referencial no PostgreSQL.
+
+#### 3.4 Preservação seletiva de governança e segurança 🟢
+
+- A limpeza de base **nunca** apaga:
+  1. Acesso: `UsuarioEmpresa`, `RefreshToken`, `Sessao`, `TourExecucao`.
+  2. Auditoria e Governança: `AcessoLog`, `PlataformaAuditoria`, `ErroLog`, `EmpresaBackup`, `Assinatura`, `EmpresaSuporteLog`.
+  3. Configurações: `ParametroEmpresa`, `IntegracaoApiKey`, `OrcamentoConfig`, campos customizados, horários e feriados.
+  4. Pareamentos e Integrações: sessões do WhatsApp, instâncias, templates e credenciais de agentes de IA.
+
+### 4. Achados e lacunas
+
+#### 4.1 Risco de timeout em ambientes lentos ou bases gigantes 🟡
+
+Embora o timeout da transação tenha sido expandido para 10 minutos na geração (`LIMITE_GERACAO_MS = 600.000`) e 5 minutos na limpeza (`LIMITE_LIMPEZA_MS = 300.000`), a geração de 8 meses de notas fiscais com inserção linha a linha de itens e XMLs em bases com muitos índices pode ultrapassar a janela do proxy HTTP (Nginx/Cloudflare costumam ter timeout de 60s ou 120s por padrão), resultando em HTTP 504 mesmo com a transação prosseguindo no backend.
+
+#### 4.2 Falta de teste automatizado para o gerador de XML 🟡
+
+O gerador de XML (`demo-nfe-xml.ts`) monta strings XML com cálculos de ICMS e Módulo 11, mas não possui arquivo `.spec.ts` próprio dedicado para validar a integridade do XML gerado contra o parser de DANFE do sistema (`extrairNfe`).
+
+#### 4.3 Confirmação de limpeza case-insensitive no backend 🟢
+
+A comparação `digitado.toLowerCase() !== razaoSocial.trim().toLowerCase()` no controller previne erros frustrantes de digitação por capitalização, mantendo a segurança obrigatória da correspondência exata do nome da empresa.
+
+### 5. Estruturas de dados 🟢
+
+- `demoResumoSchema`: `empresa`, `periodo[]`, contadores de `usuarios`, `clientes`, `produtos`, `notas`, `titulos`, `titulosComBoleto`, `orcamentos`, `conversas`, `atividades`, `senha` e lista de `acessos[]`.
+- `demoLimpezaSchema`: array `apagados[]` com `tabela` e `linhas`, e `total` de registros removidos.
+
+### 6. Metadados e configurações 🟢
+
+- `LIMITE_GERACAO_MS`: 600.000 ms (10 minutos).
+- `LIMITE_LIMPEZA_MS`: 300.000 ms (5 minutos).
+- Prefixo identificador: `'DEMO-'`.
+- Senha padrão de usuários demo: `'demo1234'`.
+- Throttle: 2 requisições por 300 segundos.
+
+### 7. Dependências e testes 🟢
+
+`PrismaService` (`withTenant`), `PlatformAdminGuard`, `@prisma/client` (`Prisma.dmmf`). Consumidores: componente `DemoDadosEmpresa` em Administração > Empresas e script de console `prisma/demo-dados.ts`. Teste unitário em `demo-limpeza.spec.ts`.
+
+

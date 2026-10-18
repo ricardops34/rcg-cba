@@ -1,0 +1,540 @@
+openapi: 3.0.3
+info:
+  title: Plataforma Comercial rcgcba API
+  description: >
+    Especificação formal OpenAPI 3.0 da API REST multi-tenant da plataforma comercial.
+    Cobre os fluxos de autenticação, clientes, carteiras, orçamentos, produtos, notas fiscais,
+    títulos e integração ERP.
+  version: 1.3.4
+servers:
+  - url: /api/v1
+    description: Servidor da API v1
+paths:
+  /auth/login:
+    post:
+      tags:
+        - auth
+      summary: Login de usuário
+      description: Autentica com e-mail e senha, emite par de tokens (access + refresh) e encerra sessões anteriores (sessão única).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/LoginDto'
+      responses:
+        '200':
+          description: Autenticado com sucesso
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensDto'
+        '401':
+          description: Credenciais inválidas
+        '423':
+          description: Conta temporariamente bloqueada por tentativas falhas (lockout)
+
+  /auth/refresh:
+    post:
+      tags:
+        - auth
+      summary: Renovação rotativa de tokens
+      description: Troca um refresh token válido por um novo par de tokens. Revoga o token anterior imediatamente (hash SHA-256).
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshDto'
+      responses:
+        '200':
+          description: Novo par de tokens emitido
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthTokensDto'
+        '401':
+          description: Token inválido ou expirado
+
+  /auth/logout:
+    post:
+      tags:
+        - auth
+      summary: Logout do usuário
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RefreshDto'
+      responses:
+        '201':
+          description: Sessão encerrada e token revogado
+
+  /auth/me:
+    get:
+      tags:
+        - auth
+      summary: Dados do usuário autenticado e permissões ativas
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Perfil completo, empresas vinculadas e permissões podadas por rotinaNoAr
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CurrentUserDto'
+    patch:
+      tags:
+        - auth
+      summary: Atualizar dados do próprio perfil
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateOwnProfileDto'
+      responses:
+        '200':
+          description: Perfil atualizado com sucesso
+
+  /auth/switch-empresa:
+    post:
+      tags:
+        - auth
+      summary: Troca de empresa ativa mantendo sessão
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [empresaId]
+              properties:
+                empresaId:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: Novo par de tokens com o contexto da nova empresa ativa
+        '403':
+          description: Usuário não possui vínculo com a empresa selecionada
+
+  /auth/change-password:
+    patch:
+      tags:
+        - auth
+      summary: Troca da própria senha
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordDto'
+      responses:
+        '200':
+          description: Senha alterada com sucesso
+        '400':
+          description: Senha não atende à política vigente ou coincide com histórico recente
+        '401':
+          description: Senha atual incorreta
+
+  /clientes:
+    get:
+      tags:
+        - clientes
+      summary: Listar clientes da carteira
+      description: Listagem paginada restrita ao escopo hierárquico (vendedor/supervisor/gerente).
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 20
+        - name: busca
+          in: query
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Lista paginada de clientes
+    post:
+      tags:
+        - clientes
+      summary: Cadastrar novo cliente
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClienteCreateDto'
+      responses:
+        '201':
+          description: Cliente cadastrado
+
+  /clientes/{id}:
+    get:
+      tags:
+        - clientes
+      summary: Detalhar cliente
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Detalhes do cliente
+        '404':
+          description: Cliente inexistente ou fora da carteira do usuário (política deliberada)
+    patch:
+      tags:
+        - clientes
+      summary: Atualizar cliente
+      description: Atualiza campos do cliente. Usuários sem permissão de aprovação geram proposta pendente em ClienteAlteracao.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ClienteUpdateDto'
+      responses:
+        '200':
+          description: Alteração aplicada imediatamente (com permissão clientes.aprovar)
+        '202':
+          description: Proposta gravada na fila de aprovação (status pendente)
+        '404':
+          description: Cliente não encontrado
+    delete:
+      tags:
+        - clientes
+      summary: Excluir cliente (soft delete)
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Cliente inativado
+        '409':
+          description: Cliente integrado ao ERP não pode ser excluído via API
+
+  /clientes/{id}/posicao:
+    get:
+      tags:
+        - clientes
+      summary: Posição agregada do cliente (360°)
+      description: Agrega notas fiscais de venda ativas, remessas de comodato, títulos a vencer/vencidos, mix e saldo de equipamentos.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Posição completa do cliente
+        '404':
+          description: Cliente não encontrado
+
+  /clientes-alteracoes:
+    get:
+      tags:
+        - clientes
+      summary: Listar fila de alterações cadastrais pendentes
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Fila de aprovações
+
+  /clientes-alteracoes/{id}/aprovar:
+    post:
+      tags:
+        - clientes
+      summary: Aprovar proposta de alteração cadastral
+      description: Permite aprovação campo a campo. Valida concorrência contra o valor original do cadastro.
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Alteração aplicada e enfileirada para envio ao ERP
+        '409':
+          description: Conflito de concorrência (cadastro foi alterado após a submissão)
+
+  /orcamentos:
+    get:
+      tags:
+        - orcamentos
+      summary: Listar propostas e orçamentos
+      security:
+        - BearerAuth: []
+      responses:
+        '200':
+          description: Lista paginada de orçamentos
+    post:
+      tags:
+        - orcamentos
+      summary: Criar novo orçamento
+      security:
+        - BearerAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/OrcamentoCreateDto'
+      responses:
+        '201':
+          description: Orçamento criado com número sequencial reservado atomicamente
+
+  /orcamentos/{id}/pdf:
+    get:
+      tags:
+        - orcamentos
+      summary: Gerar PDF formal da proposta comercial
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Buffer PDF gerado
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /notas-saida/{id}/danfe:
+    get:
+      tags:
+        - notas-saida
+      summary: Gerar DANFE em PDF sob demanda
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: PDF da DANFE gerado sob demanda a partir do XML da NF-e
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /titulos-receber/{id}/boleto:
+    get:
+      tags:
+        - titulos-receber
+      summary: Gerar Boleto Bancário em PDF sob demanda
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: PDF do boleto bancário montado sob demanda com código de barras
+          content:
+            application/pdf:
+              schema:
+                type: string
+                format: binary
+
+  /integracao/cargas:
+    post:
+      tags:
+        - integracao-erp
+      summary: Envio de carga massiva do ERP (gzip/ndjson)
+      security:
+        - ApiKeyAuth: []
+      responses:
+        '200':
+          description: Carga recebida e enfileirada para processamento
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      description: Token JWT de autenticação de usuário
+    ApiKeyAuth:
+      type: apiKey
+      in: header
+      name: x-api-key
+      description: Chave de API corporativa para integração ERP externa
+
+  schemas:
+    LoginDto:
+      type: object
+      required: [email, senha]
+      properties:
+        email:
+          type: string
+          format: email
+        senha:
+          type: string
+        empresaAlias:
+          type: string
+
+    RefreshDto:
+      type: object
+      required: [refreshToken]
+      properties:
+        refreshToken:
+          type: string
+
+    AuthTokensDto:
+      type: object
+      properties:
+        accessToken:
+          type: string
+        refreshToken:
+          type: string
+        expiresIn:
+          type: integer
+          example: 900
+        mustChangePassword:
+          type: boolean
+
+    CurrentUserDto:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        nome:
+          type: string
+        email:
+          type: string
+        empresaAtivaId:
+          type: string
+          format: uuid
+        permissoes:
+          type: array
+          items:
+            type: string
+          example: ["clientes.visualizar", "orcamentos.cadastrar"]
+
+    UpdateOwnProfileDto:
+      type: object
+      properties:
+        nome:
+          type: string
+        whatsapp:
+          type: string
+        dataNascimento:
+          type: string
+          format: date
+
+    ChangePasswordDto:
+      type: object
+      required: [senhaAtual, novaSenha]
+      properties:
+        senhaAtual:
+          type: string
+        novaSenha:
+          type: string
+
+    ClienteCreateDto:
+      type: object
+      required: [razaoSocial, cnpjCpf]
+      properties:
+        razaoSocial:
+          type: string
+        nomeFantasia:
+          type: string
+        cnpjCpf:
+          type: string
+        vendedorId:
+          type: string
+          format: uuid
+
+    ClienteUpdateDto:
+      type: object
+      properties:
+        razaoSocial:
+          type: string
+        nomeFantasia:
+          type: string
+        limiteCredito:
+          type: number
+        telefone:
+          type: string
+
+    OrcamentoCreateDto:
+      type: object
+      required: [clienteId, itens]
+      properties:
+        clienteId:
+          type: string
+          format: uuid
+        itens:
+          type: array
+          items:
+            type: object
+            required: [produtoId, quantidade, vlrUnitario]
+            properties:
+              produtoId:
+                type: string
+                format: uuid
+              quantidade:
+                type: number
+              vlrUnitario:
+                type: number
+              percDesconto:
+                type: number
+
