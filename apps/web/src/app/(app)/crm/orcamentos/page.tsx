@@ -56,11 +56,13 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
+  CheckCircle2,
   Copy,
   Eye,
   MoreHorizontal,
   Pencil,
   Trash2,
+  XCircle,
 } from "lucide-react";
 
 type StatusFiltro = "todos" | StatusOrcamento;
@@ -140,7 +142,10 @@ export default function OrcamentosPage() {
       ...(vendedorId ? { vendedorId } : {}),
     });
 
-  const { remove } = useResourceMutations("orcamentos");
+  const { remove, update } = useResourceMutations<
+    unknown,
+    { status: StatusOrcamento }
+  >("orcamentos");
 
   const abrirEdicao = (o: Orcamento) => router.push(`/crm/orcamentos/${o.id}`);
   // Abre o formulário já em modo cópia: novo orçamento em rascunho, com o
@@ -148,6 +153,26 @@ export default function OrcamentosPage() {
   // histórico do ERP, que não se editam.
   const abrirCopia = (o: Orcamento) =>
     router.push(`/crm/orcamentos/${o.id}?copiar=1`);
+
+  // Aprovar (efetivar) e recusar mudam só o status. É o mesmo PATCH da tela de
+  // edição, então valem as mesmas regras do servidor: a trava de desconto
+  // volta como 409 com a mensagem pronta.
+  const mudarStatus = async (o: Orcamento, status: "aprovado" | "recusado") => {
+    const acao = status === "aprovado" ? "Aprovar" : "Recusar";
+    if (!confirm(`${acao} o orçamento Nº ${numeroOrcamento(o)}?`)) return;
+    try {
+      await update.mutateAsync({ id: o.id, input: { status } });
+      toast.success(
+        status === "aprovado" ? "Orçamento aprovado" : "Orçamento recusado",
+      );
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError
+          ? err.message
+          : `Erro ao ${acao.toLowerCase()} o orçamento`,
+      );
+    }
+  };
 
   const onDelete = async (o: Orcamento) => {
     if (!confirm(`Excluir o orçamento Nº ${numeroOrcamento(o)}?`)) return;
@@ -230,6 +255,19 @@ export default function OrcamentosPage() {
             <Pencil className="size-4" /> Editar
           </DropdownMenuItem>
         )}
+        {/* Aprovado é definitivo e vencido só se copia — o servidor recusa. */}
+        {o.status !== "aprovado" && o.status !== "expirado" && (
+          <DropdownMenuItem onClick={() => mudarStatus(o, "aprovado")}>
+            <CheckCircle2 className="size-4" /> Aprovar
+          </DropdownMenuItem>
+        )}
+        {o.status !== "aprovado" &&
+          o.status !== "expirado" &&
+          o.status !== "recusado" && (
+            <DropdownMenuItem onClick={() => mudarStatus(o, "recusado")}>
+              <XCircle className="size-4" /> Recusar
+            </DropdownMenuItem>
+          )}
         <DropdownMenuItem onClick={() => abrirCopia(o)}>
           <Copy className="size-4" /> Copiar
         </DropdownMenuItem>
