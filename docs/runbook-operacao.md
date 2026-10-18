@@ -1558,6 +1558,77 @@ Divergências históricas já encontradas (2026-08-25), do repo para o que rodav
 
 ---
 
+## VPS: Traefik, Portainer e as portas 80/443 **[verificado na VPS, 2026-10-18]**
+
+Os YAMLs da infraestrutura (`traefik.yaml`, `portainer.yaml`) **não estão neste
+repo**: ficam em `C:\VPS` na máquina do usuário e são copiados para a VPS.
+Deploy pelo terminal da VPS, no manager (nomes de stack confirmados com
+`docker stack ls`: `traefik` e `portainer`):
+
+```bash
+docker stack deploy -c traefik.yaml traefik
+docker stack deploy -c portainer.yaml portainer
+docker service ls        # tudo em N/N
+```
+
+O Traefik reinicia e fica fora do ar por alguns segundos; faça fora do horário de uso.
+
+**Quem é dono das portas 80/443: o Traefik (`mode: host`).** Nada mais pode
+escutar nelas. O `nginx` do sistema (`systemctl`) está **desabilitado**
+(`systemctl disable --now nginx`; cópia da config em
+`/root/nginx-backup-20261018`). Se ele voltar, o Traefik falha com
+`failed to bind host port 0.0.0.0:80/tcp: address already in use` e o nginx
+entrega para qualquer domínio o certificado de origem da Cloudflare — o
+"SSL que falha às vezes". Os domínios `rcgdist.com`, `www.rcgdist.com` e
+`api.rcgdist.com` (que o nginx servia) foram **removidos** de propósito.
+
+O projeto `rcg_comercial` (compose em `/root/dados_vps/rcgdist/rcg_comercial`,
+fora do Portainer, `restart: unless-stopped`) é atendido pelo Traefik via o
+serviço `rcg-comercial-edge_gateway` (rede `RCGComercialEdge`):
+`comercial.rcgdist.com.br` (web) e `api.comercial.rcgdist.com.br` (API).
+
+**Provider do Traefik é `swarm`** (`--providers.swarm.*`), não `docker`: as
+labels ficam em `deploy.labels`. Nome de middleware em label, portanto, é
+`@swarm`, nunca `@docker`.
+
+**Portainer: versão fixa, a mesma no servidor e no agent** (`2.45.2` em
+2026-10-18). Não use `latest` e **não fixe versão menor que a do banco**: o
+Portainer não volta de versão e entra em loop com `The database schema version
+does not align with the server version`. Descubra a versão da imagem local com
+`docker run --rm --entrypoint /portainer portainer/portainer-ce:<tag> --version`.
+O flag `--no-setup-token` não existe na 2.33.x. O agent fica numa rede própria
+(`portainer_agent`), fora da `RCGNet`, com `AGENT_SECRET` igual nos dois
+serviços (valor só no YAML da VPS, nunca no repo).
+
+**Conferência depois de qualquer mudança** (certificado válido = segundo número `0`):
+
+```bash
+docker service ls
+for d in portainer crm comercial api.comercial s3 minio pga; do
+  echo "$d $(curl -s -o /dev/null -w '%{http_code} %{ssl_verify_result}' --max-time 8 https://$d.rcgdist.com.br)"
+done
+curl -s https://api.comercial.rcgdist.com.br/api/v1/health/ready
+```
+
+Esperado: 200/302/403 com `0`; `api.comercial` dá 404 na raiz (use `/health/ready`).
+
+### Armadilha: serviços do Swarm não se enxergam (`P1001`, timeout até no Redis) **[a confirmar a causa]**
+
+Em 2026-10-18, depois de um reboot da VPS, `crm_api` ficou em 0/1 com
+`P1001: Can't reach database server at postgres_postgres:5432`. O Postgres
+estava saudável (`pg_isready` por dentro respondia), o nome resolvia, mas
+**toda conexão TCP entre containers da `RCGNet` dava timeout** (inclusive
+`crm_web` → Redis e Traefik → Postgres). Sem firewall (`ufw` inativo), sem
+sobreposição de sub-redes. Recriar o Postgres (`service update --force`) não
+adiantou; **`systemctl restart docker` resolveu** (todos os serviços voltaram
+1/1 e os containers do compose subiram sozinhos). Provável mesma causa do
+`P1001` de 2026-10-09 (seção "base nova num Postgres novo"). Se repetir:
+diagnosticar com `nc -zv -w 3 <serviço> <porta>` de dentro de um container
+(`docker exec ... sh -c`; a `RCGNet` não é attachable, `docker run --network`
+não funciona) e só então reiniciar o Docker — isso derruba tudo por ~1 minuto.
+
+---
+
 ## Log de erros (Plataforma > Erros) **[verificado em dev, 2026-09-04]**
 
 Onde alguém olha quando algo falha, sem abrir o log do container. Plano e
