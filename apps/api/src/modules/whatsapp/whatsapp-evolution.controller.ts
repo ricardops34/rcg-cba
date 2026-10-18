@@ -12,6 +12,7 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { timingSafeEqual } from 'node:crypto';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import { WhatsappSessaoService } from './whatsapp-sessao.service';
+import { WhatsappTriagemService } from './triagem/whatsapp-triagem.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { EvolutionGoProvider } from './providers/evolution-go.provider';
 import {
@@ -63,6 +64,7 @@ export class WhatsappEvolutionController {
     private readonly sessoes: WhatsappSessaoService,
     private readonly provedores: WhatsappProviderService,
     private readonly evolution: EvolutionGoProvider,
+    private readonly triagem: WhatsappTriagemService,
   ) {}
 
   @Post('webhook/:empresaId/:sessaoId')
@@ -503,6 +505,7 @@ export class WhatsappEvolutionController {
         }`,
       );
     }
+    const textoMensagem = estruturado?.texto ?? this.textoDaMensagem(conteudo);
     const resposta = await this.conversas.receber({
       sessaoId: ctx.sessaoId,
       empresaId: ctx.empresaId,
@@ -532,7 +535,7 @@ export class WhatsappEvolutionController {
               'Info.PushName',
               'notifyName',
             )),
-      texto: estruturado?.texto ?? this.textoDaMensagem(conteudo),
+      texto: textoMensagem,
       tipo: estruturado?.tipo ?? midia?.tipo ?? this.tipoDaMensagem(conteudo),
       arquivoNome: midia?.nome ?? null,
       arquivoMime: midia?.mime ?? null,
@@ -556,6 +559,18 @@ export class WhatsappEvolutionController {
           'contextInfo.stanzaID',
         ),
     });
+
+    // A triagem roda depois da gravação, fora da transação (ela fala com o
+    // provedor de IA pela rede). O `await` fica: responder antes de a IA falar
+    // faria a mensagem dela sair fora de ordem quando o cliente manda duas
+    // seguidas. `processar` nunca lança — falha vira fila para uma pessoa.
+    if ('triagem' in resposta && resposta.triagem && resposta.conversaId) {
+      await this.triagem.processar({
+        empresaId: ctx.empresaId,
+        conversaId: resposta.conversaId,
+        texto: textoMensagem,
+      });
+    }
 
     // `arquivoNecessario` só existe na resposta de quem foi gravada — a
     // variante "sem vínculo" não o traz, e é justamente a que não pode baixar

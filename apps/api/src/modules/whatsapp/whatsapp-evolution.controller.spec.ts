@@ -7,6 +7,7 @@ describe('WhatsappEvolutionController — autenticação do webhook', () => {
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
 
   const extrair = (authorization?: string) =>
@@ -53,6 +54,7 @@ describe('WhatsappEvolutionController — recebimento (formato da 0.7.2)', () =>
       provedores as never,
       // O provider real só para traduzir jid em telefone, que é função pura.
       new EvolutionGoProvider({} as never),
+      {} as never,
     );
     const tratar = (Message: unknown, Info: Record<string, unknown> = {}) =>
       (
@@ -208,6 +210,61 @@ describe('WhatsappEvolutionController — recebimento (formato da 0.7.2)', () =>
   });
 });
 
+describe('WhatsappEvolutionController — triagem por IA', () => {
+  const ctx = { empresaId: 'emp', sessaoId: 'sess' };
+  const montar = (resposta: Record<string, unknown>) => {
+    const conversas = { receber: jest.fn().mockResolvedValue(resposta) };
+    const triagem = { processar: jest.fn().mockResolvedValue(undefined) };
+    const controller = new WhatsappEvolutionController(
+      conversas as never,
+      {} as never,
+      {} as never,
+      new EvolutionGoProvider({} as never),
+      triagem as never,
+    );
+    const tratar = () =>
+      (
+        controller as unknown as {
+          tratarUmaMensagem(c: unknown, b: unknown): Promise<boolean>;
+        }
+      ).tratarUmaMensagem(ctx, {
+        Info: {
+          ID: '3EB0TRIAGEM',
+          Chat: '5565999990000@s.whatsapp.net',
+          Sender: '5565999990000@s.whatsapp.net',
+          IsFromMe: false,
+          PushName: 'Cliente',
+        },
+        Message: { conversation: 'preciso da segunda via' },
+      });
+    return { triagem, tratar };
+  };
+
+  it('chama a triagem com o texto quando a gravação a pede', async () => {
+    const { triagem, tratar } = montar({
+      gravada: true,
+      conversaId: 'conv-1',
+      triagem: true,
+    });
+    await tratar();
+    expect(triagem.processar).toHaveBeenCalledWith({
+      empresaId: 'emp',
+      conversaId: 'conv-1',
+      texto: 'preciso da segunda via',
+    });
+  });
+
+  it('não chama quando a gravação não pede triagem', async () => {
+    const { triagem, tratar } = montar({
+      gravada: true,
+      conversaId: 'conv-1',
+      triagem: false,
+    });
+    await tratar();
+    expect(triagem.processar).not.toHaveBeenCalled();
+  });
+});
+
 describe('WhatsappEvolutionController — HistorySync (formato whatsmeow)', () => {
   const montar = (historicoDias: number) => {
     const conversas = {
@@ -220,6 +277,7 @@ describe('WhatsappEvolutionController — HistorySync (formato whatsmeow)', () =
       {} as never,
       {} as never,
       new EvolutionGoProvider({} as never),
+      {} as never,
     );
     const tratar = (corpo: unknown) =>
       (
@@ -300,6 +358,7 @@ describe('WhatsappEvolutionController — HistorySync com @lid', () => {
       {} as never,
       {} as never,
       new EvolutionGoProvider({} as never),
+      {} as never,
     );
     const agora = Math.floor(Date.now() / 1000);
     (
@@ -357,6 +416,7 @@ describe('WhatsappEvolutionController — roteamento de eventos da 0.7.2', () =>
     {} as never,
     {} as never,
     {} as never,
+    {} as never,
   );
   const rota = (event: string) =>
     (
@@ -390,6 +450,7 @@ describe('WhatsappEvolutionController — mensagem de empresa (modelo com botõe
       {} as never,
       {} as never,
       new EvolutionGoProvider({} as never),
+      {} as never,
     );
     await (
       controller as unknown as {
@@ -453,6 +514,7 @@ describe('WhatsappEvolutionController — retomada depois de queda', () => {
       sessoes as never,
       {} as never,
       new EvolutionGoProvider({} as never),
+      {} as never,
     );
     const evento = (event: string, data: Record<string, unknown> = {}) =>
       (

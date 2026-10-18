@@ -4201,7 +4201,8 @@ disco/MinIO é apagada **depois** do commit.
 
 #### 3.9 Achados
 
-- 🔴 **A triagem por IA não roda desde 01/10/2026.** O commit `d7d3205` ("evogo")
+- ✅ **Corrigido em 2026-10-18** (`WhatsappEvolutionController` volta a chamar `triagem.processar` depois da gravação, com teste). Achado original:
+  **A triagem por IA não rodava desde 01/10/2026.** O commit `d7d3205` ("evogo")
   removeu `whatsapp-interno.controller.ts`, que chamava `triagem.processar()` depois de
   `receber`. O `WhatsappEvolutionController` só usa `arquivoNecessario`, e nada no código
   chama `WhatsappTriagemService.processar` (o service continua registrado no módulo).
