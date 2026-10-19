@@ -3366,7 +3366,11 @@ export class WhatsappConversasService {
       // DDD de outro telefone do mesmo cliente, para o número gravado sem DDD.
       let dddDoCadastro: string | null = null;
       // A pessoa do cadastro que atende neste número, quando o vendedor indicou.
-      let pessoa: { id: string; celular: string | null } | null = null;
+      let pessoa: {
+        id: string;
+        celular: string | null;
+        origem: string;
+      } | null = null;
 
       if (clienteId) {
         // Com "atende clientes de outras carteiras", qualquer cliente da empresa.
@@ -3411,7 +3415,7 @@ export class WhatsappConversasService {
               clienteId,
               ativo: true,
             },
-            select: { id: true, celular: true },
+            select: { id: true, celular: true, origem: true },
           });
           if (!pessoa) {
             throw new NotFoundException(
@@ -3529,10 +3533,24 @@ export class WhatsappConversasService {
         ? jid.split('@')[0].replace(/^55(?=\d{10,11}$)/, '')
         : null;
       if (pessoa && !pessoa.celular && numeroDoJid) {
-        await tx.clienteContato.update({
-          where: { id: pessoa.id },
-          data: { celular: numeroDoJid, updatedBy: user.id },
-        });
+        if (pessoa.origem === 'erp' && clienteId) {
+          // Contato do ERP: o número entra no campo do cliente (pela fila de
+          // alterações), senão a próxima carga do ERP o apagaria.
+          await this.clientes.contatoErpDoVinculo(
+            tx,
+            empresaId,
+            user,
+            clienteId,
+            pessoa.id,
+            numeroDoJid,
+            null,
+          );
+        } else {
+          await tx.clienteContato.update({
+            where: { id: pessoa.id },
+            data: { celular: numeroDoJid, updatedBy: user.id },
+          });
+        }
       }
 
       const conversa = await tx.whatsappConversa.upsert({

@@ -126,11 +126,15 @@ const SORT_FIELDS = new Set([
 ]);
 
 // Dados do vendedor anexados às respostas (coluna "Vendedor" da listagem).
-const VENDEDOR_SELECT = { select: { id: true, nome: true, nomeReduzido: true } };
+const VENDEDOR_SELECT = {
+  select: { id: true, nome: true, nomeReduzido: true },
+};
 
 // Dados da tabela de preço vinculada ao cliente (Posição de Cliente usa isso
 // pra calcular a coluna "Preço de tabela" do mix).
-const TABELA_PRECO_SELECT = { select: { id: true, codigoErp: true, descricao: true } };
+const TABELA_PRECO_SELECT = {
+  select: { id: true, codigoErp: true, descricao: true },
+};
 
 // Condição de pagamento vinculada, no mesmo formato.
 const CONDICAO_PAGAMENTO_SELECT = {
@@ -288,7 +292,9 @@ export class ClientesService {
         ]),
       };
       const sortField =
-        query.sortBy && SORT_FIELDS.has(query.sortBy) ? query.sortBy : 'razaoSocial';
+        query.sortBy && SORT_FIELDS.has(query.sortBy)
+          ? query.sortBy
+          : 'razaoSocial';
       const [data, total] = await Promise.all([
         tx.cliente.findMany({
           where,
@@ -505,7 +511,13 @@ export class ClientesService {
     ignorarEscopo = false,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      await this.exigirClienteNoEscopo(tx, empresaId, user, clienteId, ignorarEscopo);
+      await this.exigirClienteNoEscopo(
+        tx,
+        empresaId,
+        user,
+        clienteId,
+        ignorarEscopo,
+      );
       const contatos = await tx.clienteContato.findMany({
         where: { empresaId, clienteId },
         orderBy: [{ principal: 'desc' }, { nome: 'asc' }],
@@ -518,6 +530,12 @@ export class ClientesService {
     });
   }
 
+  /**
+   * Cadastra um contato do cliente. Os contatos são os quatro do ERP (A1_CT*01
+   * a 04): o novo entra no primeiro campo livre, pela fila de alterações
+   * (aplicada direto), e volta ao ERP. Com os quatro ocupados, é recusado —
+   * criar um quinto só na plataforma daria um contato que o ERP desconhece.
+   */
   criarContato(
     empresaId: string,
     user: AuthenticatedUser,
@@ -526,40 +544,49 @@ export class ClientesService {
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       await this.exigirClienteNoEscopo(tx, empresaId, user, clienteId);
-      const email = input.email.trim().toLowerCase();
-      const jaExiste = await tx.clienteContato.findFirst({
-        where: {
-          empresaId,
-          clienteId,
-          email: { equals: email, mode: 'insensitive' },
-        },
+      const cliente = await tx.cliente.findFirstOrThrow({
+        where: { id: clienteId, empresaId },
       });
-      if (jaExiste) {
+      const campos = cliente as unknown as Record<string, unknown>;
+      const email = input.email.trim().toLowerCase();
+      const posicao = [1, 2, 3, 4].find(
+        (p) =>
+          !texto(campos[`contato${p}Nome`]) &&
+          !texto(campos[`contato${p}Telefone`]) &&
+          !texto(campos[`contato${p}Email`]),
+      );
+      if (!posicao) {
+        throw new ConflictException(
+          'Este cliente já tem os quatro contatos do cadastro. Altere um deles na aba Contatos.',
+        );
+      }
+      const igual = [1, 2, 3, 4].some(
+        (p) => texto(campos[`contato${p}Email`]).toLowerCase() === email,
+      );
+      if (igual) {
         throw new BadRequestException(
           'Este cliente já tem um contato com esse e-mail',
         );
       }
-      // Contato principal é um só: promover um rebaixa o anterior, senão a tela
-      // mostraria dois "principais" e o portal não saberia a quem escrever.
-      if (input.principal) {
-        await tx.clienteContato.updateMany({
-          where: { empresaId, clienteId, principal: true },
-          data: { principal: false, updatedBy: user.id },
-        });
-      }
-      const contato = await tx.clienteContato.create({
-        data: {
-          empresaId,
-          clienteId,
-          nome: input.nome,
-          email,
-          telefone: input.telefone,
-          celular: input.celular,
-          cargo: input.cargo,
-          principal: input.principal,
-          createdBy: user.id,
-          updatedBy: user.id,
+      const numero = input.celular ?? input.telefone ?? null;
+      await this.alteracoes.registrar(tx, {
+        empresaId,
+        clienteId,
+        atual: campos,
+        input: {
+          [`contato${posicao}Nome`]: input.nome.slice(0, 50),
+          [`contato${posicao}Email`]: email,
+          [`contato${posicao}Telefone`]: numero ? numero.slice(0, 15) : '',
+          [`contato${posicao}Whatsapp`]: Boolean(input.celular),
         },
+        origem: 'manual',
+        autorId: user.id,
+        aplicarDireto: true,
+        justificativa: 'Novo contato do cliente',
+        registrarNaAgenda: false,
+      });
+      const contato = await tx.clienteContato.findFirstOrThrow({
+        where: { empresaId, clienteId, origem: 'erp', posicaoErp: posicao },
       });
       return { ...contato, temAcessoPortal: false };
     });
@@ -589,7 +616,12 @@ export class ClientesService {
     numero: string | null,
     nomeSugerido: string | null,
   ) {
-    const select = { id: true, nome: true, email: true, celular: true } as const;
+    const select = {
+      id: true,
+      nome: true,
+      email: true,
+      celular: true,
+    } as const;
     const cliente = await tx.cliente.findFirst({
       where: { id: clienteId, empresaId },
     });
@@ -652,7 +684,8 @@ export class ClientesService {
     );
     if (!vazios || !local) return null;
     return gravar(1, {
-      contato1Nome: (nomeSugerido ?? '').trim().slice(0, 50) || 'Contato WhatsApp',
+      contato1Nome:
+        (nomeSugerido ?? '').trim().slice(0, 50) || 'Contato WhatsApp',
       contato1Telefone: local,
       contato1Whatsapp: true,
     });
@@ -707,7 +740,12 @@ export class ClientesService {
    * Por isso a resposta é discriminada: `{ aplicado: true, cliente }` ou
    * `{ aplicado: false, solicitacao }`.
    */
-  async update(empresaId: string, user: AuthenticatedUser, id: string, input: ClienteUpdate) {
+  async update(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    input: ClienteUpdate,
+  ) {
     // Reforço server-side da config de campos editáveis (apps/api/src/modules/
     // cliente-campo-config/) — mesmo que alguém tente forçar via API direto,
     // não só via UI, um campo travado (editavel:false) é ignorado aqui.
@@ -961,7 +999,8 @@ export class ClientesService {
       // pode abrir a conversa. É o mesmo recorte da Central de Atendimento:
       // a instância do próprio usuário (`sessaoDoUsuarioWhere`).
       const podeVerWhatsapp =
-        user.isAdmin || user.permissoes.includes('whatsapp-conversas.visualizar');
+        user.isAdmin ||
+        user.permissoes.includes('whatsapp-conversas.visualizar');
       const sessaoWa = podeVerWhatsapp
         ? await sessaoDoUsuarioWhere(tx, empresaId, user)
         : null;
@@ -1082,8 +1121,15 @@ export class ClientesService {
       const titulosComStatus = titulos.map((titulo) => ({
         ...titulo,
         vencimentoEfetivo: calendario.vencimento(titulo.vencimento),
-        status: calcularStatusTituloReceber({ ...titulo, vencimento: calendario.vencimento(titulo.vencimento) }, hoje),
-        temBoleto: podeEmitirBoleto({ ...titulo, vencimento: calendario.vencimento(titulo.vencimento) }, temContaPadrao, hoje),
+        status: calcularStatusTituloReceber(
+          { ...titulo, vencimento: calendario.vencimento(titulo.vencimento) },
+          hoje,
+        ),
+        temBoleto: podeEmitirBoleto(
+          { ...titulo, vencimento: calendario.vencimento(titulo.vencimento) },
+          temContaPadrao,
+          hoje,
+        ),
       }));
       const titulosAbertos = titulosComStatus.filter(
         (t) => t.status !== 'baixado',
@@ -1384,9 +1430,11 @@ export class ClientesService {
             : Prisma.sql`c."vendedorId" = ${query.vendedorId}`,
         );
       }
-      if (query.ativo !== undefined) condicoes.push(Prisma.sql`c."ativo" = ${query.ativo}`);
+      if (query.ativo !== undefined)
+        condicoes.push(Prisma.sql`c."ativo" = ${query.ativo}`);
       if (query.uf) condicoes.push(Prisma.sql`c."uf" = ${query.uf}`);
-      if (query.municipio) condicoes.push(Prisma.sql`c."municipio" = ${query.municipio}`);
+      if (query.municipio)
+        condicoes.push(Prisma.sql`c."municipio" = ${query.municipio}`);
       if (query.carteira !== undefined)
         condicoes.push(Prisma.sql`c."carteira" = ${query.carteira}`);
       const buscaSql = condicaoBuscaTermosSql(query.search, [
@@ -1403,7 +1451,9 @@ export class ClientesService {
       }
       if (query.bloqueado !== undefined) {
         const bloqueadoExpr = Prisma.sql`(c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio"))`;
-        condicoes.push(query.bloqueado ? bloqueadoExpr : Prisma.sql`NOT ${bloqueadoExpr}`);
+        condicoes.push(
+          query.bloqueado ? bloqueadoExpr : Prisma.sql`NOT ${bloqueadoExpr}`,
+        );
       }
       // Aviso de comodato sem consumo e baixas: a mesma expressão da coluna
       // (ver comodato-sql.ts), para o filtro e o ícone dizerem a mesma coisa.
@@ -1434,13 +1484,19 @@ export class ClientesService {
           WHERE tv."clienteId" = c.id AND tv."empresaId" = c."empresaId"
             AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < ${corteVencidos}
         )`;
-        condicoes.push(query.temTituloVencido ? temVencidoExpr : Prisma.sql`NOT ${temVencidoExpr}`);
+        condicoes.push(
+          query.temTituloVencido
+            ? temVencidoExpr
+            : Prisma.sql`NOT ${temVencidoExpr}`,
+        );
       }
 
       const where = Prisma.join(condicoes, ' AND ');
 
       const sortField =
-        query.sortBy && Object.hasOwn(LISTAGEM_POSICAO_SORT_EXPR, query.sortBy) ? query.sortBy : 'ultimaCompra';
+        query.sortBy && Object.hasOwn(LISTAGEM_POSICAO_SORT_EXPR, query.sortBy)
+          ? query.sortBy
+          : 'ultimaCompra';
       const sortDir = query.sortOrder === 'desc' ? 'DESC' : 'ASC';
       // "dias" (dias sem comprar) é o inverso de ultimaCompra: menos dias =
       // compra mais recente = ultimaCompra maior. NULLS explícito porque o
@@ -1448,8 +1504,12 @@ export class ClientesService {
       const orderBy =
         query.sortBy === 'dias'
           ? sortDir === 'ASC'
-            ? Prisma.raw('COALESCE(u."ultimaData", c."ultimaCompra") DESC NULLS LAST')
-            : Prisma.raw('COALESCE(u."ultimaData", c."ultimaCompra") ASC NULLS FIRST')
+            ? Prisma.raw(
+                'COALESCE(u."ultimaData", c."ultimaCompra") DESC NULLS LAST',
+              )
+            : Prisma.raw(
+                'COALESCE(u."ultimaData", c."ultimaCompra") ASC NULLS FIRST',
+              )
           : Prisma.raw(`${LISTAGEM_POSICAO_SORT_EXPR[sortField]} ${sortDir}`);
 
       const { skip, take } = paginationToSkipTake(query);
@@ -1551,7 +1611,9 @@ export class ClientesService {
         ativo: r.ativo,
         vendedorNome: r.vendedorNome,
         ultimaCompra: r.ultimaCompra ? r.ultimaCompra.toISOString() : null,
-        dias: r.ultimaCompra ? Math.floor((agora - r.ultimaCompra.getTime()) / 86_400_000) : null,
+        dias: r.ultimaCompra
+          ? Math.floor((agora - r.ultimaCompra.getTime()) / 86_400_000)
+          : null,
         vendaUltimos30Dias: Number(r.vendaUltimos30Dias),
         vendaMedia90Dias: Number(r.vendaMedia90Dias),
         difMesEMedia: Number(r.difMesEMedia),

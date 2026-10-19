@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import type { PortalClienteConfig, PortalClienteContatoCreate } from '@plataforma/contracts';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -96,30 +101,36 @@ export class PortalClienteAdminService {
           email: { equals: emailNormalizado, mode: 'insensitive' },
         },
       });
-      const dados = {
-        perfilId,
-        nome: input.nome,
-        telefone: input.telefone,
-        celular: input.celular,
-        cargo: input.cargo,
-        principal: input.principal,
-        ativo: input.ativo,
-        updatedBy: usuarioId,
-      };
-      const contato = existente
-        ? await tx.clienteContato.update({
-            where: { id: existente.id },
-            data: dados,
-          })
-        : await tx.clienteContato.create({
-            data: {
-              empresaId,
-              clienteId: input.clienteId,
-              email: emailNormalizado,
-              createdBy: usuarioId,
-              ...dados,
-            },
-          });
+      // Os contatos são os do cadastro do cliente (aba Contatos, vindos do ERP):
+      // não se cria contato por aqui, para não surgir um que o ERP desconhece.
+      if (!existente) {
+        throw new BadRequestException(
+          'Esse e-mail não consta nos contatos do cliente. Cadastre o contato na aba Contatos do cliente e depois libere o acesso.',
+        );
+      }
+      // Nome e telefone de contato do ERP vêm do cliente; aqui só o que é do portal.
+      const dados =
+        existente.origem === 'erp'
+          ? {
+              perfilId,
+              cargo: input.cargo,
+              principal: input.principal,
+              updatedBy: usuarioId,
+            }
+          : {
+              perfilId,
+              nome: input.nome,
+              telefone: input.telefone,
+              celular: input.celular,
+              cargo: input.cargo,
+              principal: input.principal,
+              ativo: input.ativo,
+              updatedBy: usuarioId,
+            };
+      const contato = await tx.clienteContato.update({
+        where: { id: existente.id },
+        data: dados,
+      });
 
       const empresaAlias = empresa.alias.toLowerCase();
       const credencialExistente = await tx.portalClienteCredencial.findFirst({

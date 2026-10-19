@@ -23,3 +23,13 @@ vínculo do WhatsApp é com um destes — com os quatro vazios, o vínculo preen
 ## Pendências
 - `docs/integracao/sql/01-instalar.sql` (view de clientes) não foi alterada.
 - Conferência visual; produção (migration `20261019130000_cliente_contatos_erp` e fontes BJPLA003/004).
+
+## Cadastro único (2026-10-19)
+Pergunta do usuário: "assim não vamos acabar tendo contatos diferentes?". Resposta: os quatro campos do ERP
+são a única fonte; `cliente_contatos` (origem erp) é só espelho.
+- `POST /clientes/:id/contatos` grava no primeiro campo livre (fila, aplicada direto); com os quatro
+  ocupados, 409.
+- Acesso ao portal só para contato que já consta no cadastro (e-mail igual); de contato do ERP não se editam
+  nome/telefone por ali.
+- Iniciar conversa com contato do ERP sem número grava o número no campo do cliente (não em cliente_contatos).
+- Os 165 contatos de dev são de demonstração (`@exemplo.com.br`, 19/09, sem vínculo): não foram migrados.

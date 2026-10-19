@@ -164,3 +164,62 @@ describe('ClientesService.contatoErpDoVinculo', () => {
     ).rejects.toThrow(BadRequestException);
   });
 });
+
+describe('ClientesService.criarContato (cadastro único dos quatro)', () => {
+  const entrada = {
+    nome: 'Rui',
+    email: 'RUI@x.com',
+    celular: '67999112233',
+    principal: false,
+  } as never;
+  const montarCriar = (cliente: Record<string, unknown>) => {
+    const base = montar({
+      cliente,
+      sincronizado: { id: 'k', nome: 'Rui', origem: 'erp' },
+    });
+    const servico = base.servico as unknown as {
+      prisma: unknown;
+      exigirClienteNoEscopo: unknown;
+    };
+    servico.prisma = {
+      withTenant: (_e: string, fn: (t: unknown) => unknown) => fn(base.tx),
+    };
+    servico.exigirClienteNoEscopo = jest.fn().mockResolvedValue(undefined);
+    (base.tx.cliente as Record<string, unknown>).findFirstOrThrow = jest
+      .fn()
+      .mockResolvedValue({ id: 'c1', ...cliente });
+    (base.tx.clienteContato as Record<string, unknown>).findFirstOrThrow = jest
+      .fn()
+      .mockResolvedValue({ id: 'k', origem: 'erp' });
+    return base;
+  };
+
+  it('entra no primeiro campo livre', async () => {
+    const { servico, registrar } = montarCriar({ contato1Nome: 'Ana' });
+    await servico.criarContato('e1', user, 'c1', entrada);
+    expect(registrar).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        input: {
+          contato2Nome: 'Rui',
+          contato2Email: 'rui@x.com',
+          contato2Telefone: '67999112233',
+          contato2Whatsapp: true,
+        },
+      }),
+    );
+  });
+
+  it('com os quatro ocupados, recusa', async () => {
+    const { servico, registrar } = montarCriar({
+      contato1Nome: 'A',
+      contato2Nome: 'B',
+      contato3Nome: 'C',
+      contato4Nome: 'D',
+    });
+    await expect(
+      servico.criarContato('e1', user, 'c1', entrada),
+    ).rejects.toThrow('quatro contatos');
+    expect(registrar).not.toHaveBeenCalled();
+  });
+});
