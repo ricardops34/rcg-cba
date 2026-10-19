@@ -911,8 +911,7 @@ export function ClienteFormContent({
             <div className="-mx-1 overflow-x-auto overflow-y-hidden px-1 [scrollbar-width:none] [-ms-overflow-style:none] [&::-webkit-scrollbar]:hidden">
             <TabsList>
               <TabsTrigger value="identificacao">Identificação</TabsTrigger>
-              <TabsTrigger value="contato">Contato</TabsTrigger>
-              <TabsTrigger value="contatos">Contatos</TabsTrigger>
+              <TabsTrigger value="contato">Contatos</TabsTrigger>
               <TabsTrigger value="endereco">Endereço</TabsTrigger>
               <TabsTrigger value="comercial">Comercial</TabsTrigger>
               {cliente && <TabsTrigger value="cnae">CNAE</TabsTrigger>}
@@ -922,8 +921,18 @@ export function ClienteFormContent({
             </TabsList>
             </div>
             <TabsContent value="identificacao">{camposIdentificacao}</TabsContent>
-            <TabsContent value="contato">{camposContato}</TabsContent>
-            <TabsContent value="contatos">{camposContatos}</TabsContent>
+            <TabsContent value="contato">
+              <div className="space-y-6">
+                <section className="space-y-3">
+                  <h3 className="text-sm font-medium">Contato principal do cadastro</h3>
+                  {camposContato}
+                </section>
+                <section className="space-y-3 border-t pt-4">
+                  <h3 className="text-sm font-medium">Pessoas de contato (ERP)</h3>
+                  {camposContatos}
+                </section>
+              </div>
+            </TabsContent>
             <TabsContent value="endereco">{camposEndereco}</TabsContent>
             <TabsContent value="comercial">{camposComercial}</TabsContent>
             {cliente && <TabsContent value="cnae">{camposCnae}</TabsContent>}
