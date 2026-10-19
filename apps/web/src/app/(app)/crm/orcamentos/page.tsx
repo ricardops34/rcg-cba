@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Orcamento, StatusOrcamento } from "@plataforma/contracts";
 import {
@@ -12,7 +13,7 @@ import {
   situacaoIntegracaoOrcamento,
 } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
-import { ApiError } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api-client";
 import { dataCivilBr } from "@/lib/data";
 import {
   useVendedoresEscopo,
@@ -58,6 +59,7 @@ import {
 import {
   CheckCircle2,
   Copy,
+  Link2,
   Eye,
   MoreHorizontal,
   Pencil,
@@ -147,6 +149,7 @@ export default function OrcamentosPage() {
     { status: StatusOrcamento }
   >("orcamentos");
 
+  const queryClient = useQueryClient();
   const abrirEdicao = (o: Orcamento) => router.push(`/crm/orcamentos/${o.id}`);
   // Abre o formulário já em modo cópia: novo orçamento em rascunho, com o
   // cliente e os itens deste. É o caminho para aprovado, vencido e o
@@ -170,6 +173,27 @@ export default function OrcamentosPage() {
         err instanceof ApiError
           ? err.message
           : `Erro ao ${acao.toLowerCase()} o orçamento`,
+      );
+    }
+  };
+
+  // Gera (ou recupera) o link público e copia para a área de transferência: o
+  // vendedor cola onde quiser (WhatsApp, e-mail). Orçamento com pendência de
+  // desconto volta 409 com o motivo.
+  const copiarLinkCliente = async (o: Orcamento) => {
+    try {
+      const { token } = await apiFetch<{ token: string }>(
+        `/orcamentos/${o.id}/link`,
+        { method: "POST" },
+      );
+      const url = `${window.location.origin}/o/${token}`;
+      await navigator.clipboard.writeText(url);
+      toast.success("Link copiado — cole na mensagem para o cliente");
+      // Gerar o link passa o rascunho para enviado.
+      void queryClient.invalidateQueries({ queryKey: ["orcamentos"] });
+    } catch (err) {
+      toast.error(
+        err instanceof ApiError ? err.message : "Erro ao gerar o link",
       );
     }
   };
@@ -268,6 +292,11 @@ export default function OrcamentosPage() {
               <XCircle className="size-4" /> Recusar
             </DropdownMenuItem>
           )}
+        {(o.status === "rascunho" || o.status === "enviado") && (
+          <DropdownMenuItem onClick={() => copiarLinkCliente(o)}>
+            <Link2 className="size-4" /> Link para o cliente
+          </DropdownMenuItem>
+        )}
         <DropdownMenuItem onClick={() => abrirCopia(o)}>
           <Copy className="size-4" /> Copiar
         </DropdownMenuItem>

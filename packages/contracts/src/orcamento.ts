@@ -271,6 +271,11 @@ export const orcamentoSchema = z.object({
   descontoSolicitadoPor: z.string().nullable(),
   descontoAutorizadoEm: z.string().datetime().nullable(),
   descontoAutorizadoPor: z.string().nullable(),
+  // Resposta do cliente e por onde entrou: link, portal ou sistema (vendedor na tela).
+  clienteDecisao: z.string().nullish(),
+  clienteDecididoEm: z.string().datetime().nullish(),
+  clienteDecisaoObservacao: z.string().nullish(),
+  clienteDecisaoCanal: z.string().nullish(),
   // Pedido no ERP (ver situacaoIntegracaoOrcamento): só a integração grava.
   situacaoErp: situacaoErpOrcamentoSchema.nullable(),
   situacaoErpEm: z.string().datetime().nullable(),

@@ -685,12 +685,27 @@ export class OrcamentosService {
         };
       }
 
+      // Alterou o orçamento: o link que o cliente recebeu mostrava outra coisa.
+      await tx.orcamentoLink.updateMany({
+        where: { orcamentoId: id, revogadoEm: null },
+        data: { revogadoEm: new Date() },
+      });
+
       const atualizado = await tx.orcamento.update({
         where: { id },
         data: {
           ...(this.limpar(header) as object),
           updatedBy: user.id,
           ...itensUpdate,
+          ...((header.status === 'aprovado' || header.status === 'recusado') &&
+          header.status !== orcamento.status
+            ? {
+                clienteDecisao: header.status,
+                clienteDecididoEm: new Date(),
+                clienteDecisaoCanal: 'sistema',
+                decididoPorUsuarioId: user.id,
+              }
+            : {}),
         } as never,
         include: INCLUDE,
       });

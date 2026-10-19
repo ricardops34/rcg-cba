@@ -105,6 +105,7 @@ export class PortalClienteService {
           clienteDecididoPorContatoId: user.contatoId,
           clienteDecisao: decisao,
           clienteDecisaoObservacao: observacao?.trim() || null,
+          clienteDecisaoCanal: 'portal',
           updatedBy: `portal-cliente:${user.contatoId}`,
         },
       });

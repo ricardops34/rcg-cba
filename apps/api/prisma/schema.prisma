@@ -147,6 +147,7 @@ model Empresa {
   objetivosVendedorMes       ObjetivoVendedorMes[]
   objetivosVendedorCategoria ObjetivoVendedorCategoria[]
   orcamentos                 Orcamento[]
+  orcamentoLinks             OrcamentoLink[]
   orcamentoItens             OrcamentoItem[]
   integracaoApiKeys          IntegracaoApiKey[]
   integracaoEndpointConfigs   IntegracaoEndpointConfig[]
@@ -4074,6 +4075,13 @@ model Orcamento {
   clienteDecididoPorContatoId String?
   clienteDecisao              String?
   clienteDecisaoObservacao    String?
+  // Por onde a decisão entrou: link (página pública), portal (cliente logado) ou
+  // sistema (vendedor aprovou/recusou na tela — nesse caso decididoPorUsuarioId
+  // diz quem). IP e agente só existem no link, para rastrear a resposta.
+  clienteDecisaoCanal         String?
+  clienteDecisaoIp            String?
+  clienteDecisaoAgente        String?
+  decididoPorUsuarioId        String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt
@@ -4090,6 +4098,7 @@ model Orcamento {
   itens              OrcamentoItem[]
   atividades         Atividade[]
   clienteDecididoPor ClienteContato?    @relation("OrcamentoDecisaoContato", fields: [clienteDecididoPorContatoId], references: [id])
+  links              OrcamentoLink[]
 
   @@unique([empresaId, chave])
   @@index([empresaId, codigoErp])
@@ -4099,6 +4108,28 @@ model Orcamento {
   @@index([empresaId, status])
   @@index([empresaId, clienteDecididoPorContatoId])
   @@map("orcamentos")
+}
+
+// Link público para o cliente aprovar ou recusar o orçamento sem login
+// (docs/planos/orcamento-link-publico.md). O token é aleatório (32 bytes) e
+// fica aqui para o vendedor copiar de novo. Vale até a validade do orçamento,
+// responde uma vez e é revogado quando o orçamento é alterado.
+model OrcamentoLink {
+  id          String    @id @default(uuid())
+  empresaId   String
+  orcamentoId String
+  token       String    @unique
+  expiraEm    DateTime? @db.Date
+  revogadoEm  DateTime?
+  usadoEm     DateTime?
+  createdAt   DateTime  @default(now())
+  createdBy   String?
+
+  empresa   Empresa   @relation(fields: [empresaId], references: [id])
+  orcamento Orcamento @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, orcamentoId])
+  @@map("orcamento_links")
 }
 
 model OrcamentoItem {

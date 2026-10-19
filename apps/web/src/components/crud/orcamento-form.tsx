@@ -2342,6 +2342,25 @@ export function OrcamentoFormContent({
                       {registro.codigoErp ?? "— (ainda não integrado)"}
                     </div>
                   </Field>
+                  {registro.clienteDecididoEm && (
+                    <Field>
+                      <FieldLabel>Resposta do cliente</FieldLabel>
+                      <div className="text-sm">
+                        {registro.clienteDecisao === "recusado" ? "Recusado" : "Aprovado"}{" "}
+                        {registro.clienteDecisaoCanal === "link"
+                          ? "pelo link"
+                          : registro.clienteDecisaoCanal === "portal"
+                            ? "pelo portal do cliente"
+                            : "no sistema"}{" "}
+                        em {dataHoraBr(registro.clienteDecididoEm)}
+                        {registro.clienteDecisaoObservacao && (
+                          <span className="block text-muted-foreground">
+                            Motivo: {registro.clienteDecisaoObservacao}
+                          </span>
+                        )}
+                      </div>
+                    </Field>
+                  )}
                   {registro.situacaoErpEm && (
                     <Field>
                       <FieldLabel>Situação do pedido atualizada em</FieldLabel>

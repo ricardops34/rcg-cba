@@ -21,6 +21,7 @@ export type EventoOrcamento =
   | 'alteracao'
   | 'pdf'
   | 'envio_whatsapp'
+  | 'link_gerado'
   | 'aprovacao_cliente'
   | 'recusa_cliente'
   | 'autorizacao_solicitada'
@@ -31,6 +32,7 @@ const TITULO: Record<EventoOrcamento, (numero: string) => string> = {
   alteracao: (n) => `Orçamento nº ${n} alterado`,
   pdf: (n) => `Proposta em PDF gerada — orçamento nº ${n}`,
   envio_whatsapp: (n) => `Proposta enviada pelo WhatsApp — orçamento nº ${n}`,
+  link_gerado: (n) => `Link do orçamento nº ${n} gerado para o cliente`,
   aprovacao_cliente: (n) => `Orçamento nº ${n} aprovado pelo cliente`,
   recusa_cliente: (n) => `Orçamento nº ${n} recusado pelo cliente`,
   autorizacao_solicitada: (n) =>
