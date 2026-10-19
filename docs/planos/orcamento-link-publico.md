@@ -76,3 +76,9 @@ Outras pendências a confirmar com o usuário (ex.: sem itens, cliente sem conta
 - Verificado em dev com curl (aprovar uma vez, recusa sem justificativa, 2ª resposta 409) e 12 testes
   unitários. **Falta:** conferência visual da página no celular e testar "Gerar link" logado na tela;
   produção (migration + restart duplo).
+
+## Base do link como parâmetro (2026-10-19)
+Parâmetro `ORCAMENTO_LINK_URL_BASE` (Administração > Parâmetros, por empresa, texto 200). Vazio usa o
+endereço do sistema (`WEB_URL`/`CORS_ORIGIN`); sem nenhum, a tela usa o endereço em que o vendedor está.
+A API devolve `url` pronto em `POST/GET /orcamentos/:id/link`. Migration `20261019110000_parametro_orcamento_link_url`
+(cria a linha vazia nas empresas existentes) e entrada no `seed-base`.

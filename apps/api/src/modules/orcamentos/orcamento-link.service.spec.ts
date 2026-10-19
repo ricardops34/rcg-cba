@@ -21,7 +21,9 @@ function montar(opcoes: {
   itens?: number;
   link?: Record<string, unknown> | null;
   jaDecidido?: boolean;
+  base?: string | null;
 }) {
+  const base = opcoes.base ?? null;
   const orc = {
     id: 'o1',
     empresaId: EMPRESA,
@@ -81,7 +83,10 @@ function montar(opcoes: {
   const prisma = {
     withTenant: (_e: string, fn: (t: unknown) => unknown) => fn(tx),
   };
-  const servico = new OrcamentoLinkService(prisma as never);
+  const servico = new OrcamentoLinkService(
+    prisma as never,
+    { obterTexto: jest.fn().mockResolvedValue(base) } as never,
+  );
   return { servico, tx };
 }
 
@@ -108,6 +113,12 @@ describe('OrcamentoLinkService — gerar', () => {
     const r = await servico.gerar(EMPRESA, usuario, 'o1');
     expect(r.token.startsWith(`${EMPRESA}.`)).toBe(true);
     expect(tx.orcamentoLink.create).toHaveBeenCalled();
+  });
+
+  it('o endereço base vem do parâmetro, sem barra no fim', async () => {
+    const { servico } = montar({ base: 'https://crm.empresa.com.br/' });
+    const r = await servico.gerar(EMPRESA, usuario, 'o1');
+    expect(r.url).toBe(`https://crm.empresa.com.br/o/${r.token}`);
   });
 
   it('rascunho vira enviado ao gerar', async () => {

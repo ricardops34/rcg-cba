@@ -12,6 +12,11 @@ import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores'
 import { diaLocal } from '../../common/horario/expediente';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import {
+  ParametrosService,
+  PARAMETRO_ORCAMENTO_LINK_URL_BASE,
+} from '../parametros/parametros.service';
+import { urlDoSistema } from '../../common/mail/email-acesso';
+import {
   orcamentoExigeAutorizacao,
   registrarAtividadeOrcamento,
 } from './registrar-atividade-orcamento';
@@ -53,7 +58,10 @@ type LinkRow = {
  */
 @Injectable()
 export class OrcamentoLinkService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly parametros: ParametrosService,
+  ) {}
 
   // ---------------------------------------------------------------- vendedor
 
@@ -124,7 +132,12 @@ export class OrcamentoLinkService {
         'link_gerado',
         orc,
       );
-      return { token, expiraEm: orc.dataValidade, usadoEm: null };
+      return {
+        token,
+        url: await this.montarUrl(empresaId, token, tx),
+        expiraEm: orc.dataValidade,
+        usadoEm: null,
+      };
     });
   }
 
@@ -306,8 +319,36 @@ export class OrcamentoLinkService {
       orderBy: { createdAt: 'desc' },
     });
     return link
-      ? { token: link.token, expiraEm: link.expiraEm, usadoEm: link.usadoEm }
+      ? {
+          token: link.token,
+          url: await this.montarUrl(empresaId, link.token, tx),
+          expiraEm: link.expiraEm,
+          usadoEm: link.usadoEm,
+        }
       : null;
+  }
+
+  /**
+   * Endereço completo do link. A base é o parâmetro ORCAMENTO_LINK_URL_BASE da
+   * empresa; sem ele, o endereço do sistema (WEB_URL / CORS_ORIGIN). Nulo quando
+   * nenhum dos dois existe — a tela cai no endereço em que o vendedor está.
+   */
+  private async montarUrl(
+    empresaId: string,
+    token: string,
+    tx: TenantTx,
+  ): Promise<string | null> {
+    const configurada = await this.parametros.obterTexto(
+      empresaId,
+      PARAMETRO_ORCAMENTO_LINK_URL_BASE,
+      null,
+      tx,
+    );
+    const base = (configurada?.trim() || urlDoSistema() || '').replace(
+      /\/+$/,
+      '',
+    );
+    return base ? `${base}/o/${token}` : null;
   }
 
   private async buscarNoEscopo(

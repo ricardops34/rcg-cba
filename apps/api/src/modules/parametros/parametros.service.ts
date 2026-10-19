@@ -34,6 +34,8 @@ export const PARAMETRO_TABELA_PRECO_CAPITAL = 'TABELA_PRECO_CAPITAL';
 export const PARAMETRO_TABELA_PRECO_INTERIOR = 'TABELA_PRECO_INTERIOR';
 export const PARAMETRO_ORCAMENTO_EXIBIR_FOTOS =
   'ORCAMENTO_EXIBIR_FOTOS_PRODUTOS';
+/** Endereço base do link público do orçamento; vazio usa o endereço do sistema. */
+export const PARAMETRO_ORCAMENTO_LINK_URL_BASE = 'ORCAMENTO_LINK_URL_BASE';
 export const PARAMETRO_BOLETO_PRAZO_MAXIMO_REEMISSAO =
   'BOLETO_PRAZO_MAXIMO_REEMISSAO';
 /** Gravado pela integração (POST /integracao/comunicacao), em ISO 8601. */

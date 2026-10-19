@@ -182,11 +182,15 @@ export default function OrcamentosPage() {
   // desconto volta 409 com o motivo.
   const copiarLinkCliente = async (o: Orcamento) => {
     try {
-      const { token } = await apiFetch<{ token: string }>(
+      const { token, url: urlBase } = await apiFetch<{
+        token: string;
+        url: string | null;
+      }>(
         `/orcamentos/${o.id}/link`,
         { method: "POST" },
       );
-      const url = `${window.location.origin}/o/${token}`;
+      // A base vem do parâmetro ORCAMENTO_LINK_URL_BASE; sem ela, o endereço desta tela.
+      const url = urlBase ?? `${window.location.origin}/o/${token}`;
       await navigator.clipboard.writeText(url);
       toast.success("Link copiado — cole na mensagem para o cliente");
       // Gerar o link passa o rascunho para enviado.

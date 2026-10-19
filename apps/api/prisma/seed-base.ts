@@ -122,6 +122,14 @@ const PARAMETROS_PADRAO = [
     descricao: 'Exibe a foto principal dos produtos nas propostas de orçamento',
   },
   {
+    parametro: 'ORCAMENTO_LINK_URL_BASE',
+    tipo: 'texto' as const,
+    tamanho: 200,
+    conteudo: null,
+    descricao:
+      'Endereço base do link do orçamento enviado ao cliente (ex.: https://plataforma.empresa.com.br); vazio usa o endereço do sistema',
+  },
+  {
     parametro: 'DESCONTO_ACIMA_LIMITE_BLOQUEIA',
     tipo: 'booleano' as const,
     tamanho: null,
