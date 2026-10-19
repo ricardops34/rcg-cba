@@ -7,9 +7,26 @@ import { cn } from "@/lib/utils"
 import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
 
 function Select({
+  onValueChange,
   ...props
 }: React.ComponentProps<typeof SelectPrimitive.Root>) {
-  return <SelectPrimitive.Root data-slot="select" {...props} />
+  // Ao receber um valor por código antes de as opções existirem, o Radix
+  // dispara uma troca com valor vazio, que apagava o campo preenchido (visto na
+  // condição de pagamento e na tabela do orçamento). Item de seleção nunca tem
+  // valor vazio, então essa troca nunca é uma escolha de verdade: é ignorada.
+  const aoTrocar = onValueChange
+    ? (valor: string) => {
+        if (valor === "") return
+        onValueChange(valor)
+      }
+    : undefined
+  return (
+    <SelectPrimitive.Root
+      data-slot="select"
+      onValueChange={aoTrocar}
+      {...props}
+    />
+  )
 }
 
 function SelectGroup({
