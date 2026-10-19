@@ -751,7 +751,7 @@ export function ClienteFormContent({
   const camposContatos = (
     <FieldGroup>
       <p className="text-sm text-muted-foreground">
-        Até quatro pessoas de contato deste cliente, as mesmas do cadastro no ERP. Quem pode alterar é definido em Administração, Campos do Cliente. Ao salvar, a mudança pode precisar de aprovação antes de seguir para o ERP.
+        Até quatro pessoas de contato deste cliente. Quem pode alterar é definido em Administração, Campos do Cliente. Ao salvar, a mudança pode precisar de aprovação.
       </p>
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
         {POSICOES_CONTATO.map((p) => {

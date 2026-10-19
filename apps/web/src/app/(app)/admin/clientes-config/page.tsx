@@ -68,8 +68,8 @@ const GRUPOS: GrupoCampos[] = [
     ],
   },
   {
-    legenda: "Contatos (ERP)",
-    descricao: "Até quatro contatos do cadastro do ERP (A1_CT*01 a 04): tipo, nome, telefone, WhatsApp e e-mail",
+    legenda: "Contatos",
+    descricao: "Até quatro pessoas de contato do cliente: tipo, nome, telefone, WhatsApp e e-mail",
     icone: Mail,
     campos: [
       { campo: "contato1Tipo", label: "Contato 1 — Tipo", descricao: "Cliente, comprador, financeiro ou geral" },
