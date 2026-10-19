@@ -1665,6 +1665,9 @@ export function OrcamentoFormContent({
                 <Select
                   value={form.watch("condicaoPagamentoId") ?? "none"}
                   onValueChange={(v) => {
+                    // O Select dispara uma troca vazia ao receber o valor antes de as
+                    // opções existirem; sem isto ela apagava a condição sugerida.
+                    if (!v) return;
                     setCondicaoPagamentoTocada(true);
                     form.setValue("condicaoPagamentoId", v === "none" ? null : v);
                   }}
@@ -1686,7 +1689,9 @@ export function OrcamentoFormContent({
                 <FieldLabel htmlFor="tabelaPrecoId">Tabela de preços</FieldLabel>
                 <Select
                   value={tabelaPrecoId ?? "none"}
-                  onValueChange={(v) => void trocarTabela(v)}
+                  onValueChange={(v) => {
+                    if (v) void trocarTabela(v);
+                  }}
                   disabled={!podeAlterarTabela || bloqueado}
                 >
                   <SelectTrigger id="tabelaPrecoId" className="w-full">
