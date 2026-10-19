@@ -261,6 +261,13 @@ function QuantidadeInput({
 }
 
 /** Info local (não vai pro submit) de cada linha de item, pra render das colunas Preço tabela/Desconto/Estoque. */
+interface TabelaPrecoDoCliente {
+  tabelaPrecoId: string | null;
+  tabela: { id: string; descricao: string } | null;
+  podeAlterar: boolean;
+  opcoes: { id: string; descricao: string }[];
+}
+
 interface LinhaInfo {
   vlrTabela: number | null;
   saldoEstoque: number | null;
@@ -634,6 +641,7 @@ export function OrcamentoFormContent({
     vendedorId: "",
     oportunidadeId: null,
     condicaoPagamentoId: null,
+    tabelaPrecoId: null,
     titulo: "",
     status: "rascunho",
     dataValidade: null,
@@ -650,6 +658,7 @@ export function OrcamentoFormContent({
           vendedorId: orcamento.vendedorId,
           oportunidadeId: orcamento.oportunidadeId,
           condicaoPagamentoId: orcamento.condicaoPagamentoId,
+          tabelaPrecoId: orcamento.tabelaPrecoId ?? null,
           titulo: orcamento.titulo,
           status: orcamento.status,
           dataValidade: orcamento.dataValidade ? new Date(orcamento.dataValidade) : null,
@@ -815,6 +824,42 @@ export function OrcamentoFormContent({
       form.setValue("condicaoPagamentoId", condicaoPagamentoDoCliente ?? null);
     }
   }, [orcamento, condicaoPagamentoTocada, clienteSelecionadoQuery.data, condicaoPagamentoDoCliente, form]);
+
+  // A lista de condições só traz as ativas e exige permissão de cadastro: soma a
+  // condição do cadastro do cliente, para o campo não ficar em branco quando
+  // ela está inativa ou o vendedor não enxerga a lista.
+  const condicaoDoCliente = clienteSelecionadoQuery.data?.condicaoPagamento;
+  const opcoesCondicaoComCliente =
+    condicaoDoCliente && !opcoesCondicao.some((c) => c.id === condicaoDoCliente.id)
+      ? [{ id: condicaoDoCliente.id, descricao: condicaoDoCliente.descricao }, ...opcoesCondicao]
+      : opcoesCondicao;
+
+  // Tabela de preços: começa a do cadastro do cliente; só dá para trocar se o
+  // parâmetro ORCAMENTO_ALTERA_TABELA_PRECO permitir (o servidor também barra).
+  const tabelaClienteQuery = useQuery({
+    queryKey: ["orcamentos", "tabela-preco-cliente", clienteId],
+    queryFn: () =>
+      apiFetch<TabelaPrecoDoCliente>("/orcamentos/tabela-preco-cliente", { query: { clienteId } }),
+    enabled: !!clienteId,
+  });
+  const tabelaCliente = tabelaClienteQuery.data;
+  const podeAlterarTabela = tabelaCliente?.podeAlterar ?? false;
+  const tabelaPrecoId = form.watch("tabelaPrecoId") ?? null;
+  const tabelaAplicadaPara = useRef<string | null>(null);
+  useEffect(() => {
+    if (!tabelaCliente || tabelaAplicadaPara.current === clienteId) return;
+    tabelaAplicadaPara.current = clienteId;
+    // Edição do mesmo cliente mantém a tabela gravada (se houver).
+    const mesmoCliente = orcamento && !copiando && clienteId === orcamento.clienteId;
+    if (mesmoCliente && form.getValues("tabelaPrecoId")) return;
+    form.setValue("tabelaPrecoId", tabelaCliente.tabelaPrecoId);
+  }, [tabelaCliente, clienteId, orcamento, copiando, form]);
+  const opcoesTabela = [
+    ...(tabelaCliente?.tabela ? [tabelaCliente.tabela] : []),
+    ...(tabelaCliente?.opcoes ?? []),
+  ].filter((t, i, arr) => arr.findIndex((x) => x.id === t.id) === i);
+  // Só manda a tabela escolhida ao servidor quando a troca é permitida.
+  const consultaTabela = () => (podeAlterarTabela && tabelaPrecoId ? { tabelaPrecoId } : {});
 
   // Ao editar, busca o saldo de estoque dos itens já salvos — só na primeira
   // carga (preco-produto não é chamado de novo pra vlrTabela/vlrUnitario,
@@ -1119,13 +1164,42 @@ export function OrcamentoFormContent({
     form.setValue(`itens.${index}.vlrUnitario`, novoPreco);
   };
 
+  // Trocou a tabela: refaz o preço de todas as linhas por ela.
+  const trocarTabela = async (novaId: string) => {
+    form.setValue("tabelaPrecoId", novaId);
+    const itens = form.getValues("itens");
+    if (!clienteId || itens.length === 0) return;
+    const respostas = await Promise.all(
+      itens.map((i) =>
+        apiFetch<PrecoProdutoResposta>("/orcamentos/preco-produto", {
+          query: { clienteId, produtoId: i.produtoId, tabelaPrecoId: novaId },
+        }).catch(() => null),
+      ),
+    );
+    respostas.forEach((resp, idx) => {
+      if (!resp) return;
+      form.setValue(
+        `itens.${idx}.vlrUnitario`,
+        resp.vlrTabela ?? resp.ultimoPreco ?? form.getValues(`itens.${idx}.vlrUnitario`),
+      );
+    });
+    setInfoPorLinha((arr) =>
+      arr.map((v, i) =>
+        respostas[i] && v
+          ? { ...v, vlrTabela: respostas[i].vlrTabela, regra: respostas[i].regraDesconto }
+          : v,
+      ),
+    );
+    toast.success("Preços refeitos pela tabela escolhida");
+  };
+
   const onSelecionarProduto = async (index: number, produto: Produto | null) => {
     if (!produto) return;
     form.setValue(`itens.${index}.produtoId`, produto.id);
     if (!clienteId) return;
     try {
       const resp = await apiFetch<PrecoProdutoResposta>("/orcamentos/preco-produto", {
-        query: { clienteId, produtoId: produto.id },
+        query: { clienteId, produtoId: produto.id, ...consultaTabela() },
       });
       form.setValue(`itens.${index}.vlrUnitario`, resp.vlrTabela ?? resp.ultimoPreco ?? 0);
       setInfoPorLinha((arr) =>
@@ -1200,7 +1274,7 @@ export function OrcamentoFormContent({
     if (!clienteId) return;
     try {
       const resp = await apiFetch<PrecoProdutoResposta>("/orcamentos/preco-produto", {
-        query: { clienteId, produtoId: produto.produtoId },
+        query: { clienteId, produtoId: produto.produtoId, ...consultaTabela() },
       });
       setInfoPorLinha((arr) =>
         arr.map((v, i) =>
@@ -1600,9 +1674,28 @@ export function OrcamentoFormContent({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="none">Sem condição</SelectItem>
-                    {opcoesCondicao.map((c) => (
+                    {opcoesCondicaoComCliente.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
                         {c.descricao}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </Field>
+              <Field>
+                <FieldLabel htmlFor="tabelaPrecoId">Tabela de preços</FieldLabel>
+                <Select
+                  value={tabelaPrecoId ?? "none"}
+                  onValueChange={(v) => void trocarTabela(v)}
+                  disabled={!podeAlterarTabela || bloqueado}
+                >
+                  <SelectTrigger id="tabelaPrecoId" className="w-full">
+                    <SelectValue placeholder={clienteId ? "Sem tabela de preços" : "Escolha um cliente primeiro"} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {opcoesTabela.map((t) => (
+                      <SelectItem key={t.id} value={t.id}>
+                        {t.descricao}
                       </SelectItem>
                     ))}
                   </SelectContent>

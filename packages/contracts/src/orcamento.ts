@@ -193,6 +193,8 @@ export const orcamentoCreateSchema = z.object({
   vendedorId: z.string().uuid("Selecione um vendedor"),
   oportunidadeId: z.string().uuid().nullable().optional(),
   condicaoPagamentoId: z.string().uuid().nullable().optional(),
+  // Só vale se o parâmetro ORCAMENTO_ALTERA_TABELA_PRECO permitir; senão o servidor usa a do cliente.
+  tabelaPrecoId: z.string().uuid().nullable().optional(),
   titulo: z.string().trim().min(1, "Informe um título").max(150),
   status: statusOrcamentoSchema.default("rascunho"),
   dataValidade: z.coerce.date().nullable().optional(),
@@ -257,6 +259,7 @@ export const orcamentoSchema = z.object({
   vendedorId: z.string().uuid(),
   oportunidadeId: z.string().uuid().nullable(),
   condicaoPagamentoId: z.string().uuid().nullable(),
+  tabelaPrecoId: z.string().uuid().nullish(),
   titulo: z.string(),
   status: statusOrcamentoSchema,
   origem: origemVendaSchema,

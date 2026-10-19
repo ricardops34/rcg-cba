@@ -3018,6 +3018,7 @@ model TabelaPreco {
 
   empresa  Empresa           @relation(fields: [empresaId], references: [id])
   itens    TabelaPrecoItem[]
+  orcamentos Orcamento[]
   clientes Cliente[]
 
   @@unique([empresaId, chave])
@@ -4023,6 +4024,10 @@ model Orcamento {
   vendedorId          String
   oportunidadeId      String?
   condicaoPagamentoId String?
+  // Tabela de preços com que os itens foram precificados. Nasce a do cadastro do
+  // cliente (resolverTabelaPrecoCliente); só pode ser trocada se o parâmetro
+  // ORCAMENTO_ALTERA_TABELA_PRECO permitir.
+  tabelaPrecoId       String?
   titulo              String
   status              StatusOrcamento @default(rascunho)
   // Quem originou — ver `OrigemVenda`. O histórico anterior a 2026-09-02 fica
@@ -4095,6 +4100,7 @@ model Orcamento {
   vendedor           Vendedor           @relation(fields: [vendedorId], references: [id])
   oportunidade       Oportunidade?      @relation(fields: [oportunidadeId], references: [id])
   condicaoPagamento  CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
+  tabelaPreco         TabelaPreco?       @relation(fields: [tabelaPrecoId], references: [id])
   itens              OrcamentoItem[]
   atividades         Atividade[]
   clienteDecididoPor ClienteContato?    @relation("OrcamentoDecisaoContato", fields: [clienteDecididoPorContatoId], references: [id])
@@ -4106,6 +4112,7 @@ model Orcamento {
   @@index([empresaId, vendedorId])
   @@index([empresaId, clienteId])
   @@index([empresaId, status])
+  @@index([empresaId, tabelaPrecoId])
   @@index([empresaId, clienteDecididoPorContatoId])
   @@map("orcamentos")
 }

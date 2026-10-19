@@ -44,11 +44,13 @@ import {
   registrarAtividadeOrcamento,
 } from './registrar-atividade-orcamento';
 import { calcularItensOrcamento } from './calcular-itens-orcamento';
+import { resolverTabelaDoOrcamento } from './resolver-tabela-do-orcamento';
 import { montarOrcamentoPdf } from './orcamento-pdf';
 import { proximoNumeroOrcamento } from './proximo-numero-orcamento';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 import { resolverRegrasDescontoDosItens } from '../../common/precos/resolver-regra-desconto-item';
 import {
+  PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
   PARAMETRO_ORCAMENTO_EXIBIR_FOTOS,
   ParametrosService,
 } from '../parametros/parametros.service';
@@ -233,20 +235,69 @@ export class OrcamentosService {
    * mandar o disponível cai no saldo físico. Usa a permissão de orcamentos, não a de estoque — é só
    * informativo dentro do form, não a tela de Estoque em si.
    */
+  /**
+   * Tabela de preços que o orçamento do cliente começa usando (a do cadastro, com
+   * o padrão de capital/interior) e se o vendedor pode trocá-la — o parâmetro
+   * ORCAMENTO_ALTERA_TABELA_PRECO. Alimenta o campo da tela.
+   */
+  async tabelaPrecoDoCliente(
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId);
+      const tabelaPrecoId = await resolverTabelaPrecoCliente(
+        tx,
+        empresaId,
+        clienteId,
+      );
+      const podeAlterar = await this.parametros.obterBoolean(
+        empresaId,
+        PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
+        false,
+      );
+      const select = { id: true, descricao: true } as const;
+      // As opções vêm daqui, e não de /tabelas-preco, porque aquela lista pede
+      // permissão de cadastro, que o vendedor não tem.
+      const [tabela, opcoes] = await Promise.all([
+        tabelaPrecoId
+          ? tx.tabelaPreco.findFirst({ where: { id: tabelaPrecoId, empresaId }, select })
+          : null,
+        podeAlterar
+          ? tx.tabelaPreco.findMany({
+              where: { empresaId, ativo: true, deletedAt: null },
+              select,
+              orderBy: { descricao: 'asc' },
+            })
+          : [],
+      ]);
+      return { tabelaPrecoId, tabela, podeAlterar, opcoes };
+    });
+  }
+
   async precoProduto(
     empresaId: string,
     user: AuthenticatedUser,
     clienteId: string,
     produtoId: string,
+    tabelaEscolhida?: string,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId);
 
-      const tabelaPrecoId = await resolverTabelaPrecoCliente(
+      const tabelaPrecoId = await resolverTabelaDoOrcamento(
         tx,
         empresaId,
         clienteId,
+        tabelaEscolhida,
+        await this.parametros.obterBoolean(
+          empresaId,
+          PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
+          false,
+        ),
       );
       const [tabelaItem, produto, estoque] = await Promise.all([
         tabelaPrecoId
@@ -511,6 +562,17 @@ export class OrcamentosService {
           autorId: user.id,
         });
       }
+      const tabelaPrecoId = await resolverTabelaDoOrcamento(
+        tx,
+        empresaId,
+        input.clienteId,
+        input.tabelaPrecoId,
+        await this.parametros.obterBoolean(
+          empresaId,
+          PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
+          false,
+        ),
+      );
       const { data: itensData, vlrTotal } = await calcularItensOrcamento(
         tx,
         empresaId,
@@ -522,11 +584,13 @@ export class OrcamentosService {
           'DESCONTO_ACIMA_LIMITE_BLOQUEIA',
           false,
         ),
+        tabelaPrecoId,
       );
 
       const orcamento = await tx.orcamento.create({
         data: {
           ...(this.limpar(header) as object),
+          tabelaPrecoId,
           empresaId,
           numero: await proximoNumeroOrcamento(tx, empresaId),
           vlrTotal,
@@ -656,6 +720,22 @@ export class OrcamentosService {
           if (header.dataRetorno) header.dataRetorno = ajustado;
         }
       }
+      // Tabela de preços: a gravada continua, salvo troca de cliente (volta à do
+      // novo cliente) ou escolha nova — que só vale com o parâmetro ligado.
+      const tabelaPrecoId = await resolverTabelaDoOrcamento(
+        tx,
+        empresaId,
+        input.clienteId ?? orcamento.clienteId,
+        clienteTrocado
+          ? input.tabelaPrecoId
+          : (input.tabelaPrecoId ?? orcamento.tabelaPrecoId),
+        await this.parametros.obterBoolean(
+          empresaId,
+          PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
+          false,
+        ),
+        clienteTrocado ? null : orcamento.tabelaPrecoId,
+      );
       let itensUpdate: Record<string, unknown> = {};
       if (itens) {
         await tx.orcamentoItem.deleteMany({ where: { orcamentoId: id } });
@@ -671,6 +751,7 @@ export class OrcamentosService {
             'DESCONTO_ACIMA_LIMITE_BLOQUEIA',
             false,
           ),
+          tabelaPrecoId,
         );
         itensUpdate = {
           vlrTotal,
@@ -695,6 +776,7 @@ export class OrcamentosService {
         where: { id },
         data: {
           ...(this.limpar(header) as object),
+          tabelaPrecoId,
           updatedBy: user.id,
           ...itensUpdate,
           ...((header.status === 'aprovado' || header.status === 'recusado') &&

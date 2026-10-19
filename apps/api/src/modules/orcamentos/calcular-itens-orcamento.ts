@@ -32,16 +32,20 @@ export async function calcularItensOrcamento(
   vendedorId: string,
   /** Parâmetro DESCONTO_ACIMA_LIMITE_BLOQUEIA da empresa. */
   bloquearAcimaDoLimite = false,
+  /**
+   * Tabela já decidida pelo orçamento (a do cliente ou a escolhida). Omitida, a
+   * tabela é resolvida pelo cadastro do cliente — é o caso da integração.
+   */
+  tabelaPrecoEscolhida?: string | null,
 ) {
   if (itens.length === 0)
     return { data: [], vlrTotal: 0 };
 
   const produtoIds = itens.map((i) => i.produtoId);
-  const tabelaPrecoId = await resolverTabelaPrecoCliente(
-    tx,
-    empresaId,
-    clienteId,
-  );
+  const tabelaPrecoId =
+    tabelaPrecoEscolhida !== undefined
+      ? tabelaPrecoEscolhida
+      : await resolverTabelaPrecoCliente(tx, empresaId, clienteId);
 
   const [precos, regrasPorProduto, vendedor] = await Promise.all([
     tabelaPrecoId

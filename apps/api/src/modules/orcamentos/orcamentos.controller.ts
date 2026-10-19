@@ -46,14 +46,42 @@ export class OrcamentosController {
   })
   @ApiQuery({ name: 'clienteId', required: true })
   @ApiQuery({ name: 'produtoId', required: true })
+  @ApiQuery({ name: 'tabelaPrecoId', required: false })
   @RequirePermission('orcamentos', 'visualizar')
   @Get('preco-produto')
   precoProduto(
     @Query('clienteId') clienteId: string,
     @Query('produtoId') produtoId: string,
     @CurrentUser() user: AuthenticatedUser,
+    @Query('tabelaPrecoId') tabelaPrecoId?: string,
   ) {
-    return this.service.precoProduto(user.empresaAtivaId, user, clienteId, produtoId);
+    return this.service.precoProduto(
+      user.empresaAtivaId,
+      user,
+      clienteId,
+      produtoId,
+      tabelaPrecoId || undefined,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Tabela de preços do cliente para o orçamento',
+    description:
+      'Devolve a tabela com que o orçamento começa (a do cadastro do cliente) e podeAlterar, ' +
+      'que vem do parâmetro ORCAMENTO_ALTERA_TABELA_PRECO. Requer orcamentos.visualizar.',
+  })
+  @ApiQuery({ name: 'clienteId', required: true })
+  @RequirePermission('orcamentos', 'visualizar')
+  @Get('tabela-preco-cliente')
+  tabelaPrecoCliente(
+    @Query('clienteId') clienteId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.tabelaPrecoDoCliente(
+      user.empresaAtivaId,
+      user,
+      clienteId,
+    );
   }
 
   @ApiOperation({

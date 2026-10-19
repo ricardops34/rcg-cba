@@ -122,6 +122,14 @@ const PARAMETROS_PADRAO = [
     descricao: 'Exibe a foto principal dos produtos nas propostas de orçamento',
   },
   {
+    parametro: 'ORCAMENTO_ALTERA_TABELA_PRECO',
+    tipo: 'booleano' as const,
+    tamanho: null,
+    conteudo: 'false',
+    descricao:
+      'Permite ao vendedor trocar a tabela de preços no orçamento; falso usa sempre a do cadastro do cliente',
+  },
+  {
     parametro: 'ORCAMENTO_LINK_URL_BASE',
     tipo: 'texto' as const,
     tamanho: 200,
