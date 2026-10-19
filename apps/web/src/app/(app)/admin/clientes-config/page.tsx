@@ -63,7 +63,6 @@ const GRUPOS: GrupoCampos[] = [
       { campo: "contato", label: "Pessoa de contato", descricao: "Nome do responsável de contato" },
       { campo: "email", label: "E-mail principal", descricao: "Endereço eletrônico corporativo" },
       { campo: "telefone", label: "Telefone fixo", descricao: "Telefone de contato comercial" },
-      { campo: "telefone2", label: "Telefone secundário", descricao: "Linha alternativa de contato" },
       { campo: "celular", label: "Celular / WhatsApp", descricao: "Contato móvel direto" },
       { campo: "site", label: "Website", descricao: "Endereço da página corporativa" },
     ],

@@ -64,6 +64,8 @@ export const CAMPOS_MASCARADOS: Record<string, string[]> = {
   Usuario: ['senhaHash'],
   IntegracaoApiKey: ['chaveHash'],
   PortalClienteCredencial: ['senhaHash'],
+  // Quem tem o link aprova ou recusa o orçamento: é credencial, vai mascarado.
+  OrcamentoLink: ['token'],
   AgenteConfig: ['apiKeyCifrada', 'embeddingApiKeyCifrada'],
   AgenteCredencial: [
     'apiKeyCifrada',

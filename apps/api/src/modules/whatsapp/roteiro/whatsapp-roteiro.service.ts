@@ -131,7 +131,6 @@ export class WhatsappRoteiroService {
           razaoSocial: true,
           nomeFantasia: true,
           telefone: true,
-          telefone2: true,
           celular: true,
         },
       });
@@ -305,7 +304,6 @@ export class WhatsappRoteiroService {
               : temTelefone(
                     cliente.celular,
                     cliente.telefone,
-                    cliente.telefone2,
                   )
                 ? 'cadastro'
                 : null;

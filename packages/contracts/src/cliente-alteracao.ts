@@ -187,7 +187,6 @@ export const CAMPO_CLIENTE_LABEL: Record<string, string> = {
   contato: "Contato",
   email: "E-mail",
   telefone: "Telefone",
-  telefone2: "Telefone 2",
   celular: "Celular",
   contato1Tipo: "Contato 1 — Tipo",
   contato1Nome: "Contato 1 — Nome",

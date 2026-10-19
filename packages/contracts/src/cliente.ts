@@ -23,7 +23,6 @@ export const clienteCreateSchema = z.object({
   contato: opt(100),
   email: z.string().trim().max(120).email("E-mail inválido").optional().or(z.literal("")),
   telefone: opt(20),
-  telefone2: opt(20),
   celular: opt(20),
 
   // Contatos do ERP (A1_CT*01 a 04): tipo, nome, número, se o número é WhatsApp e e-mail.
@@ -155,7 +154,6 @@ export const CLIENTE_EXAMPLE: Cliente = {
   contato: "JOSE ANDRADE",
   email: "compras@mercadoandrade.com.br",
   telefone: "(67) 3321-4455",
-  telefone2: "",
   celular: "(67) 99911-2233",
   endereco: "RUA MARECHAL RONDON, 1520",
   complemento: "",
@@ -233,7 +231,6 @@ export const CLIENTE_CREATE_EXAMPLE: ClienteCreate = {
   contato: "JOSE ANDRADE",
   email: "compras@mercadoandrade.com.br",
   telefone: "(67) 3321-4455",
-  telefone2: "",
   celular: "(67) 99911-2233",
   endereco: "RUA MARECHAL RONDON, 1520",
   complemento: "",

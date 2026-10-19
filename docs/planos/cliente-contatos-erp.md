@@ -33,3 +33,11 @@ são a única fonte; `cliente_contatos` (origem erp) é só espelho.
   nome/telefone por ali.
 - Iniciar conversa com contato do ERP sem número grava o número no campo do cliente (não em cliente_contatos).
 - Os 165 contatos de dev são de demonstração (`@exemplo.com.br`, 19/09, sem vínculo): não foram migrados.
+
+## Telefone 2 e Site (2026-10-19)
+- Site passa a ser `A1_HPAGE` nos dois sentidos (BJPLA003 sobe com FieldPos, BJPLA004 volta; `site` entrou em
+  CAMPOS_ENVIO_ERP).
+- Telefone 2 (a SA1 não tem) saiu das telas (aba Contatos, Admin > Campos do Cliente, janela do atendimento),
+  da fila de alterações, da consulta à Receita feita para clientes, do contrato de integração de clientes e das
+  consultas (busca de cliente por número no WhatsApp, avisos e SMS, roteiro). A coluna `clientes.telefone2`
+  continua na base, sem uso — dá para dropar numa migration futura. O da **empresa** não mudou.

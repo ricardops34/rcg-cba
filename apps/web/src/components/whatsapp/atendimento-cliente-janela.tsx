@@ -501,7 +501,6 @@ function VincularWhatsapp({
   const numerosCadastro = [
     { rotulo: "Celular", numero: cadastro.data?.celular },
     { rotulo: "Telefone", numero: cadastro.data?.telefone },
-    { rotulo: "Telefone 2", numero: cadastro.data?.telefone2 },
   ].filter(
     // Mesmo corte do `primeiroTelefoneValido` da API: 8 dígitos é o mínimo de
     // um número local (a base guarda muitos telefones sem DDD).

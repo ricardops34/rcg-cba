@@ -182,7 +182,7 @@ export class SmsAvisoVencimentoService
           clienteId: true,
           vendedorId: true,
           cliente: {
-            select: { celular: true, telefone: true, telefone2: true },
+            select: { celular: true, telefone: true },
           },
         },
       });
@@ -195,7 +195,6 @@ export class SmsAvisoVencimentoService
       const celular = primeiroCelular(
         t.cliente?.celular,
         t.cliente?.telefone,
-        t.cliente?.telefone2,
       );
       if (!celular) continue;
       const numero = `${t.numero}${t.parcela ? `/${t.parcela}` : ''}`;

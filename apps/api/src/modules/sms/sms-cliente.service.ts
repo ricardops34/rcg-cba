@@ -209,7 +209,6 @@ export class SmsClienteService {
           razaoSocial: true,
           celular: true,
           telefone: true,
-          telefone2: true,
           vendedorId: true,
         },
       });
@@ -218,7 +217,6 @@ export class SmsClienteService {
     const celular = primeiroCelular(
       cliente.celular,
       cliente.telefone,
-      cliente.telefone2,
     );
     if (!celular) {
       throw new ConflictException(

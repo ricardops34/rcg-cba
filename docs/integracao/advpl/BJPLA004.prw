@@ -1079,6 +1079,7 @@ Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
 	aAdd(aMapa, {"email"                  , "A1_EMAIL"  , "C"})
 	aAdd(aMapa, {"telefone"               , "A1_TEL"    , "C"})
 	aAdd(aMapa, {"celular"                , "A1_CELULAR", "C"})
+	aAdd(aMapa, {"site"                   , "A1_HPAGE"  , "C"})
 	// Contatos (A1_CT*01 a 04). "T" = tipo (texto -> 1 a 4), "B" = booleano (1=Sim;2=Nao).
 	// Campo ausente no dicionario e ignorado pelo FieldPos abaixo.
 	aAdd(aMapa, {"contato1Tipo"      , "A1_CTTIP01", "T"})

@@ -168,7 +168,6 @@ export class WhatsappAgendaService {
                 OR: [
                   { celular: { endsWith: telefone.slice(-8) } },
                   { telefone: { endsWith: telefone.slice(-8) } },
-                  { telefone2: { endsWith: telefone.slice(-8) } },
                 ],
               },
               select: { id: true },
@@ -349,7 +348,6 @@ export class WhatsappAgendaService {
           JOIN LATERAL (
             SELECT unnest(ARRAY[
               right(regexp_replace(coalesce(c.telefone,  ''), '\D', '', 'g'), 8),
-              right(regexp_replace(coalesce(c.telefone2, ''), '\D', '', 'g'), 8),
               right(regexp_replace(coalesce(c.celular,   ''), '\D', '', 'g'), 8)
             ]) AS sufixo
           ) t ON true

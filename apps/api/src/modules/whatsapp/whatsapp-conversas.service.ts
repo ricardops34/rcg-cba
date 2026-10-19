@@ -484,7 +484,6 @@ export class WhatsappConversasService {
                 razaoSocial: true,
                 codigoErp: true,
                 telefone: true,
-                telefone2: true,
                 celular: true,
                 // Dono da carteira do cliente — pode ser outro vendedor que
                 // não o da sessão/atendente desta conversa (etiqueta na tela).
@@ -550,7 +549,6 @@ export class WhatsappConversasService {
               ...new Set(
                 [
                   c.cliente?.telefone,
-                  c.cliente?.telefone2,
                   c.cliente?.celular,
                 ].filter((telefone): telefone is string => !!telefone),
               ),
@@ -599,7 +597,6 @@ export class WhatsappConversasService {
               razaoSocial: true,
               codigoErp: true,
               telefone: true,
-              telefone2: true,
               celular: true,
               vendedor: { select: { nome: true } },
             },
@@ -644,7 +641,6 @@ export class WhatsappConversasService {
             ...new Set(
               [
                 c.cliente?.telefone,
-                c.cliente?.telefone2,
                 c.cliente?.celular,
               ].filter((telefone): telefone is string => !!telefone),
             ),
@@ -996,7 +992,6 @@ export class WhatsappConversasService {
             razaoSocial: true,
             codigoErp: true,
             telefone: true,
-            telefone2: true,
             celular: true,
           },
         },
@@ -1628,7 +1623,6 @@ export class WhatsappConversasService {
                 razaoSocial: true,
                 codigoErp: true,
                 telefone: true,
-                telefone2: true,
                 celular: true,
                 vendedor: { select: { nome: true } },
               },
@@ -1682,7 +1676,6 @@ export class WhatsappConversasService {
               ...new Set(
                 [
                   c.cliente?.telefone,
-                  c.cliente?.telefone2,
                   c.cliente?.celular,
                 ].filter((tel): tel is string => !!tel),
               ),
@@ -3393,7 +3386,6 @@ export class WhatsappConversasService {
             razaoSocial: true,
             celular: true,
             telefone: true,
-            telefone2: true,
           },
         });
         if (!cliente) {
@@ -3405,7 +3397,6 @@ export class WhatsappConversasService {
         dddDoCadastro = this.dddDoCadastro([
           cliente.celular,
           cliente.telefone,
-          cliente.telefone2,
         ]);
         if (input.clienteContatoId) {
           pessoa = await tx.clienteContato.findFirst({
@@ -3433,7 +3424,6 @@ export class WhatsappConversasService {
             this.primeiroTelefoneValido([
               cliente.celular,
               cliente.telefone,
-              cliente.telefone2,
             ]);
         }
         if (!jid && !telefone) {
@@ -4125,7 +4115,6 @@ export class WhatsappConversasService {
         AND "deletedAt" IS NULL
         AND (
           right(regexp_replace(coalesce(telefone,  ''), '\D', '', 'g'), 8) = ${sufixo} OR
-          right(regexp_replace(coalesce(telefone2, ''), '\D', '', 'g'), 8) = ${sufixo} OR
           right(regexp_replace(coalesce(celular,   ''), '\D', '', 'g'), 8) = ${sufixo}
         )
       LIMIT 2`;

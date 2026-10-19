@@ -1990,6 +1990,7 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local lVencLC := SA1->(FieldPos("A1_VENCLC"))  > 0
 	Local lInscrM := SA1->(FieldPos("A1_INSCRM"))  > 0
 	Local lPFisic := SA1->(FieldPos("A1_PFISICA")) > 0
+	Local lSite   := SA1->(FieldPos("A1_HPAGE"))   > 0
 	Local lUltCom := SA1->(FieldPos("A1_ULTCOM"))  > 0
 	Local lPriCom := SA1->(FieldPos("A1_PRICOM"))  > 0
 	Local lObs    := SA1->(FieldPos("A1_OBSERV"))  > 0
@@ -2024,6 +2025,9 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 	EndIf
 	If lPFisic
 		cQuery += ", A1_PFISICA "
+	EndIf
+	If lSite
+		cQuery += ", A1_HPAGE "
 	EndIf
 	If lUltCom
 		cQuery += ", A1_ULTCOM "
@@ -2143,6 +2147,9 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 		EndIf
 		If lPFisic
 			oJson["rg"] := IIf(Empty((cAlias)->A1_PFISICA), Nil, AllTrim((cAlias)->A1_PFISICA))
+		EndIf
+		If lSite
+			oJson["site"] := IIf(Empty((cAlias)->A1_HPAGE), Nil, AllTrim((cAlias)->A1_HPAGE))
 		EndIf
 		If lObs
 			oJson["observacao"] := IIf(Empty((cAlias)->A1_OBSERV), Nil, AllTrim((cAlias)->A1_OBSERV))

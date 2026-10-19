@@ -166,7 +166,6 @@ export function ClienteFormContent({
     contato: "",
     email: "",
     telefone: "",
-    telefone2: "",
     celular: "",
     endereco: "",
     complemento: "",
@@ -208,7 +207,6 @@ export function ClienteFormContent({
           contato: cliente.contato ?? "",
           email: cliente.email ?? "",
           telefone: cliente.telefone ?? "",
-          telefone2: cliente.telefone2 ?? "",
           celular: cliente.celular ?? "",
           endereco: cliente.endereco ?? "",
           complemento: cliente.complemento ?? "",
@@ -295,7 +293,6 @@ export function ClienteFormContent({
       preencher("uf", dados.uf);
       preencher("cep", dados.cep);
       preencher("telefone", dados.telefone);
-      preencher("telefone2", dados.telefone2);
       preencher("email", dados.email);
 
       // Cadastro novo: retém para vincular logo após a criação.
@@ -525,14 +522,10 @@ export function ClienteFormContent({
           <FieldError errors={[form.formState.errors.email]} />
         </Field>
       </div>
-      <div className="grid grid-cols-1 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Field>
           <FieldLabel htmlFor="telefone">Telefone</FieldLabel>
           <Input id="telefone" {...form.register("telefone")} disabled={desabilitado("telefone")} />
-        </Field>
-        <Field>
-          <FieldLabel htmlFor="telefone2">Telefone 2</FieldLabel>
-          <Input id="telefone2" {...form.register("telefone2")} disabled={desabilitado("telefone2")} />
         </Field>
         <Field>
           <FieldLabel htmlFor="celular">Celular</FieldLabel>

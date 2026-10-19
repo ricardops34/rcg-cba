@@ -47,7 +47,6 @@ const CAMPOS_ACOMPANHADOS = [
   'contato',
   'email',
   'telefone',
-  'telefone2',
   'celular',
   'contato1Tipo',
   'contato1Nome',
@@ -135,6 +134,7 @@ export const CAMPOS_ENVIO_ERP: Record<string, string> = {
   email: 'email',
   telefone: 'telefone',
   celular: 'celular',
+  site: 'site',
   contato1Tipo: 'contato1Tipo',
   contato1Nome: 'contato1Nome',
   contato1Telefone: 'contato1Telefone',
@@ -206,7 +206,6 @@ function serializar(valor: unknown): ValorSerializado {
 
 const CAMPOS_TELEFONE = new Set([
   'telefone',
-  'telefone2',
   'celular',
   'contato1Telefone',
   'contato2Telefone',

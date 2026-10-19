@@ -61,7 +61,6 @@ const CAMPOS_RECEITA = [
   'uf',
   'cep',
   'telefone',
-  'telefone2',
   'email',
 ] as const satisfies readonly (keyof ConsultaCnpjResultado)[];
 
