@@ -97,7 +97,7 @@ export class PortalClienteAuthService {
       contatoId: contato.id,
       perfilId: contato.perfilId,
       nome: contato.nome,
-      email: contato.email,
+      email: contato.email ?? '',
       permissoes,
       aud: 'portal-cliente',
     };

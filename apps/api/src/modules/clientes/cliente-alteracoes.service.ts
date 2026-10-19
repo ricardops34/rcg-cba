@@ -17,6 +17,7 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
+import { sincronizarContatosErp } from './sincronizar-contatos-erp';
 import { registrarAtividadeAlteracaoCliente } from './registrar-atividade-alteracao-cliente';
 import {
   enderecoCanonico,
@@ -48,6 +49,26 @@ const CAMPOS_ACOMPANHADOS = [
   'telefone',
   'telefone2',
   'celular',
+  'contato1Tipo',
+  'contato1Nome',
+  'contato1Telefone',
+  'contato1Whatsapp',
+  'contato1Email',
+  'contato2Tipo',
+  'contato2Nome',
+  'contato2Telefone',
+  'contato2Whatsapp',
+  'contato2Email',
+  'contato3Tipo',
+  'contato3Nome',
+  'contato3Telefone',
+  'contato3Whatsapp',
+  'contato3Email',
+  'contato4Tipo',
+  'contato4Nome',
+  'contato4Telefone',
+  'contato4Whatsapp',
+  'contato4Email',
   'endereco',
   'complemento',
   'bairro',
@@ -114,6 +135,26 @@ export const CAMPOS_ENVIO_ERP: Record<string, string> = {
   email: 'email',
   telefone: 'telefone',
   celular: 'celular',
+  contato1Tipo: 'contato1Tipo',
+  contato1Nome: 'contato1Nome',
+  contato1Telefone: 'contato1Telefone',
+  contato1Whatsapp: 'contato1Whatsapp',
+  contato1Email: 'contato1Email',
+  contato2Tipo: 'contato2Tipo',
+  contato2Nome: 'contato2Nome',
+  contato2Telefone: 'contato2Telefone',
+  contato2Whatsapp: 'contato2Whatsapp',
+  contato2Email: 'contato2Email',
+  contato3Tipo: 'contato3Tipo',
+  contato3Nome: 'contato3Nome',
+  contato3Telefone: 'contato3Telefone',
+  contato3Whatsapp: 'contato3Whatsapp',
+  contato3Email: 'contato3Email',
+  contato4Tipo: 'contato4Tipo',
+  contato4Nome: 'contato4Nome',
+  contato4Telefone: 'contato4Telefone',
+  contato4Whatsapp: 'contato4Whatsapp',
+  contato4Email: 'contato4Email',
   vendedorId: 'vendedorChave',
   tabelaPrecoId: 'tabelaPrecoChave',
   condicaoPagamentoId: 'condicaoPagamentoChave',
@@ -163,13 +204,25 @@ function serializar(valor: unknown): ValorSerializado {
   return null;
 }
 
-const CAMPOS_TELEFONE = new Set(['telefone', 'telefone2', 'celular']);
+const CAMPOS_TELEFONE = new Set([
+  'telefone',
+  'telefone2',
+  'celular',
+  'contato1Telefone',
+  'contato2Telefone',
+  'contato3Telefone',
+  'contato4Telefone',
+]);
 
 /** Texto livre: comparado sem acento, sem "Ç", sem caixa. */
 const CAMPOS_TEXTO = new Set([
   'razaoSocial',
   'nomeFantasia',
   'contato',
+  'contato1Nome',
+  'contato2Nome',
+  'contato3Nome',
+  'contato4Nome',
   'complemento',
   'bairro',
   'municipio',
@@ -400,10 +453,14 @@ export class ClienteAlteracoesService {
     // `update` com data vazia só carimbaria o `updatedAt`.
     if (Object.keys(bruto).length > 0) {
       const dados = clienteUpdateSchema.parse(bruto);
-      await tx.cliente.update({
+      const gravado = await tx.cliente.update({
         where: { id: clienteId },
         data: { ...(dados as object), updatedBy: autorId } as never,
       });
+      // Os contatos do ERP também alimentam o cadastro de contatos.
+      if (Object.keys(bruto).some((c) => /^contato[1-4]/.test(c))) {
+        await sincronizarContatosErp(tx, empresaId, gravado, autorId);
+      }
     }
 
     if (diff[CAMPO_CNAES]) {

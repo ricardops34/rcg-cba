@@ -44,6 +44,7 @@ import {
   condicaoBuscaTermosSql,
   filtroBuscaTermos,
 } from '../../common/busca/termos-busca';
+import { sincronizarContatosErp } from './sincronizar-contatos-erp';
 import { sessaoDoUsuarioWhere } from '../whatsapp/escopo-whatsapp';
 import {
   comodatoBaixadoSql,
@@ -149,6 +150,8 @@ const DETALHE_INCLUDE = {
 
 // A resolução de escopo hierárquico mora em common/escopo/escopo-vendedores
 // — compartilhada com Notas de Saída, Itens e Títulos a Receber.
+
+const texto = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
 
 @Injectable()
 export class ClientesService {
@@ -562,6 +565,99 @@ export class ClientesService {
     });
   }
 
+  /**
+   * Pessoa do cadastro que o vínculo do WhatsApp usa: um dos quatro contatos do
+   * ERP (A1_CT*01 a 04).
+   *
+   * - Contato informado: precisa ser um dos quatro. Se está sem número, o número
+   *   atendido passa a constar nele (telefone e "é WhatsApp"); número já
+   *   preenchido não é sobrescrito.
+   * - Nenhum informado e os quatro vazios: o vínculo preenche o primeiro, com o
+   *   nome e o número da conversa.
+   * - Nenhum informado e algum já preenchido: o número fica sem pessoa — não se
+   *   adivinha quem é.
+   *
+   * A gravação passa pela fila de alterações (aplicada direto), então fica no
+   * histórico do cliente e volta ao ERP como qualquer outra mudança no cadastro.
+   */
+  async contatoErpDoVinculo(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+    contatoId: string | null,
+    numero: string | null,
+    nomeSugerido: string | null,
+  ) {
+    const select = { id: true, nome: true, email: true, celular: true } as const;
+    const cliente = await tx.cliente.findFirst({
+      where: { id: clienteId, empresaId },
+    });
+    if (!cliente) throw new NotFoundException('Cliente não encontrado');
+    const campos = cliente as unknown as Record<string, unknown>;
+    // O ERP guarda o número sem o código do país.
+    const local = numero ? numero.replace(/^55(?=\d{10,11}$)/, '') : null;
+
+    const gravar = async (posicao: number, dados: Record<string, unknown>) => {
+      await this.alteracoes.registrar(tx, {
+        empresaId,
+        clienteId,
+        atual: campos,
+        input: dados,
+        origem: 'manual',
+        autorId: user.id,
+        aplicarDireto: true,
+        justificativa: 'Vínculo de WhatsApp',
+        registrarNaAgenda: false,
+      });
+      return tx.clienteContato.findFirst({
+        where: { empresaId, clienteId, origem: 'erp', posicaoErp: posicao },
+        select,
+      });
+    };
+
+    if (contatoId) {
+      const contato = await tx.clienteContato.findFirst({
+        where: { id: contatoId, empresaId, clienteId, ativo: true },
+        select: { ...select, origem: true, posicaoErp: true },
+      });
+      if (!contato) {
+        throw new NotFoundException(
+          'Contato não encontrado no cadastro deste cliente.',
+        );
+      }
+      if (contato.origem !== 'erp' || !contato.posicaoErp) {
+        throw new BadRequestException(
+          'Escolha um dos contatos do cadastro do cliente (contatos 1 a 4).',
+        );
+      }
+      const p = contato.posicaoErp;
+      const semNumero = !texto(campos[`contato${p}Telefone`]);
+      if (semNumero && local) {
+        return (
+          (await gravar(p, {
+            [`contato${p}Telefone`]: local,
+            [`contato${p}Whatsapp`]: true,
+          })) ?? contato
+        );
+      }
+      return contato;
+    }
+
+    const vazios = [1, 2, 3, 4].every(
+      (p) =>
+        !texto(campos[`contato${p}Nome`]) &&
+        !texto(campos[`contato${p}Telefone`]) &&
+        !texto(campos[`contato${p}Email`]),
+    );
+    if (!vazios || !local) return null;
+    return gravar(1, {
+      contato1Nome: (nomeSugerido ?? '').trim().slice(0, 50) || 'Contato WhatsApp',
+      contato1Telefone: local,
+      contato1Whatsapp: true,
+    });
+  }
+
   private async exigirClienteNoEscopo(
     tx: TenantTx,
     empresaId: string,
@@ -589,7 +685,7 @@ export class ClientesService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       this.validarVendedorNoEscopo(escopo, input.vendedorId ?? null);
-      return tx.cliente.create({
+      const criado = await tx.cliente.create({
         data: {
           ...(this.limpar(input) as object),
           empresaId,
@@ -597,6 +693,8 @@ export class ClientesService {
           updatedBy: user.id,
         } as never,
       });
+      await sincronizarContatosErp(tx, empresaId, criado, user.id);
+      return criado;
     });
   }
 

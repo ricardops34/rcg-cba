@@ -9,12 +9,18 @@ export const clienteContatoSchema = z.object({
   id: z.string().uuid(),
   clienteId: z.string().uuid(),
   nome: z.string(),
-  email: z.string(),
+  email: z.string().nullable(),
   telefone: z.string().nullable(),
   celular: z.string().nullable(),
   cargo: z.string().nullable(),
   principal: z.boolean(),
   ativo: z.boolean(),
+  /** Tipo (cliente, comprador, financeiro, geral) — vem do ERP. */
+  tipo: z.string().nullish(),
+  /** O número do contato é WhatsApp. */
+  whatsapp: z.boolean().nullish(),
+  /** plataforma (digitado) ou erp (SA1, posição 01 a 04). */
+  origem: z.string().nullish(),
   /** Tem credencial do portal — a tela mostra quem já entra e quem não. */
   temAcessoPortal: z.boolean(),
 });

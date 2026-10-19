@@ -138,3 +138,24 @@ describe('calcularDiff', () => {
     });
   });
 });
+
+describe('calcularDiff — contatos do ERP', () => {
+  it('reenvio igual não gera alteração', () => {
+    const atual = { contato1Nome: 'Maria', contato1Telefone: '(67) 99911-2233', contato1Whatsapp: true };
+    expect(
+      calcularDiff(atual, {
+        contato1Nome: 'MARIA',
+        contato1Telefone: '67999112233',
+        contato1Whatsapp: true,
+      }),
+    ).toEqual({});
+  });
+
+  it('número e e-mail novos entram no diff', () => {
+    const diff = calcularDiff(
+      { contato2Telefone: '6733214455', contato2Email: null },
+      { contato2Telefone: '6733219999', contato2Email: 'a@b.com' },
+    );
+    expect(Object.keys(diff).sort()).toEqual(['contato2Email', 'contato2Telefone']);
+  });
+});

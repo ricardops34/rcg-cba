@@ -1079,6 +1079,28 @@ Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
 	aAdd(aMapa, {"email"                  , "A1_EMAIL"  , "C"})
 	aAdd(aMapa, {"telefone"               , "A1_TEL"    , "C"})
 	aAdd(aMapa, {"celular"                , "A1_CELULAR", "C"})
+	// Contatos (A1_CT*01 a 04). "T" = tipo (texto -> 1 a 4), "B" = booleano (1=Sim;2=Nao).
+	// Campo ausente no dicionario e ignorado pelo FieldPos abaixo.
+	aAdd(aMapa, {"contato1Tipo"      , "A1_CTTIP01", "T"})
+	aAdd(aMapa, {"contato1Nome"      , "A1_CTNOM01", "C"})
+	aAdd(aMapa, {"contato1Telefone"  , "A1_CTNUM01", "C"})
+	aAdd(aMapa, {"contato1Whatsapp"  , "A1_CTWAT01", "B"})
+	aAdd(aMapa, {"contato1Email"     , "A1_CTEML01", "C"})
+	aAdd(aMapa, {"contato2Tipo"      , "A1_CTTIP02", "T"})
+	aAdd(aMapa, {"contato2Nome"      , "A1_CTNOM02", "C"})
+	aAdd(aMapa, {"contato2Telefone"  , "A1_CTNUM02", "C"})
+	aAdd(aMapa, {"contato2Whatsapp"  , "A1_CTWAT02", "B"})
+	aAdd(aMapa, {"contato2Email"     , "A1_CTEML02", "C"})
+	aAdd(aMapa, {"contato3Tipo"      , "A1_CTTIP03", "T"})
+	aAdd(aMapa, {"contato3Nome"      , "A1_CTNOM03", "C"})
+	aAdd(aMapa, {"contato3Telefone"  , "A1_CTNUM03", "C"})
+	aAdd(aMapa, {"contato3Whatsapp"  , "A1_CTWAT03", "B"})
+	aAdd(aMapa, {"contato3Email"     , "A1_CTEML03", "C"})
+	aAdd(aMapa, {"contato4Tipo"      , "A1_CTTIP04", "T"})
+	aAdd(aMapa, {"contato4Nome"      , "A1_CTNOM04", "C"})
+	aAdd(aMapa, {"contato4Telefone"  , "A1_CTNUM04", "C"})
+	aAdd(aMapa, {"contato4Whatsapp"  , "A1_CTWAT04", "B"})
+	aAdd(aMapa, {"contato4Email"     , "A1_CTEML04", "C"})
 	// Referencia ("R") leva, na quarta posicao, os campos da chave unica da
 	// tabela referenciada, para desmontar a chave de integracao recebida.
 	aAdd(aMapa, {"vendedorChave"          , "A1_VEND"   , "R", {"A3_FILIAL", "A3_COD"}})
@@ -1118,6 +1140,27 @@ Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
 				cTexto := U_BJSEMFIL(AllTrim(cValToChar(xValor)), aMapa[nX][4])
 
 				aAdd(aCampos, {aMapa[nX][2], cTexto, Nil})
+
+			Case aMapa[nX][3] == "T"
+				cTexto := Lower(AllTrim(cValToChar(xValor)))
+				Do Case
+					Case cTexto == "cliente"
+						aAdd(aCampos, {aMapa[nX][2], "1", Nil})
+					Case cTexto == "comprador"
+						aAdd(aCampos, {aMapa[nX][2], "2", Nil})
+					Case cTexto == "financeiro"
+						aAdd(aCampos, {aMapa[nX][2], "3", Nil})
+					Case cTexto == "geral"
+						aAdd(aCampos, {aMapa[nX][2], "4", Nil})
+					Otherwise
+						aAdd(aCampos, {aMapa[nX][2], "", Nil})
+				EndCase
+
+			Case aMapa[nX][3] == "B"
+				// A API manda true/false; a SA1 guarda 1=Sim;2=Nao
+				If ValType(xValor) == "L"
+					aAdd(aCampos, {aMapa[nX][2], IIf(xValor, "1", "2"), Nil})
+				EndIf
 
 			Case aMapa[nX][3] == "D"
 				// A API devolve ISO 8601: "2026-08-26T00:00:00.000Z"

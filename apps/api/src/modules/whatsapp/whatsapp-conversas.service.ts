@@ -262,7 +262,14 @@ export class WhatsappConversasService {
     clienteId: string,
   ) {
     await this.exigirClienteVinculavel(empresaId, user, conversaId, clienteId);
-    return this.clientes.listarContatos(empresaId, user, clienteId, true);
+    // O vínculo é com um dos quatro contatos do ERP (ver contatoErpDoVinculo).
+    const contatos = await this.clientes.listarContatos(
+      empresaId,
+      user,
+      clienteId,
+      true,
+    );
+    return contatos.filter((c) => c.origem === 'erp' && c.ativo);
   }
 
   /**
@@ -3141,45 +3148,29 @@ export class WhatsappConversasService {
       // A pessoa. `cliente_contatos` é o cadastro único: é dele que saem nome e
       // e-mail daqui em diante, e é ele que o Portal do Cliente autentica — por
       // isso o contato precisa ser do mesmo cliente que autoriza a gravação.
+      // O vínculo é com um dos quatro contatos do cadastro do ERP; com os quatro
+      // vazios, o vínculo preenche o primeiro (ClientesService.contatoErpDoVinculo).
       let contatoCadastro: {
         id: string;
         nome: string;
-        email: string;
+        email: string | null;
         celular: string | null;
       } | null = null;
-      if (input.clienteContatoId) {
-        if (!input.clienteId) {
-          throw new BadRequestException(
-            'Escolha o cliente antes de indicar qual contato dele atende neste número.',
-          );
-        }
-        contatoCadastro = await tx.clienteContato.findFirst({
-          where: {
-            id: input.clienteContatoId,
-            empresaId,
-            clienteId: input.clienteId,
-            ativo: true,
-          },
-          select: { id: true, nome: true, email: true, celular: true },
-        });
-        if (!contatoCadastro) {
-          throw new NotFoundException(
-            'Contato não encontrado no cadastro deste cliente.',
-          );
-        }
-        // O número que o vendedor está atendendo passa a constar no cadastro
-        // quando lá não havia nenhum — é o que torna a unificação verdadeira em
-        // vez de só um ponteiro. Celular já preenchido não é sobrescrito: o
-        // cadastro é a fonte, e corrigi-lo é decisão de quem o mantém.
-        if (!contatoCadastro.celular && conversa.contato.telefoneNormalizado) {
-          await tx.clienteContato.update({
-            where: { id: contatoCadastro.id },
-            data: {
-              celular: conversa.contato.telefoneNormalizado,
-              updatedBy: user.id,
-            },
-          });
-        }
+      if (input.clienteContatoId && !input.clienteId) {
+        throw new BadRequestException(
+          'Escolha o cliente antes de indicar qual contato dele atende neste número.',
+        );
+      }
+      if (input.clienteId) {
+        contatoCadastro = await this.clientes.contatoErpDoVinculo(
+          tx,
+          empresaId,
+          user,
+          input.clienteId,
+          input.clienteContatoId ?? null,
+          conversa.contato.telefoneNormalizado,
+          input.nome ?? conversa.contato.nomeExibicao ?? null,
+        );
       }
 
       await tx.whatsappContato.update({

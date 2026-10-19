@@ -1822,6 +1822,30 @@ model Cliente {
   telefone  String?
   telefone2 String?
   celular   String?
+  // Contatos do SA1 (A1_CTTIP/CTNOM/CTNUM/CTWAT/CTEML 01 a 04). Tipo: cliente,
+  // comprador, financeiro ou geral. São campos planos como no ERP, para entrarem
+  // no controle de campos editáveis e na fila de alterações; os de origem erp
+  // também viram registros em cliente_contatos.
+  contato1Tipo String?
+  contato1Nome String?
+  contato1Telefone String?
+  contato1Whatsapp Boolean?
+  contato1Email String?
+  contato2Tipo String?
+  contato2Nome String?
+  contato2Telefone String?
+  contato2Whatsapp Boolean?
+  contato2Email String?
+  contato3Tipo String?
+  contato3Nome String?
+  contato3Telefone String?
+  contato3Whatsapp Boolean?
+  contato3Email String?
+  contato4Tipo String?
+  contato4Nome String?
+  contato4Telefone String?
+  contato4Whatsapp Boolean?
+  contato4Email String?
 
   endereco    String?
   complemento String?
@@ -1897,12 +1921,22 @@ model ClienteContato {
   clienteId String
   perfilId  String?
   nome      String
-  email     String
+  // Opcional: o contato que vem do ERP pode ter só telefone/WhatsApp. O portal do
+  // cliente exige e-mail para dar acesso; a unicidade vale só quando há e-mail.
+  email     String?
   telefone  String?
   celular   String?
   cargo     String?
   principal Boolean @default(false)
   ativo     Boolean @default(true)
+  // Tipo do contato (cliente, comprador, financeiro, geral) — A1_CTTIP do ERP.
+  tipo      String?
+  // O telefone é também WhatsApp (A1_CTWAT).
+  whatsapp  Boolean @default(false)
+  // De onde veio: plataforma (digitado) ou erp (SA1, posição 01 a 04). O ERP é a
+  // fonte única dos contatos que ele mandou: o reenvio atualiza pela posição.
+  origem     String @default("plataforma")
+  posicaoErp Int?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -26,6 +26,7 @@ describe('IntegracaoClientesService', () => {
       tabelaPreco: {
         findFirst: jest.fn(),
       },
+      clienteContato: { findFirst: jest.fn().mockResolvedValue(null) },
     };
     const prisma = {
       withTenant: jest.fn(

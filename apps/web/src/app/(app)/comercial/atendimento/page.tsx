@@ -1903,7 +1903,7 @@ function VincularCliente({
                 {contato.temAcessoPortal ? " · acessa o portal" : ""}
               </SelectItem>
             ))}
-            <SelectItem value={NOVO_CONTATO}>Cadastrar esta pessoa…</SelectItem>
+            {/* O vínculo é com um dos quatro contatos do ERP; com todos vazios, o servidor preenche o primeiro. */}
             <SelectItem value={SEM_CONTATO}>Sem contato do cadastro</SelectItem>
           </SelectContent>
         </Select>

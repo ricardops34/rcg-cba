@@ -1982,6 +1982,11 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local nTamLoj := TamSX3("A1_LOJA")[1]
 	Local lGeo    := SA1->(FieldPos("A1_XLAT"))    > 0 .And. SA1->(FieldPos("A1_XLNG")) > 0
 	Local lLimite := SA1->(FieldPos("A1_LC"))      > 0
+	// Contatos do cliente (A1_CTTIP/CTNOM/CTNUM/CTWAT/CTEML 01 a 04): so sobem se o campo existe
+	Local lContat := SA1->(FieldPos("A1_CTEML04")) > 0
+	Local nCt     := 0
+	Local cSfx    := ""
+	Local cCtTip  := ""
 	Local lVencLC := SA1->(FieldPos("A1_VENCLC"))  > 0
 	Local lInscrM := SA1->(FieldPos("A1_INSCRM"))  > 0
 	Local lPFisic := SA1->(FieldPos("A1_PFISICA")) > 0
@@ -1999,6 +2004,12 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 	cQuery += "       A1_DDD, A1_TEL, A1_CELULAR, A1_EMAIL, A1_CONTATO, "
 	cQuery += "       A1_VEND, A1_TABELA, A1_COND, A1_MSBLQL "
 
+	If lContat
+		For nCt := 1 To 4
+			cSfx   := StrZero(nCt, 2)
+			cQuery += ", A1_CTTIP" + cSfx + ", A1_CTNOM" + cSfx + ", A1_CTNUM" + cSfx + ", A1_CTWAT" + cSfx + ", A1_CTEML" + cSfx + " "
+		Next nCt
+	EndIf
 	If lLimite
 		cQuery += ", A1_LC "
 	EndIf
@@ -2135,6 +2146,30 @@ User Function BJMAPCLI(cMarca, cChave, cMarcaFim, lEnvDel)
 		EndIf
 		If lObs
 			oJson["observacao"] := IIf(Empty((cAlias)->A1_OBSERV), Nil, AllTrim((cAlias)->A1_OBSERV))
+		EndIf
+		If lContat
+			For nCt := 1 To 4
+				cSfx   := StrZero(nCt, 2)
+				// Tipo: 1=Cliente;2=Comprador;3=Financeiro;4=Geral. O contrato usa o texto.
+				cCtTip := AllTrim((cAlias)->&("A1_CTTIP" + cSfx))
+				Do Case
+					Case cCtTip == "1"
+						oJson["contato" + cValToChar(nCt) + "Tipo"] := "cliente"
+					Case cCtTip == "2"
+						oJson["contato" + cValToChar(nCt) + "Tipo"] := "comprador"
+					Case cCtTip == "3"
+						oJson["contato" + cValToChar(nCt) + "Tipo"] := "financeiro"
+					Case cCtTip == "4"
+						oJson["contato" + cValToChar(nCt) + "Tipo"] := "geral"
+					Otherwise
+						oJson["contato" + cValToChar(nCt) + "Tipo"] := Nil
+				EndCase
+				oJson["contato" + cValToChar(nCt) + "Nome"]     := IIf(Empty((cAlias)->&("A1_CTNOM" + cSfx)), Nil, AllTrim((cAlias)->&("A1_CTNOM" + cSfx)))
+				oJson["contato" + cValToChar(nCt) + "Telefone"] := IIf(Empty((cAlias)->&("A1_CTNUM" + cSfx)), Nil, AllTrim((cAlias)->&("A1_CTNUM" + cSfx)))
+				// 1=Sim;2=Nao
+				oJson["contato" + cValToChar(nCt) + "Whatsapp"] := (AllTrim((cAlias)->&("A1_CTWAT" + cSfx)) == "1")
+				oJson["contato" + cValToChar(nCt) + "Email"]    := IIf(Empty((cAlias)->&("A1_CTEML" + cSfx)), Nil, AllTrim((cAlias)->&("A1_CTEML" + cSfx)))
+			Next nCt
 		EndIf
 		If lLimite
 			oJson["limiteCredito"] := (cAlias)->A1_LC

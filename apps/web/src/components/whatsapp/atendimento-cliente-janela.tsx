@@ -468,7 +468,11 @@ function VincularWhatsapp({
   // estava sem. O telefone do **cliente** não muda — ele vem do ERP.
   const pessoas = useQuery({
     queryKey: ["cliente-contatos", clienteId],
-    queryFn: () => apiFetch<ClienteContato[]>(`/clientes/${clienteId}/contatos`),
+    queryFn: async () =>
+      // O vínculo é com um dos quatro contatos do ERP (A1_CT*01 a 04).
+      (await apiFetch<ClienteContato[]>(`/clientes/${clienteId}/contatos`)).filter(
+        (p) => p.origem === "erp",
+      ),
     enabled: liberado,
   });
   const ativas = (pessoas.data ?? []).filter((p) => p.ativo);
@@ -477,7 +481,7 @@ function VincularWhatsapp({
   const pessoaSugerida =
     ativas.find((p) => p.principal)?.id ??
     (ativas.length === 1 ? ativas[0].id : null) ??
-    (ativas.length === 0 && podeCadastrarPessoa ? NOVA_PESSOA : SEM_PESSOA);
+    SEM_PESSOA;
   const [pessoaEscolhida, setPessoa] = useState<string | null>(null);
   const pessoaId = pessoaEscolhida ?? pessoaSugerida;
   const [novaNome, setNovaNome] = useState("");
@@ -631,9 +635,6 @@ function VincularWhatsapp({
                 {p.celular ? ` · ${p.celular}` : " · sem celular"}
               </SelectItem>
             ))}
-            {podeCadastrarPessoa ? (
-              <SelectItem value={NOVA_PESSOA}>Cadastrar novo contato</SelectItem>
-            ) : null}
             <SelectItem value={SEM_PESSOA}>Não ligar a um contato</SelectItem>
           </SelectContent>
         </Select>

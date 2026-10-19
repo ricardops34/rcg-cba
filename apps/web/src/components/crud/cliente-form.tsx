@@ -69,6 +69,27 @@ const selectToBool = (v: string) => (v === "nao-informado" ? null : v === "sim")
  * página cheia (`ClienteForm`, editar e visualizar) e na cortina lateral
  * (`ClienteSheet`).
  */
+const POSICOES_CONTATO = [1, 2, 3, 4] as const;
+const TIPOS_CONTATO = [
+  { valor: "cliente", rotulo: "Cliente" },
+  { valor: "comprador", rotulo: "Comprador" },
+  { valor: "financeiro", rotulo: "Financeiro" },
+  { valor: "geral", rotulo: "Geral" },
+] as const;
+
+/** Contatos do ERP (A1_CT*01 a 04) como valores do formulário. */
+function contatosDoCliente(c?: Partial<Record<string, unknown>>): Partial<ClienteCreate> {
+  const out: Record<string, unknown> = {};
+  for (const p of POSICOES_CONTATO) {
+    out[`contato${p}Tipo`] = c?.[`contato${p}Tipo`] ?? null;
+    out[`contato${p}Nome`] = c?.[`contato${p}Nome`] ?? "";
+    out[`contato${p}Telefone`] = c?.[`contato${p}Telefone`] ?? "";
+    out[`contato${p}Whatsapp`] = c?.[`contato${p}Whatsapp`] ?? false;
+    out[`contato${p}Email`] = c?.[`contato${p}Email`] ?? "";
+  }
+  return out as Partial<ClienteCreate>;
+}
+
 export function ClienteFormContent({
   cliente,
   readOnly = false,
@@ -168,6 +189,7 @@ export function ClienteFormContent({
     observacaoBloqueio: "",
     dataReativacao: null,
     observacaoReativacao: "",
+    ...contatosDoCliente(),
   };
   const form = useForm<ClienteCreate>({
     resolver: zodResolver(schema as typeof clienteCreateSchema),
@@ -209,6 +231,7 @@ export function ClienteFormContent({
           observacaoBloqueio: cliente.observacaoBloqueio ?? "",
           dataReativacao: cliente.dataReativacao ?? null,
           observacaoReativacao: cliente.observacaoReativacao ?? "",
+          ...contatosDoCliente(cliente),
         }
       : empty,
   });
@@ -729,6 +752,76 @@ export function ClienteFormContent({
     </FieldGroup>
   );
 
+  // Contatos do ERP (SA1 A1_CT*01 a 04). Cada campo respeita o controle de
+  // campos editáveis; a alteração segue o mesmo caminho dos demais (fila de
+  // aprovação e volta ao ERP).
+  const camposContatos = (
+    <FieldGroup>
+      <p className="text-sm text-muted-foreground">
+        Contatos cadastrados no ERP (até quatro). Alterações seguem o mesmo caminho do cadastro do cliente.
+      </p>
+      <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
+        {POSICOES_CONTATO.map((p) => {
+          const tipo = `contato${p}Tipo` as const;
+          const nome = `contato${p}Nome` as const;
+          const telefone = `contato${p}Telefone` as const;
+          const whatsapp = `contato${p}Whatsapp` as const;
+          const email = `contato${p}Email` as const;
+          return (
+            <div key={p} className="space-y-3 rounded-lg border p-3">
+              <p className="text-sm font-medium">Contato {p}</p>
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <Field>
+                  <FieldLabel htmlFor={tipo}>Tipo</FieldLabel>
+                  <Select
+                    value={form.watch(tipo) ?? "none"}
+                    onValueChange={(v) =>
+                      form.setValue(tipo, v === "none" ? null : (v as never), { shouldDirty: true })
+                    }
+                    disabled={desabilitado(tipo)}
+                  >
+                    <SelectTrigger id={tipo} className="w-full">
+                      <SelectValue placeholder="Sem tipo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="none">Sem tipo</SelectItem>
+                      {TIPOS_CONTATO.map((t) => (
+                        <SelectItem key={t.valor} value={t.valor}>
+                          {t.rotulo}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={nome}>Nome</FieldLabel>
+                  <Input id={nome} maxLength={50} {...form.register(nome)} disabled={desabilitado(nome)} />
+                </Field>
+                <Field>
+                  <FieldLabel htmlFor={telefone}>Telefone</FieldLabel>
+                  <Input id={telefone} maxLength={15} {...form.register(telefone)} disabled={desabilitado(telefone)} />
+                </Field>
+                <Field data-invalid={!!form.formState.errors[email]}>
+                  <FieldLabel htmlFor={email}>E-mail</FieldLabel>
+                  <Input id={email} maxLength={100} {...form.register(email)} disabled={desabilitado(email)} />
+                  <FieldError errors={[form.formState.errors[email]]} />
+                </Field>
+              </div>
+              <label className="flex cursor-pointer items-center gap-2 text-sm">
+                <Checkbox
+                  checked={form.watch(whatsapp) === true}
+                  onCheckedChange={(v) => form.setValue(whatsapp, v === true, { shouldDirty: true })}
+                  disabled={desabilitado(whatsapp)}
+                />
+                O telefone é WhatsApp
+              </label>
+            </div>
+          );
+        })}
+      </div>
+    </FieldGroup>
+  );
+
   const camposBloqueio = cliente && (
     <FieldGroup>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -819,6 +912,7 @@ export function ClienteFormContent({
             <TabsList>
               <TabsTrigger value="identificacao">Identificação</TabsTrigger>
               <TabsTrigger value="contato">Contato</TabsTrigger>
+              <TabsTrigger value="contatos">Contatos</TabsTrigger>
               <TabsTrigger value="endereco">Endereço</TabsTrigger>
               <TabsTrigger value="comercial">Comercial</TabsTrigger>
               {cliente && <TabsTrigger value="cnae">CNAE</TabsTrigger>}
@@ -829,6 +923,7 @@ export function ClienteFormContent({
             </div>
             <TabsContent value="identificacao">{camposIdentificacao}</TabsContent>
             <TabsContent value="contato">{camposContato}</TabsContent>
+            <TabsContent value="contatos">{camposContatos}</TabsContent>
             <TabsContent value="endereco">{camposEndereco}</TabsContent>
             <TabsContent value="comercial">{camposComercial}</TabsContent>
             {cliente && <TabsContent value="cnae">{camposCnae}</TabsContent>}

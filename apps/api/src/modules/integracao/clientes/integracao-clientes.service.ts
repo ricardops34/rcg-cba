@@ -26,6 +26,7 @@ import {
 import { processarLote } from '../common/processar-lote';
 import { normalizarChaveOpcional } from '../common/normalizar-chave-opcional';
 import { resolverVendedor } from '../common/resolver-vendedor';
+import { sincronizarContatosErp } from '../../clientes/sincronizar-contatos-erp';
 import { ClienteAlteracoesService } from '../../clientes/cliente-alteracoes.service';
 
 const INCLUDE = {
@@ -61,6 +62,26 @@ export class IntegracaoClientesService {
       telefone: row.telefone,
       telefone2: row.telefone2,
       celular: row.celular,
+      contato1Tipo: row.contato1Tipo as IntegracaoCliente['contato1Tipo'],
+      contato1Nome: row.contato1Nome,
+      contato1Telefone: row.contato1Telefone,
+      contato1Whatsapp: row.contato1Whatsapp,
+      contato1Email: row.contato1Email,
+      contato2Tipo: row.contato2Tipo as IntegracaoCliente['contato2Tipo'],
+      contato2Nome: row.contato2Nome,
+      contato2Telefone: row.contato2Telefone,
+      contato2Whatsapp: row.contato2Whatsapp,
+      contato2Email: row.contato2Email,
+      contato3Tipo: row.contato3Tipo as IntegracaoCliente['contato3Tipo'],
+      contato3Nome: row.contato3Nome,
+      contato3Telefone: row.contato3Telefone,
+      contato3Whatsapp: row.contato3Whatsapp,
+      contato3Email: row.contato3Email,
+      contato4Tipo: row.contato4Tipo as IntegracaoCliente['contato4Tipo'],
+      contato4Nome: row.contato4Nome,
+      contato4Telefone: row.contato4Telefone,
+      contato4Whatsapp: row.contato4Whatsapp,
+      contato4Email: row.contato4Email,
       endereco: row.endereco,
       complemento: row.complemento,
       bairro: row.bairro,
@@ -199,6 +220,26 @@ export class IntegracaoClientesService {
         telefone: input.telefone ?? null,
         telefone2: input.telefone2 ?? null,
         celular: input.celular ?? null,
+        contato1Tipo: input.contato1Tipo ?? null,
+        contato1Nome: input.contato1Nome ?? null,
+        contato1Telefone: input.contato1Telefone ?? null,
+        contato1Whatsapp: input.contato1Whatsapp ?? null,
+        contato1Email: input.contato1Email ?? null,
+        contato2Tipo: input.contato2Tipo ?? null,
+        contato2Nome: input.contato2Nome ?? null,
+        contato2Telefone: input.contato2Telefone ?? null,
+        contato2Whatsapp: input.contato2Whatsapp ?? null,
+        contato2Email: input.contato2Email ?? null,
+        contato3Tipo: input.contato3Tipo ?? null,
+        contato3Nome: input.contato3Nome ?? null,
+        contato3Telefone: input.contato3Telefone ?? null,
+        contato3Whatsapp: input.contato3Whatsapp ?? null,
+        contato3Email: input.contato3Email ?? null,
+        contato4Tipo: input.contato4Tipo ?? null,
+        contato4Nome: input.contato4Nome ?? null,
+        contato4Telefone: input.contato4Telefone ?? null,
+        contato4Whatsapp: input.contato4Whatsapp ?? null,
+        contato4Email: input.contato4Email ?? null,
         endereco: input.endereco ?? null,
         complemento: input.complemento ?? null,
         bairro: input.bairro ?? null,
@@ -234,6 +275,7 @@ export class IntegracaoClientesService {
           data: { ...dados, ...camposDaDecisao(decisao) },
           include: INCLUDE,
         });
+        await sincronizarContatosErp(tx, empresaId, atualizadoUpsert, autor);
         return { registro: this.paraLeitura(atualizadoUpsert), decisao };
       }
 
@@ -241,6 +283,7 @@ export class IntegracaoClientesService {
         data: { ...dados, empresaId, createdBy: autor },
         include: INCLUDE,
       });
+      await sincronizarContatosErp(tx, empresaId, criado, autor);
       return { registro: this.paraLeitura(criado), decisao };
     });
   }
@@ -321,6 +364,26 @@ export class IntegracaoClientesService {
         'telefone',
         'telefone2',
         'celular',
+        'contato1Tipo',
+        'contato1Nome',
+        'contato1Telefone',
+        'contato1Whatsapp',
+        'contato1Email',
+        'contato2Tipo',
+        'contato2Nome',
+        'contato2Telefone',
+        'contato2Whatsapp',
+        'contato2Email',
+        'contato3Tipo',
+        'contato3Nome',
+        'contato3Telefone',
+        'contato3Whatsapp',
+        'contato3Email',
+        'contato4Tipo',
+        'contato4Nome',
+        'contato4Telefone',
+        'contato4Whatsapp',
+        'contato4Email',
         'endereco',
         'complemento',
         'bairro',
