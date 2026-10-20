@@ -45,6 +45,8 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { ClienteCnaeSection } from "@/components/crud/cliente-cnae-section";
 import { ClienteHistoricoSection } from "@/components/crud/cliente-historico-section";
+import { ClienteAlteracoesPendentes } from "@/components/crud/cliente-alteracoes-pendentes";
+import { useAuthStore } from "@/stores/auth-store";
 import { ArrowLeft, Search } from "lucide-react";
 import { ResultadoReceitaDialog, type ResultadoReceita } from "@/components/crud/cliente-receita-dialog";
 
@@ -257,6 +259,7 @@ export function ClienteFormContent({
    * é respeitado.
    */
   const [consultandoCnpj, setConsultandoCnpj] = useState(false);
+  const podeEditarCliente = useAuthStore((s) => s.hasPermission("clientes", "editar"));
   // CNAEs consultados antes de o cliente existir: ficam retidos aqui e são
   // vinculados assim que o cadastro é criado (ver onSubmit). Sem isso o usuário
   // teria de salvar e consultar o CNPJ de novo só para trazer o ramo.
@@ -871,7 +874,18 @@ export function ClienteFormContent({
   );
 
   const camposAlteracoes = cliente && (
-    <ClienteHistoricoSection clienteId={cliente.id} />
+    <div className="space-y-6">
+      <ClienteAlteracoesPendentes
+        clienteId={cliente.id}
+        onAtualizarReceita={consultarCnpj}
+        atualizandoReceita={consultandoCnpj}
+        podeConsultarReceita={tipoPessoa === "juridica" && podeEditarCliente}
+      />
+      <section className="space-y-3 border-t pt-4">
+        <h3 className="text-sm font-medium">Já analisadas</h3>
+        <ClienteHistoricoSection clienteId={cliente.id} />
+      </section>
+    </div>
   );
 
   const camposHistorico = cliente && (
