@@ -1121,6 +1121,7 @@ Static Function BJAplicaCliente(oAlt, aTotal, cSeqMae)
 			cSeq := SZZ->ZZ_SEQUEN
 			SZZ->ZZ_STATUS := "1"   // pendente
 			SZZ->ZZ_JSON   := oAlt:ToJson()
+			SZZ->ZZ_RETORN := "[" + DToC(Date()) + " " + Time() + "] Etapa 1: mensagem reaberta"
 			SZZ->(MsUnlock())
 		Else
 			cErro := "Nao foi possivel reabrir a mensagem na fila (SZZ)."
@@ -1162,6 +1163,7 @@ Static Function BJAplicaCliente(oAlt, aTotal, cSeqMae)
 			SZZ->ZZ_STATUS := "1"   // pendente
 			SZZ->ZZ_HTTP   := 0
 			SZZ->ZZ_JSON   := oAlt:ToJson()
+			SZZ->ZZ_RETORN := "[" + DToC(Date()) + " " + Time() + "] Etapa 1: mensagem criada"
 			SZZ->ZZ_DTCRIA := Date()
 			SZZ->ZZ_HRCRIA := Time()
 			SZZ->(MsUnlock())
@@ -1335,6 +1337,14 @@ Static Function BJAplicaCliente(oAlt, aTotal, cSeqMae)
 			cTraco += "    " + aCampos[nX][1] + " = " + cValToChar(aCampos[nX][2]) + CRLF
 		Next nX
 		MemoWrite(cArqTraco, cTraco)
+
+		// Mesmo rastro na propria mensagem, fora da transacao, para ler pelo SQL:
+		// ZZ_RETORN ficar em "Etapa 2" = a thread entrou no CRMA980 e nao voltou.
+		SZZ->(dbGoTo(nRecSZZ))
+		If RecLock("SZZ", .F.)
+			SZZ->ZZ_RETORN := "[" + DToC(Date()) + " " + Time() + "] Etapa 2: chamando CRMA980 com " + cValToChar(Len(aCampos)) + " campo(s)"
+			SZZ->(MsUnlock())
+		EndIf
 
 		bErro := ErrorBlock({|e| Break(e)})
 
