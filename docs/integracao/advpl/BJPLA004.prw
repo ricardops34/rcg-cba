@@ -1052,6 +1052,9 @@ Static Function BJAplicaCliente(oAlt, aTotal, cSeqMae)
 	Local cResp     := ""
 	Local cErroHttp := ""
 	Local nHttp     := 0
+	Local cDirLog   := "\bjpla\erros\" + cEmpAnt + "\" + DToS(Date()) + "\"
+	Local cArqLog   := ""
+	Local cTxtLog   := ""
 
 	Private lMsErroAuto    := .F.
 	Private lMsHelpAuto    := .T.
@@ -1387,7 +1390,43 @@ Static Function BJAplicaCliente(oAlt, aTotal, cSeqMae)
 	// Falha em qualquer etapa acima: a mensagem fica com erro na SZZ, visivel no monitor
 	If !Empty(cErro)
 
+		// Log em disco no servidor (protheus_data), um arquivo por erro, em
+		// \bjpla\erros\<empresa>\<data>\. Leva o texto inteiro do ExecAuto, sem o
+		// corte de 400 caracteres da SZZ, e os campos que foram enviados ao CRMA980.
+		// Falha ao gravar o arquivo nao muda o resultado: a SZZ continua sendo o registro.
+		cTxtLog := "Data/hora : " + DToC(Date()) + " " + Time() + CRLF
+		cTxtLog += "Empresa   : " + cEmpAnt + "/" + cFilAnt + CRLF
+		cTxtLog += "Rotina    : BJAplicaCliente (CRMA980, alteracao)" + CRLF
+		cTxtLog += "Id        : " + cIdPlat + CRLF
+		cTxtLog += "Cliente   : " + cChvCli + CRLF
+		cTxtLog += "Lote/seq  : " + cSeqMae + "/" + cSeq + CRLF
+		cTxtLog += "Erro      : " + cErro + CRLF + CRLF
+		cTxtLog += "Campos enviados:" + CRLF
+		For nX := 1 To Len(aCampos)
+			cTxtLog += "  " + aCampos[nX][1] + " = " + cValToChar(aCampos[nX][2]) + CRLF
+		Next nX
+		cTxtLog += CRLF + "Log do ExecAuto:" + CRLF
+		For nX := 1 To Len(aLog)
+			cTxtLog += aLog[nX] + CRLF
+		Next nX
+
+		MakeDir("\bjpla")
+		MakeDir("\bjpla\erros")
+		MakeDir("\bjpla\erros\" + cEmpAnt)
+		MakeDir(cDirLog)
+
+		cArqLog := cDirLog + "cliente_" + cIdPlat + "_" + StrTran(Time(), ":", "") + ".txt"
+
+		If !MemoWrite(cArqLog, cTxtLog)
+			FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Nao foi possivel gravar o log em disco: " + cArqLog, 0, 0, {})
+			cArqLog := ""
+		EndIf
+
 		cErro := SubStr(StrTran(StrTran(cErro, Chr(13), " "), Chr(10), " "), 1, 400)
+
+		If !Empty(cArqLog)
+			cErro += " | Log: " + cArqLog
+		EndIf
 
 		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Alteracao de cliente " + cIdPlat + ": " + cErro, 0, 0, {})
 
