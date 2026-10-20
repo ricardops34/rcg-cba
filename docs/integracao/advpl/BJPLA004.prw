@@ -1055,6 +1055,8 @@ Static Function BJAplicaCliente(oAlt, aTotal, cSeqMae)
 	Local cDirLog   := "\bjpla\erros\" + cEmpAnt + "\" + DToS(Date()) + "\"
 	Local cArqLog   := ""
 	Local cTxtLog   := ""
+	Local cArqTraco := ""
+	Local cTraco    := ""
 
 	Private lMsErroAuto    := .F.
 	Private lMsHelpAuto    := .T.
@@ -1319,6 +1321,21 @@ Static Function BJAplicaCliente(oAlt, aTotal, cSeqMae)
 	// Nada de tela aqui (PAT-008) e nenhuma saida por Return/Exit de dentro da transacao.
 	If !lJaAplic .And. Empty(cErro)
 
+		// Rastro em disco (\bjpla\erros\...\cliente_<id>_rastro.txt): se a thread parar dentro
+		// do CRMA980, o arquivo mostra que chegou ate la e com quais campos. Gravado antes
+		// da chamada e de novo logo depois que ela volta.
+		MakeDir("\bjpla")
+		MakeDir("\bjpla\erros")
+		MakeDir("\bjpla\erros\" + cEmpAnt)
+		MakeDir(cDirLog)
+
+		cArqTraco := cDirLog + "cliente_" + cIdPlat + "_rastro.txt"
+		cTraco    := DToC(Date()) + " " + Time() + " SA1 " + cCliente + "/" + cLoja + " posicionada. Chamando CRMA980 com:" + CRLF
+		For nX := 1 To Len(aCampos)
+			cTraco += "    " + aCampos[nX][1] + " = " + cValToChar(aCampos[nX][2]) + CRLF
+		Next nX
+		MemoWrite(cArqTraco, cTraco)
+
 		bErro := ErrorBlock({|e| Break(e)})
 
 		Begin Transaction
@@ -1381,6 +1398,9 @@ Static Function BJAplicaCliente(oAlt, aTotal, cSeqMae)
 			End Sequence
 
 			ErrorBlock(bErro)
+
+			cTraco += DToC(Date()) + " " + Time() + " CRMA980 retornou: lOk=" + cValToChar(lOk) + " lMsErroAuto=" + cValToChar(lMsErroAuto) + " erro=" + cErro + CRLF
+			MemoWrite(cArqTraco, cTraco)
 
 			If oModel != Nil
 				oModel:DeActivate()
