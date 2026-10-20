@@ -977,6 +977,7 @@ Static Function BJLeAltCli(aTotal, cSeqMae)
 	Local cAlias := ""
 	Local oStmt  := Nil
 	Local cJson  := ""
+	Local cDiag  := ""
 
 	lGet := U_BJHTTP("GET", "/integracao/clientes/alteracoes" + "?pageSize=100&page=1", "", @cResp, @nHttp, @cErro)
 
@@ -985,13 +986,15 @@ Static Function BJLeAltCli(aTotal, cSeqMae)
 	MakeDir("\bjpla")
 	MakeDir("\bjpla\erros")
 	MakeDir("\bjpla\erros\" + cEmpAnt)
-	MemoWrite("\bjpla\erros\" + cEmpAnt + "\ultimo_get_alteracoes.txt", ;
-		DToC(Date()) + " " + Time() + CRLF + ;
+	cDiag := DToC(Date()) + " " + Time() + CRLF + ;
+		"Versao  : BJLeAltCli com reaplicacao da SZZ (20/10/2026)" + CRLF + ;
+		"Filial  : " + cFilAnt + " / SZZ = [" + xFilial("SZZ") + "]" + CRLF + ;
 		"Sucesso : " + cValToChar(lGet) + CRLF + ;
 		"HTTP    : " + cValToChar(nHttp) + CRLF + ;
 		"Erro    : " + cErro + CRLF + ;
 		"Tamanho : " + cValToChar(Len(cResp)) + CRLF + ;
-		"Resposta:" + CRLF + SubStr(cResp, 1, 4000))
+		"Resposta:" + CRLF + SubStr(cResp, 1, 4000) + CRLF
+	MemoWrite("\bjpla\erros\" + cEmpAnt + "\ultimo_get_alteracoes.txt", cDiag)
 
 	// 1. O que a plataforma oferece agora
 	If !lGet
@@ -1056,6 +1059,9 @@ Static Function BJLeAltCli(aTotal, cSeqMae)
 
 	dbSelectArea("SZZ")
 
+	cDiag += "SZZ pendentes/erro (clientes-alteracoes, E): " + cValToChar(Len(aRecs)) + CRLF
+	MemoWrite("\bjpla\erros\" + cEmpAnt + "\ultimo_get_alteracoes.txt", cDiag)
+
 	For nX := 1 To Len(aRecs)
 
 		SZZ->(dbGoTo(aRecs[nX]))
@@ -1065,12 +1071,20 @@ Static Function BJLeAltCli(aTotal, cSeqMae)
 
 		If oItem:FromJson(cJson) == Nil .And. ValType(oItem:GetJsonObject("id")) == "C"
 			If aScan(aIds, AllTrim(oItem:GetJsonObject("id"))) == 0
+				cDiag += "  recno " + cValToChar(aRecs[nX]) + " id " + oItem:GetJsonObject("id") + ": chamando BJAplicaCliente" + CRLF
+				MemoWrite("\bjpla\erros\" + cEmpAnt + "\ultimo_get_alteracoes.txt", cDiag)
 				aTotal[1] += 1
 				BJAplicaCliente(oItem, @aTotal, cSeqMae)
+			Else
+				cDiag += "  recno " + cValToChar(aRecs[nX]) + ": ja veio no GET, tratado acima" + CRLF
 			EndIf
+		Else
+			cDiag += "  recno " + cValToChar(aRecs[nX]) + ": ZZ_JSON invalido ou sem id" + CRLF
 		EndIf
 
 	Next nX
+
+	MemoWrite("\bjpla\erros\" + cEmpAnt + "\ultimo_get_alteracoes.txt", cDiag + "Fim BJLeAltCli." + CRLF)
 
 Return Nil
 
