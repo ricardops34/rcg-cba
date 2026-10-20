@@ -1076,30 +1076,57 @@ Static Function BJAplicaCliente(oAlt, aTotal, cSeqMae)
 		Return Nil
 	EndIf
 
-	// Ja aplicada num ciclo anterior: a SA1 esta certa, falta so confirmar na plataforma
-	cQuery := "SELECT ZZ_SEQUEN "
+	// Mensagens desta alteracao na SZZ (a plataforma devolve o mesmo id ate a confirmacao).
+	// Alguma executada: a SA1 esta certa, falta so confirmar na plataforma.
+	// So pendente (1) ou com erro (3): e a mesma mensagem tentando de novo, nao uma nova
+	// (a mais recente e reaproveitada, para nao acumular linha pendente a cada ciclo).
+	cQuery := "SELECT SZZ.R_E_C_N_O_ AS REC, SZZ.ZZ_STATUS "
 	cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
 	cQuery += " WHERE SZZ.D_E_L_E_T_ = ' ' "
 	cQuery += "   AND SZZ.ZZ_FILIAL  = ? "
 	cQuery += "   AND SZZ.ZZ_ENTID   = ? "
 	cQuery += "   AND SZZ.ZZ_CHVORI  = ? "
 	cQuery += "   AND SZZ.ZZ_TIPO    = ? "
-	cQuery += "   AND SZZ.ZZ_STATUS  = ? "
+	cQuery += " ORDER BY SZZ.R_E_C_N_O_ DESC "
 
 	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
 	oStmt:SetString(1, xFilial("SZZ"))
 	oStmt:SetString(2, PadR("clientes-alteracoes", TamSX3("ZZ_ENTID")[1]))
 	oStmt:SetString(3, PadR(cIdPlat, TamSX3("ZZ_CHVORI")[1]))
 	oStmt:SetString(4, "E")   // entrada: plataforma -> ERP
-	oStmt:SetString(5, "2")   // executada
 
-	cAlias   := oStmt:OpenAlias()
-	lJaAplic := (cAlias)->(!Eof())
+	cAlias := oStmt:OpenAlias()
+
+	While (cAlias)->(!Eof())
+		If (cAlias)->ZZ_STATUS == "2"
+			lJaAplic := .T.
+		ElseIf nRecSZZ == 0
+			nRecSZZ := (cAlias)->REC
+		EndIf
+		(cAlias)->(dbSkip())
+	End
 
 	(cAlias)->(dbCloseArea())
 	oStmt:Destroy()
 
-	If !lJaAplic
+	// Tentativa repetida: reabre a mesma linha com o payload de agora
+	If !lJaAplic .And. nRecSZZ > 0
+
+		dbSelectArea("SZZ")
+		SZZ->(dbGoTo(nRecSZZ))
+
+		If RecLock("SZZ", .F.)
+			cSeq := SZZ->ZZ_SEQUEN
+			SZZ->ZZ_STATUS := "1"   // pendente
+			SZZ->ZZ_JSON   := oAlt:ToJson()
+			SZZ->(MsUnlock())
+		Else
+			cErro := "Nao foi possivel reabrir a mensagem na fila (SZZ)."
+		EndIf
+
+	EndIf
+
+	If !lJaAplic .And. nRecSZZ == 0
 
 		// Proxima sequencia da SZZ: MAX()+1 da filial, como nas demais mensagens
 		cQuery := "SELECT MAX(ZZ_SEQUEN) AS MAXSEQ "
