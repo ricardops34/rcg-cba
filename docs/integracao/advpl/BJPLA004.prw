@@ -950,7 +950,10 @@ Return Nil
 // ===========================================================================
 
 /*/{Protheus.doc} BJLeAltCli
-Le as alteracoes de cliente aprovadas na plataforma e as aplica na SA1.
+Aplica na SA1 as alteracoes de cliente: primeiro as que a plataforma oferece
+agora (GET), depois as mensagens que ficaram pendentes ou com erro na SZZ e que
+a plataforma nao oferece mais. A SZZ guarda o payload inteiro (ZZ_JSON), entao a
+tentativa seguinte nao depende de a API devolver o item de novo (REQ-001).
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
@@ -964,9 +967,16 @@ Static Function BJLeAltCli(aTotal, cSeqMae)
 	Local cErro  := ""
 	Local nHttp  := 0
 	Local nX     := 0
-	Local oJson  := Nil
-	Local aDados := {}
 	Local lGet   := .F.
+	Local oJson  := Nil
+	Local oItem  := Nil
+	Local aDados := {}
+	Local aIds   := {}
+	Local aRecs  := {}
+	Local cQuery := ""
+	Local cAlias := ""
+	Local oStmt  := Nil
+	Local cJson  := ""
 
 	lGet := U_BJHTTP("GET", "/integracao/clientes/alteracoes" + "?pageSize=100&page=1", "", @cResp, @nHttp, @cErro)
 
@@ -983,6 +993,7 @@ Static Function BJLeAltCli(aTotal, cSeqMae)
 		"Tamanho : " + cValToChar(Len(cResp)) + CRLF + ;
 		"Resposta:" + CRLF + SubStr(cResp, 1, 4000))
 
+	// 1. O que a plataforma oferece agora
 	If !lGet
 
 		If nHttp == 404
@@ -993,26 +1004,72 @@ Static Function BJLeAltCli(aTotal, cSeqMae)
 			aTotal[4] += 1
 		EndIf
 
-		Return Nil
-	EndIf
+	Else
 
-	oJson := JsonObject():New()
+		oJson := JsonObject():New()
 
-	If oJson:FromJson(cResp) != Nil
-		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Resposta invalida ao listar alteracoes de cliente.", 0, 0, {})
-		aTotal[4] += 1
-		Return Nil
-	EndIf
+		If oJson:FromJson(cResp) != Nil
+			FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Resposta invalida ao listar alteracoes de cliente.", 0, 0, {})
+			aTotal[4] += 1
+		Else
+			aDados := oJson:GetJsonObject("data")
+			If ValType(aDados) != "A"
+				aDados := {}
+			EndIf
+		EndIf
 
-	aDados := oJson:GetJsonObject("data")
-
-	If ValType(aDados) != "A"
-		Return Nil
 	EndIf
 
 	For nX := 1 To Len(aDados)
+		If ValType(aDados[nX]) == "J"
+			aAdd(aIds, AllTrim(cValToChar(aDados[nX]:GetJsonObject("id"))))
+		EndIf
 		aTotal[1] += 1
 		BJAplicaCliente(aDados[nX], @aTotal, cSeqMae)
+	Next nX
+
+	// 2. Pendentes e com erro na SZZ que a plataforma nao devolveu agora. Os que a plataforma
+	// devolveu ja foram tratados acima, com o valor atual do cadastro.
+	cQuery := "SELECT SZZ.R_E_C_N_O_ AS REC "
+	cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
+	cQuery += " WHERE SZZ.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SZZ.ZZ_FILIAL  = ? "
+	cQuery += "   AND SZZ.ZZ_ENTID   = ? "
+	cQuery += "   AND SZZ.ZZ_TIPO    = ? "
+	cQuery += "   AND SZZ.ZZ_STATUS IN ('1', '3') "
+	cQuery += " ORDER BY SZZ.ZZ_CODIGO, SZZ.ZZ_SEQUEN "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SZZ"))
+	oStmt:SetString(2, PadR("clientes-alteracoes", TamSX3("ZZ_ENTID")[1]))
+	oStmt:SetString(3, "E")   // entrada: plataforma -> ERP
+
+	cAlias := oStmt:OpenAlias()
+
+	While (cAlias)->(!Eof())
+		aAdd(aRecs, (cAlias)->REC)
+		(cAlias)->(dbSkip())
+	End
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+	dbSelectArea("SZZ")
+
+	For nX := 1 To Len(aRecs)
+
+		SZZ->(dbGoTo(aRecs[nX]))
+		cJson := SZZ->ZZ_JSON
+
+		oItem := JsonObject():New()
+
+		If oItem:FromJson(cJson) == Nil .And. ValType(oItem:GetJsonObject("id")) == "C"
+			If aScan(aIds, AllTrim(oItem:GetJsonObject("id"))) == 0
+				aTotal[1] += 1
+				BJAplicaCliente(oItem, @aTotal, cSeqMae)
+			EndIf
+		EndIf
+
 	Next nX
 
 Return Nil
@@ -1520,8 +1577,10 @@ Static Function BJAplicaCliente(oAlt, aTotal, cSeqMae)
 
 	EndIf
 
-	// Aplicada (agora ou num ciclo anterior): a plataforma tira o item da fila
-	If U_BJHTTP("PATCH", "/integracao/clientes/alteracoes/" + cIdPlat + "/aplicada", "{}", @cResp, @nHttp, @cErroHttp)
+	// Aplicada (agora ou num ciclo anterior): a plataforma tira o item da fila.
+	// 409 = a plataforma ja tinha esse item como enviado (o ERP reenvia a confirmacao
+	// depois de uma queda, ou reaplica uma mensagem da SZZ): a SA1 esta certa, vale como feito.
+	If U_BJHTTP("PATCH", "/integracao/clientes/alteracoes/" + cIdPlat + "/aplicada", "{}", @cResp, @nHttp, @cErroHttp) .Or. nHttp == 409
 		aTotal[2] += 1
 	Else
 		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao confirmar a alteracao " + cIdPlat + ;
