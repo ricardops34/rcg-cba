@@ -1,4 +1,8 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import {
   PrismaService,
   type TenantTx,
@@ -99,10 +103,20 @@ export class IntegracaoPedidosService {
       // Sem filtrar os excluídos: a chave é única mesmo entre eles, e criar
       // de novo colidiria. Histórico excluído que o ERP manda outra vez volta
       // (gravarHistorico reativa); orçamento da plataforma excluído, não.
-      const orcamento = await tx.orcamento.findFirst({
+      let orcamento: {
+        id: string;
+        origem: string;
+        deletedAt: Date | null;
+      } | null = await tx.orcamento.findFirst({
         where: { empresaId, chave: pedido.chave },
         select: { id: true, origem: true, deletedAt: true },
       });
+      // Pedido da plataforma sem a chave vinculada: acha o orçamento pelo id que
+      // o ERP gravou no pedido e liga os dois aqui. Nunca vira histórico novo —
+      // o orçamento aprovado é que recebe a atualização.
+      if (!orcamento && (pedido.orcamentoId || pedido.origemPlataforma)) {
+        orcamento = await this.vincularPeloId(tx, empresaId, autor, pedido);
+      }
       if (orcamento?.deletedAt && orcamento.origem !== 'erp') {
         throw new NotFoundException(
           `Nenhum orçamento vinculado ao pedido '${pedido.chave}'`,
@@ -135,6 +149,71 @@ export class IntegracaoPedidosService {
       });
       return this.paraLeitura(pedido.chave, atualizado);
     });
+  }
+
+  /**
+   * O pedido é da plataforma, mas o vínculo (PATCH .../pendentes/{id}) não
+   * chegou: o id do orçamento, gravado no pedido, refaz o vínculo — chave, número
+   * e a chave de cada item da SC6, casados pelo produto.
+   */
+  private async vincularPeloId(
+    tx: TenantTx,
+    empresaId: string,
+    autor: string,
+    pedido: IntegracaoPedidoCreate,
+  ) {
+    if (!pedido.orcamentoId) {
+      throw new NotFoundException(
+        `Pedido '${pedido.chave}' é da plataforma, mas não há orçamento com essa chave ` +
+          'e o pedido não trouxe o id do orçamento (orcamentoId)',
+      );
+    }
+    const orcamento = await tx.orcamento.findFirst({
+      where: {
+        id: pedido.orcamentoId,
+        empresaId,
+        deletedAt: null,
+        origem: { not: 'erp' },
+      },
+      include: {
+        itens: { select: { id: true, produto: { select: { chave: true } } } },
+      },
+    });
+    if (!orcamento) {
+      throw new NotFoundException(
+        `Orçamento '${pedido.orcamentoId}' não encontrado para o pedido '${pedido.chave}'`,
+      );
+    }
+    if (orcamento.chave && orcamento.chave !== pedido.chave) {
+      throw new ConflictException(
+        `O orçamento já está vinculado ao pedido '${orcamento.chave}'`,
+      );
+    }
+    if (orcamento.status !== 'aprovado') {
+      throw new ConflictException('Só orçamento aprovado recebe pedido');
+    }
+
+    const livres = [...orcamento.itens];
+    for (const item of pedido.itens) {
+      const i = livres.findIndex((o) => o.produto?.chave === item.produtoChave);
+      if (i < 0) continue;
+      const [doOrcamento] = livres.splice(i, 1);
+      await tx.orcamentoItem.update({
+        where: { id: doOrcamento.id },
+        data: { chave: item.chave },
+      });
+    }
+    await tx.orcamento.update({
+      where: { id: orcamento.id },
+      data: {
+        chave: pedido.chave,
+        codigoErp: pedido.codigoErp ?? null,
+        erroIntegracao: null,
+        erroIntegracaoEm: null,
+        updatedBy: autor,
+      },
+    });
+    return { id: orcamento.id, origem: orcamento.origem, deletedAt: null };
   }
 
   /**

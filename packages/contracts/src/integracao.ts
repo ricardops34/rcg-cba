@@ -2180,6 +2180,19 @@ export const integracaoPedidoCreateSchema = z.object({
     .regex(/^\d{4}-\d{2}-\d{2}$/, "Use AAAA-MM-DD")
     .optional()
     .describe("C5_EMISSAO, AAAA-MM-DD — obrigatório no pedido digitado no ERP"),
+  // Pedido que nasceu de um orçamento da plataforma: o ERP grava o id do
+  // orçamento no pedido (C5_XIDPLA) e a origem (C5_ORGPED = "P"). Com eles a
+  // atualização acha o orçamento de origem mesmo sem o vínculo da chave, e o
+  // pedido da plataforma nunca vira histórico novo.
+  orcamentoId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe("id do orçamento da plataforma gravado no pedido (C5_XIDPLA)"),
+  origemPlataforma: z
+    .boolean()
+    .optional()
+    .describe("pedido da plataforma (C5_ORGPED = P): atualiza o orçamento, nunca cria histórico"),
 });
 export type IntegracaoPedidoCreate = z.infer<
   typeof integracaoPedidoCreateSchema

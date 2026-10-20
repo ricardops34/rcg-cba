@@ -3150,6 +3150,9 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local lEst     := .F.
 	Local lLib     := .F.
 	Local lLibDesc := SC5->(FieldPos("C5_LIBDESC")) > 0
+	// Id do orcamento da plataforma, gravado no pedido pelo BJGeraPed (C5_XIDPLA).
+	// E ele que liga o pedido ao orcamento de origem quando o vinculo da chave nao chegou.
+	Local lIdPla   := SC5->(FieldPos("C5_XIDPLA")) > 0
 	// Historico: pedido digitado no ERP so sobe com emissao nos ultimos 12
 	// meses (decisao do usuario, 30/09/2026). O da plataforma sobe sempre.
 	Local cCorte   := DtoS(MonthSub(dDataBase, 12))
@@ -3167,7 +3170,11 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 	EndIf
 
 	cQuery := "SELECT SC5.C5_FILIAL, SC5.C5_NUM, SC5.D_E_L_E_T_ AS DELETADO, "
-	cQuery += "       SC5.C5_CLIENTE, SC5.C5_LOJACLI, SC5.C5_VEND1, SC5.C5_CONDPAG, SC5.C5_EMISSAO "
+	cQuery += "       SC5.C5_CLIENTE, SC5.C5_LOJACLI, SC5.C5_VEND1, SC5.C5_CONDPAG, SC5.C5_EMISSAO, SC5.C5_ORGPED "
+
+	If lIdPla
+		cQuery += ", SC5.C5_XIDPLA "
+	EndIf
 
 	If lLibDesc
 		cQuery += ", SC5.C5_LIBDESC "
@@ -3402,6 +3409,14 @@ User Function BJMAPPED(cMarca, cChave, cMarcaFim, lEnvDel)
 		oJson["situacao"]  := cSituac
 		oJson["itens"]     := aItens
 		oJson["notas"]     := aNotas
+
+		// Origem: pedido da plataforma atualiza o orcamento dele e nunca vira historico.
+		// Com o id do orcamento gravado no pedido, a plataforma acha a origem mesmo
+		// sem o vinculo da chave.
+		oJson["origemPlataforma"] := (AllTrim((cAlias)->C5_ORGPED) == "P")
+		If lIdPla .And. !Empty((cAlias)->C5_XIDPLA)
+			oJson["orcamentoId"] := AllTrim((cAlias)->C5_XIDPLA)
+		EndIf
 
 		// Usados so quando o pedido nao tem orcamento la (digitado no ERP) e
 		// entra como historico; no pedido da plataforma sao ignorados.

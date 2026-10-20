@@ -382,6 +382,20 @@ Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 		Return Nil
 	EndIf
 
+	// Segunda linha de defesa: o pedido guarda o id da plataforma (C5_XIDPLA). Se ele
+	// existe, o orcamento ja gerou pedido - mesmo que a SZZ tenha sido limpa - e so o
+	// vinculo precisa voltar. Nunca criar um segundo pedido.
+	cNumPed := BJPedPorId(cIdPlat)
+	If !Empty(cNumPed)
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Orcamento " + cIdPlat + " ja tem o pedido " + cNumPed + " (C5_XIDPLA). Reenviando so o vinculo.", 0, 0, {})
+		If BJVincula(cIdPlat, cNumPed, oOrc)
+			aTotal[2] += 1
+		Else
+			aTotal[4] += 1
+		EndIf
+		Return Nil
+	EndIf
+
 	cTrava := "BJPLA_ORC_" + Upper(AllTrim(cIdPlat))
 
 	// Um processo por orcamento: se a trava estiver tomada, outro processo esta tratando este orcamento.
@@ -420,6 +434,48 @@ Static Function BJTrataOrc(oOrc, aTotal, cSeqMae)
 	UnLockByName(cTrava, .T., .F.)
 
 Return Nil
+
+/*/{Protheus.doc} BJPedPorId
+Numero do pedido (C5_NUM) que ja foi gerado para o orcamento da plataforma, achado
+pelo id gravado no proprio pedido (C5_XIDPLA). Vazio se nao ha pedido, ou se o campo
+ainda nao existe na SC5.
+@type    Static Function
+@author  Ricardo P Sotomayor
+@since   19/10/2026
+@param   cIdPlat, character, Id interno da plataforma (UUID)
+@return  character, C5_NUM, ou vazio
+/*/
+Static Function BJPedPorId(cIdPlat)
+
+	Local cNum   := ""
+	Local cQuery := ""
+	Local cAlias := ""
+	Local oStmt  := Nil
+
+	If SC5->(FieldPos("C5_XIDPLA")) == 0 .Or. Empty(cIdPlat)
+		Return cNum
+	EndIf
+
+	cQuery := "SELECT TOP 1 SC5.C5_NUM "
+	cQuery += "  FROM " + RetSqlName("SC5") + " SC5 "
+	cQuery += " WHERE SC5.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SC5.C5_FILIAL  = ? "
+	cQuery += "   AND SC5.C5_XIDPLA  = ? "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SC5"))
+	oStmt:SetString(2, PadR(AllTrim(cIdPlat), TamSX3("C5_XIDPLA")[1]))
+
+	cAlias := oStmt:OpenAlias()
+
+	If (cAlias)->(!Eof())
+		cNum := AllTrim((cAlias)->C5_NUM)
+	EndIf
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+Return cNum
 
 /*/{Protheus.doc} BJGeraPed
 Grava o Pedido de Venda (SC5/SC6) do orcamento aprovado na plataforma.
@@ -555,6 +611,14 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 	// Origem do pedido, obrigatoria no dicionario: pedido vindo da plataforma BJ
 	If SC5->(FieldPos("C5_ORGPED")) > 0
 		aAdd(aCabec, {"C5_ORGPED", "P", Nil})   // plataforma BJ
+	EndIf
+
+	// Id do orcamento da plataforma (UUID), para o retorno achar a origem: o pedido
+	// carrega o elo, e nao so a SZZ. Campo a criar na SC5: C5_XIDPLA, caractere 36.
+	If SC5->(FieldPos("C5_XIDPLA")) > 0
+		aAdd(aCabec, {"C5_XIDPLA", AllTrim(cIdPlat), Nil})
+	Else
+		FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "C5_XIDPLA nao existe na SC5: o pedido do orcamento " + cIdPlat + " sai sem o id da plataforma.", 0, 0, {})
 	EndIf
 
 	// Tipo de venda, obrigatorio no dicionario e usado pelo SX5NOTA para escolher
