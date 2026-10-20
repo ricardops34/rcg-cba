@@ -427,7 +427,13 @@ export class OrcamentosService {
                 },
                 // Termo só de dígitos também procura pelo Nº do orçamento —
                 // é por ele que o cliente cobra o vendedor.
-                ...(numeroBuscado !== null ? [{ numero: numeroBuscado }] : []),
+                ...(numeroBuscado !== null
+                  ? [
+                      { numero: numeroBuscado },
+                      // O Nº exibido é o do pedido no ERP, quando já existe.
+                      { codigoErp: { contains: query.search?.trim() } },
+                    ]
+                  : []),
               ],
             }
           : {}),

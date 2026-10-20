@@ -147,14 +147,16 @@ export const ORIGEM_VENDA_ROTULO: Record<OrigemVenda, string> = {
 };
 
 /**
- * Número para mostrar: o da proposta, ou o do pedido no ERP no histórico
- * (origem `erp`, que não tem número de proposta).
+ * Número para mostrar: o do **pedido no ERP** quando ele existe (é o número que
+ * o cliente e o ERP usam) e, enquanto o orçamento não foi integrado, o da
+ * proposta. O número da proposta continua gravado, mas deixa de ser o exibido
+ * depois da integração (decisão do usuário, 19/10/2026).
  */
 export function numeroOrcamento(o: {
   numero: number | null;
   codigoErp: string | null;
 }): string {
-  return o.numero != null ? String(o.numero) : o.codigoErp ?? "";
+  return o.codigoErp ? o.codigoErp : o.numero != null ? String(o.numero) : "";
 }
 
 // Linha de item — input de create/update (o server substitui o conjunto
