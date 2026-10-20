@@ -20,6 +20,7 @@ import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
+import { campoClienteTravado } from '@plataforma/contracts';
 import type {
   ClienteContatoCreate,
   ClienteCreate,
@@ -748,11 +749,9 @@ export class ClientesService {
   ) {
     // Reforço server-side da config de campos editáveis (apps/api/src/modules/
     // cliente-campo-config/) — mesmo que alguém tente forçar via API direto,
-    // não só via UI, um campo travado (editavel:false) é ignorado aqui.
+    // não só via UI, um campo travado é ignorado aqui ("se vazio" só passa
+    // enquanto o cadastro não tem valor — ver abaixo, depois de ler o cliente).
     const config = await this.campoConfig.obterConfig(empresaId);
-    const inputPermitido = Object.fromEntries(
-      Object.entries(input).filter(([campo]) => config[campo] !== false),
-    ) as ClienteUpdate;
 
     const aplicarDireto = this.alteracoes.usuarioAprova(user);
 
@@ -767,6 +766,16 @@ export class ClientesService {
         },
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
+      const inputPermitido = Object.fromEntries(
+        Object.entries(input).filter(
+          ([campo]) =>
+            !campoClienteTravado(
+              config,
+              campo,
+              (cliente as Record<string, unknown>)[campo],
+            ),
+        ),
+      ) as ClienteUpdate;
       this.validarVendedorNoEscopo(escopo, inputPermitido.vendedorId);
 
       const registro = await this.alteracoes.registrar(tx, {

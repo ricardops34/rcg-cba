@@ -3,10 +3,14 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { ClienteCamposConfig } from "@plataforma/contracts";
+import {
+  MODOS_CAMPO_CLIENTE,
+  MODO_CAMPO_CLIENTE_LABEL,
+  type ClienteCamposConfig,
+  type ModoCampoCliente,
+} from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
@@ -143,11 +147,11 @@ export default function ClientesConfigPage() {
     queryFn: () => apiFetch<ClienteCamposConfig>("/clientes-config/campos"),
   });
 
-  const [overrides, setOverrides] = useState<Record<string, boolean>>({});
+  const [overrides, setOverrides] = useState<ClienteCamposConfig>({});
   const config: ClienteCamposConfig = { ...data, ...overrides };
 
   const update = useMutation({
-    mutationFn: (campos: { campo: string; editavel: boolean }[]) =>
+    mutationFn: (campos: { campo: string; modo: ModoCampoCliente }[]) =>
       apiFetch<ClienteCamposConfig>("/clientes-config/campos", {
         method: "PATCH",
         body: { campos },
@@ -160,7 +164,7 @@ export default function ClientesConfigPage() {
   });
 
   const handleSave = async () => {
-    const campos = Object.entries(config).map(([campo, editavel]) => ({ campo, editavel }));
+    const campos = Object.entries(config).map(([campo, modo]) => ({ campo, modo }));
     try {
       await update.mutateAsync(campos);
     } catch (err) {
@@ -168,11 +172,11 @@ export default function ClientesConfigPage() {
     }
   };
 
-  const handleToggleGroup = (grupo: GrupoCampos, targetState: boolean) => {
+  const handleToggleGroup = (grupo: GrupoCampos, modo: ModoCampoCliente) => {
     setOverrides((prev) => {
       const next = { ...prev };
       for (const { campo } of grupo.campos) {
-        next[campo] = targetState;
+        next[campo] = modo;
       }
       return next;
     });
@@ -184,7 +188,7 @@ export default function ClientesConfigPage() {
 
   const totalCampos = GRUPOS.reduce((acc, g) => acc + g.campos.length, 0);
   const totalEditaveis = GRUPOS.reduce(
-    (acc, g) => acc + g.campos.filter((c) => (config[c.campo] ?? true) === true).length,
+    (acc, g) => acc + g.campos.filter((c) => (config[c.campo] ?? "permitir") !== "bloquear").length,
     0
   );
   const totalBloqueados = totalCampos - totalEditaveis;
@@ -292,7 +296,7 @@ export default function ClientesConfigPage() {
         {GRUPOS.map((grupo) => {
           const Icone = grupo.icone;
           const editaveisNoGrupo = grupo.campos.filter(
-            (c) => (config[c.campo] ?? true) === true
+            (c) => (config[c.campo] ?? "permitir") !== "bloquear"
           ).length;
           const todosEditaveis = editaveisNoGrupo === grupo.campos.length;
 
@@ -319,7 +323,7 @@ export default function ClientesConfigPage() {
                       variant="ghost"
                       size="sm"
                       className="h-8 text-xs text-muted-foreground hover:text-foreground"
-                      onClick={() => handleToggleGroup(grupo, !todosEditaveis)}
+                      onClick={() => handleToggleGroup(grupo, todosEditaveis ? "bloquear" : "permitir")}
                     >
                       {todosEditaveis ? "Bloquear grupo" : "Permitir todos"}
                     </Button>
@@ -329,11 +333,12 @@ export default function ClientesConfigPage() {
               <CardContent className="p-4 sm:p-6">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
                   {grupo.campos.map(({ campo, label, descricao }) => {
-                    const isEditable = config[campo] ?? true;
+                    const modo: ModoCampoCliente = config[campo] ?? "permitir";
+                    const isEditable = modo !== "bloquear";
                     return (
                       <div
                         key={campo}
-                        className={`flex items-start justify-between rounded-lg border p-3.5 transition-colors ${
+                        className={`flex flex-col gap-2 rounded-lg border p-3.5 transition-colors ${
                           isEditable
                             ? "bg-card hover:border-primary/50"
                             : "bg-muted/40 border-dashed"
@@ -341,8 +346,7 @@ export default function ClientesConfigPage() {
                       >
                         <div className="space-y-0.5 pr-2">
                           <label
-                            htmlFor={`switch-${campo}`}
-                            className="text-sm font-medium leading-none cursor-pointer"
+                            className="text-sm font-medium leading-none"
                           >
                             {label}
                           </label>
@@ -358,17 +362,28 @@ export default function ClientesConfigPage() {
                                   : "border-muted-foreground/30 text-muted-foreground bg-muted"
                               }`}
                             >
-                              {isEditable ? "Editável" : "Somente Leitura"}
+                              {modo === "permitir" ? "Editável" : modo === "se_vazio" ? "Só se vazio" : "Somente Leitura"}
                             </Badge>
                           </div>
                         </div>
-                        <Switch
-                          id={`switch-${campo}`}
-                          checked={isEditable}
-                          onCheckedChange={(v) =>
-                            setOverrides((prev) => ({ ...prev, [campo]: v === true }))
-                          }
-                        />
+                        <div role="radiogroup" aria-label={label} className="inline-flex w-fit overflow-hidden rounded-md border text-xs">
+                          {MODOS_CAMPO_CLIENTE.map((m) => (
+                            <button
+                              key={m}
+                              type="button"
+                              role="radio"
+                              aria-checked={modo === m}
+                              onClick={() => setOverrides((prev) => ({ ...prev, [campo]: m }))}
+                              className={`px-2.5 py-1 transition-colors ${
+                                modo === m
+                                  ? "bg-primary text-primary-foreground"
+                                  : "bg-background text-muted-foreground hover:bg-muted"
+                              }`}
+                            >
+                              {MODO_CAMPO_CLIENTE_LABEL[m]}
+                            </button>
+                          ))}
+                        </div>
                       </div>
                     );
                   })}

@@ -426,8 +426,9 @@ export class ClientesReceitaLoteService {
         if (vazio(valor)) continue;
         if (vazio(atual[campo])) {
           // Vazio é preenchimento, não alteração: entra direto — salvo campo
-          // travado na configuração da empresa, que só chega como proposta.
-          if (config[campo] === false) propor[campo] = valor;
+          // bloqueado na configuração da empresa, que só chega como proposta
+          // ("permitir se vazio" aceita o preenchimento, como o permitir).
+          if (config[campo] === 'bloquear') propor[campo] = valor;
           else preencher[campo] = valor;
         } else if (comparavel(atual[campo]) !== comparavel(valor)) {
           propor[campo] = valor;
@@ -438,7 +439,7 @@ export class ClientesReceitaLoteService {
       const sugeridos = consulta.cnaes.filter((c) => !!c.cnaeId);
       const principalReceita =
         sugeridos.find((c) => c.principal)?.codigo ?? null;
-      const cnaesTravados = config.cnaes === false;
+      const cnaesTravados = config.cnaes === 'bloquear';
       if (sugeridos.length > 0) {
         if (codigosAtuais.length === 0 && !cnaesTravados) {
           preencher.cnaes = sugeridos.map((c) => c.codigo);

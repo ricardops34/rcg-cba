@@ -2645,6 +2645,8 @@ model ClienteCampoConfig {
   empresaId String
   campo     String
   editavel  Boolean @default(true)
+  /// permitir | bloquear | se_vazio — ver `MODOS_CAMPO_CLIENTE` nos contratos.
+  modo      String  @default("permitir")
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

@@ -91,10 +91,13 @@ function CnaeCombobox({ onSelect }: { onSelect: (cnae: Cnae) => void }) {
  */
 export function ClienteCnaeSection({
   clienteId,
-  readOnly = false,
+  readOnly: somenteLeitura = false,
+  soSeVazio = false,
 }: {
   clienteId: string;
   readOnly?: boolean;
+  /** Modo "permitir se vazio": trava assim que o cliente tem algum ramo. */
+  soSeVazio?: boolean;
 }) {
   const queryClient = useQueryClient();
   const chave = ["clientes", clienteId, "cnaes"];
@@ -104,6 +107,7 @@ export function ClienteCnaeSection({
     queryFn: () => apiFetch<ClienteCnae[]>(`/clientes/${clienteId}/cnaes`),
   });
   const cnaes = data ?? [];
+  const readOnly = somenteLeitura || (soSeVazio && cnaes.length > 0);
 
   const invalidar = () => queryClient.invalidateQueries({ queryKey: chave });
   const aoFalhar = (err: unknown, padrao: string) =>

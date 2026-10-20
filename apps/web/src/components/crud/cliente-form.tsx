@@ -7,6 +7,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
+  campoClienteTravado,
   clienteCreateSchema,
   clienteUpdateSchema,
   type Cliente,
@@ -151,7 +152,15 @@ export function ClienteFormContent({
     queryKey: ["clientes-config"],
     queryFn: () => apiFetch<ClienteCamposConfig>("/clientes-config/campos"),
   });
-  const desabilitado = (campo: string) => readOnly || camposConfigQuery.data?.[campo] === false;
+  // "Permitir se vazio" olha o que o cadastro tem ao abrir (`cliente`), não o
+  // que se digita: senão o campo travaria no primeiro caractere.
+  const desabilitado = (campo: string) =>
+    readOnly ||
+    campoClienteTravado(
+      camposConfigQuery.data,
+      campo,
+      (cliente as Record<string, unknown> | undefined)?.[campo],
+    );
 
   const schema = cliente ? clienteUpdateSchema : clienteCreateSchema;
   const empty: ClienteCreate = {
@@ -869,7 +878,8 @@ export function ClienteFormContent({
   const camposCnae = cliente && (
     <ClienteCnaeSection
       clienteId={cliente.id}
-      readOnly={readOnly || desabilitado("cnaes")}
+      readOnly={readOnly || camposConfigQuery.data?.cnaes === "bloquear"}
+      soSeVazio={camposConfigQuery.data?.cnaes === "se_vazio"}
     />
   );
 
