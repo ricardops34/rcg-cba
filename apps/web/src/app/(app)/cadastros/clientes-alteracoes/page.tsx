@@ -225,10 +225,19 @@ export default function ClientesAlteracoesPage() {
     const falhas: string[] = [];
     for (const linha of alvo) {
       try {
-        await apiFetch(`/clientes-alteracoes/${linha.id}/${lote}`, {
-          method: "POST",
-          body: lote === "aprovar" ? { campos: marcadosDe(linha) } : { motivo },
-        });
+        const chamar = () =>
+          apiFetch(`/clientes-alteracoes/${linha.id}/${lote}`, {
+            method: "POST",
+            body: lote === "aprovar" ? { campos: marcadosDe(linha) } : { motivo },
+          });
+        try {
+          await chamar();
+        } catch (err) {
+          // Limite de requisições: espera a janela correr e tenta de novo.
+          if (!(err instanceof ApiError && err.status === 429)) throw err;
+          await new Promise((r) => setTimeout(r, 5000));
+          await chamar();
+        }
         ok += 1;
       } catch (err) {
         falhas.push(
