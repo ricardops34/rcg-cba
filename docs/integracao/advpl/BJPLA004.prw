@@ -966,8 +966,24 @@ Static Function BJLeAltCli(aTotal, cSeqMae)
 	Local nX     := 0
 	Local oJson  := Nil
 	Local aDados := {}
+	Local lGet   := .F.
 
-	If !U_BJHTTP("GET", "/integracao/clientes/alteracoes" + "?pageSize=100&page=1", "", @cResp, @nHttp, @cErro)
+	lGet := U_BJHTTP("GET", "/integracao/clientes/alteracoes" + "?pageSize=100&page=1", "", @cResp, @nHttp, @cErro)
+
+	// Diagnostico: o que o GET devolveu neste ciclo, num arquivo que se sobrescreve (nao
+	// acumula). Sem isso, 404 e "data" vazio saem do ciclo sem nenhum rastro visivel.
+	MakeDir("\bjpla")
+	MakeDir("\bjpla\erros")
+	MakeDir("\bjpla\erros\" + cEmpAnt)
+	MemoWrite("\bjpla\erros\" + cEmpAnt + "\ultimo_get_alteracoes.txt", ;
+		DToC(Date()) + " " + Time() + CRLF + ;
+		"Sucesso : " + cValToChar(lGet) + CRLF + ;
+		"HTTP    : " + cValToChar(nHttp) + CRLF + ;
+		"Erro    : " + cErro + CRLF + ;
+		"Tamanho : " + cValToChar(Len(cResp)) + CRLF + ;
+		"Resposta:" + CRLF + SubStr(cResp, 1, 4000))
+
+	If !lGet
 
 		If nHttp == 404
 			FwLogMsg("INFO", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Rota " + "/integracao/clientes/alteracoes" + " ainda nao existe na API. " + ;
