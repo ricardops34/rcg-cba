@@ -108,6 +108,8 @@ export function ClienteCnaeSection({
   });
   const cnaes = data ?? [];
   const readOnly = somenteLeitura || (soSeVazio && cnaes.length > 0);
+  // O principal (fiscal) vem do cadastro: depois de definido, fica fixo.
+  const temPrincipal = cnaes.some((c) => c.principal);
 
   const invalidar = () => queryClient.invalidateQueries({ queryKey: chave });
   const aoFalhar = (err: unknown, padrao: string) =>
@@ -158,7 +160,8 @@ export function ClienteCnaeSection({
       <FieldDescription className="pt-1">
         O CNAE identifica o ramo do cliente e alimenta a sugestão de compra —
         clientes do mesmo ramo tendem a comprar os mesmos produtos. Um deles é o
-        principal (fiscal); os demais são secundários.
+        principal (fiscal), que vem do cadastro e não se altera aqui; os demais
+        são secundários.
       </FieldDescription>
 
       <div className="space-y-2 pt-3">
@@ -180,7 +183,7 @@ export function ClienteCnaeSection({
               {c.principal ? (
                 <Badge variant="secondary">Principal</Badge>
               ) : (
-                !readOnly && (
+                !readOnly && !temPrincipal && (
                   <Button
                     type="button"
                     variant="ghost"
@@ -193,7 +196,7 @@ export function ClienteCnaeSection({
                   </Button>
                 )
               )}
-              {!readOnly && (
+              {!readOnly && !c.principal && (
                 <Button
                   type="button"
                   variant="ghost"

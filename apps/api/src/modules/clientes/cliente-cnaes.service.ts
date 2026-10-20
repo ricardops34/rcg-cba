@@ -68,6 +68,27 @@ export class ClienteCnaesService {
     }
   }
 
+  /**
+   * O CNAE principal é o fiscal e vem do cadastro do cliente (Receita/ERP):
+   * depois de definido, não se troca nem se remove por aqui — só os secundários
+   * são editáveis. Sem principal ainda, o primeiro pode ser definido.
+   */
+  private async garantirSemPrincipal(
+    tx: TenantTx,
+    empresaId: string,
+    clienteId: string,
+  ) {
+    const principal = await tx.clienteCnae.findFirst({
+      where: { empresaId, clienteId, principal: true, deletedAt: null },
+      select: { id: true },
+    });
+    if (principal) {
+      throw new ForbiddenException(
+        'O CNAE principal vem do cadastro do cliente e não pode ser alterado.',
+      );
+    }
+  }
+
   private paraLeitura(linha: LinhaComCnae) {
     const { cnae, ...resto } = linha;
     return { ...resto, codigo: cnae.codigoErp, descricao: cnae.descricao };
@@ -138,8 +159,10 @@ export class ClienteCnaesService {
         throw new ConflictException('Este CNAE já está vinculado ao cliente');
       }
 
-      if (input.principal)
+      if (input.principal) {
+        await this.garantirSemPrincipal(tx, empresaId, clienteId);
         await this.desmarcarPrincipais(tx, empresaId, clienteId);
+      }
 
       const linha = existente
         ? await tx.clienteCnae.update({
@@ -184,6 +207,7 @@ export class ClienteCnaesService {
       });
       if (!atual) throw new NotFoundException('CNAE do cliente não encontrado');
 
+      await this.garantirSemPrincipal(tx, empresaId, clienteId);
       await this.desmarcarPrincipais(tx, empresaId, clienteId);
       const linha = await tx.clienteCnae.update({
         where: { id },
@@ -205,9 +229,14 @@ export class ClienteCnaesService {
       await this.garantirClienteNoEscopo(tx, empresaId, user, clienteId);
       const atual = await tx.clienteCnae.findFirst({
         where: { id, empresaId, clienteId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, principal: true },
       });
       if (!atual) throw new NotFoundException('CNAE do cliente não encontrado');
+      if (atual.principal) {
+        throw new ForbiddenException(
+          'O CNAE principal vem do cadastro do cliente e não pode ser removido.',
+        );
+      }
 
       await tx.clienteCnae.update({
         where: { id },
