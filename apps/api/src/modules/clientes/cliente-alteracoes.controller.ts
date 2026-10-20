@@ -13,7 +13,6 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import { Throttle } from '@nestjs/throttler';
 import { CLIENTE_ALTERACAO_EXAMPLE } from '@plataforma/contracts';
 import { ClienteAlteracoesService } from './cliente-alteracoes.service';
 import {
@@ -76,9 +75,6 @@ export class ClienteAlteracoesController {
   @ApiBodyExample({ campos: ['razaoSocial', 'cnaes'] })
   @ApiResponse({ status: 200, schema: { example: CLIENTE_ALTERACAO_EXAMPLE } })
   @ApiResponse({ status: 409, description: 'Cadastro mudou ou já analisada' })
-  // A tela aprova/recusa em lote chamando esta rota uma vez por solicitação;
-  // o limite global (200/min) estourava com fila grande.
-  @Throttle({ default: { limit: 1000, ttl: 60_000 } })
   @RequirePermission('clientes', 'aprovar')
   @Post(':id/aprovar')
   aprovar(
@@ -97,7 +93,6 @@ export class ClienteAlteracoesController {
   })
   @ApiBodyExample({ motivo: 'Limite de crédito acima da alçada do vendedor' })
   @ApiResponse({ status: 200, schema: { example: CLIENTE_ALTERACAO_EXAMPLE } })
-  @Throttle({ default: { limit: 1000, ttl: 60_000 } })
   @RequirePermission('clientes', 'aprovar')
   @Post(':id/recusar')
   recusar(

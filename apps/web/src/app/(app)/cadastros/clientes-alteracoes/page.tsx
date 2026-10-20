@@ -233,12 +233,14 @@ export default function ClientesAlteracoesPage() {
         try {
           await chamar();
         } catch (err) {
-          // Limite de requisições: espera a janela correr e tenta de novo.
+          // Limite de requisições da API: espera a janela de 1 min correr e tenta de novo.
           if (!(err instanceof ApiError && err.status === 429)) throw err;
-          await new Promise((r) => setTimeout(r, 5000));
+          await new Promise((r) => setTimeout(r, 61_000));
           await chamar();
         }
         ok += 1;
+        // Ritmo abaixo do limite global (200/min), para a fila grande não esbarrar nele.
+        await new Promise((r) => setTimeout(r, 400));
       } catch (err) {
         falhas.push(
           `${linha.clienteRazaoSocial ?? "Cliente"}: ${err instanceof ApiError ? err.message : "erro"}`,
