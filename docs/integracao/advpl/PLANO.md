@@ -655,7 +655,7 @@ O ERP grava a SA1 e marca a mensagem da fila como executada **na mesma
 transação** (CON-001), e só então chama o `PATCH`. Se o `PATCH` falhar — rede,
 timeout —, o ciclo seguinte reencontra a alteração (o `integradoEm` continua
 nulo), o `U_BJACHOU` responde que aquele id já foi aplicado, e a rotina **só
-reenvia o `PATCH`**, sem tocar na SA1 de novo. Já implementado em `BJTrataAlt`.
+reenvia o `PATCH`**, sem tocar na SA1 de novo. Já implementado em `BJAplicaCliente` (reescrita em 20/10/2026 como função única: antes eram `BJTrataAlt`, `BJGravSA1` e `BJConfAlt`).
 
 Por isso o `PATCH` precisa ser idempotente no caso feliz e devolver `409` — e não
 `500` — quando a alteração já estiver integrada.

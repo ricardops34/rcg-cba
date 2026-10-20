@@ -906,49 +906,6 @@ Static Function BJLogAuto()
 
 Return SubStr(cRet, 1, 400)
 
-/*/{Protheus.doc} BJErroMVC
-Devolve o erro guardado no modelo MVC como texto de uma linha: campo, motivo
-e solucao, como a tela mostraria. Precisa ser lido antes do DeActivate().
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   09/10/2026
-@param   oModel, object, Modelo que recusou a operacao
-@return  character, Erro do modelo, ou vazio quando nao ha
-/*/
-Static Function BJErroMVC(oModel)
-
-	Local cRet  := ""
-	Local aErro := {}
-
-	If oModel == Nil
-		Return ""
-	EndIf
-
-	// [4] campo do erro, [5] id, [6] mensagem, [7] solucao, [8] valor atribuido
-	aErro := oModel:GetErrorMessage()
-
-	If ValType(aErro) != "A" .Or. Len(aErro) < 6 .Or. Empty(aErro[6])
-		Return ""
-	EndIf
-
-	If !Empty(aErro[4])
-		cRet += "Campo " + AllTrim(cValToChar(aErro[4])) + ": "
-	EndIf
-
-	cRet += AllTrim(cValToChar(aErro[6]))
-
-	If Len(aErro) >= 7 .And. !Empty(aErro[7])
-		cRet += " Solucao: " + AllTrim(cValToChar(aErro[7]))
-	EndIf
-
-	If Len(aErro) >= 8 .And. !Empty(aErro[8])
-		cRet += " Valor: " + AllTrim(cValToChar(aErro[8]))
-	EndIf
-
-	cRet := StrTran(StrTran(cRet, Chr(13), " "), Chr(10), " ")
-
-Return SubStr(cRet, 1, 400)
-
 /*/{Protheus.doc} BJErroOrc
 Grava a falha da criacao do pedido na mensagem e no log, e avisa a
 plataforma: o orcamento passa a mostrar "Erro de integracao" com o motivo, em
@@ -1039,37 +996,66 @@ Static Function BJLeAltCli(aTotal, cSeqMae)
 
 	For nX := 1 To Len(aDados)
 		aTotal[1] += 1
-		BJTrataAlt(aDados[nX], @aTotal, cSeqMae)
+		BJAplicaCliente(aDados[nX], @aTotal, cSeqMae)
 	Next nX
 
 Return Nil
 
-/*/{Protheus.doc} BJTrataAlt
-Aplica uma alteracao de cliente na SA1 e confirma na plataforma.
+/*/{Protheus.doc} BJAplicaCliente
+Aplica na SA1 uma alteracao de cliente aprovada na plataforma e confirma la que
+foi aplicada. Fluxo unico, de cima para baixo:
+1. valida o item recebido;
+2. se a SZZ ja tem a mensagem executada, so falta confirmar;
+3. enfileira a mensagem na SZZ (REQ-001);
+4. localiza o cliente na SA1 pela chave de integracao;
+5. monta os campos pelo de-para (lista branca);
+6. grava pelo CRMA980 e marca a mensagem como executada na mesma transacao
+   (CON-001: cadastro alterado sem rastro voltaria a ser alterado no ciclo seguinte);
+7. confirma na plataforma (PATCH .../aplicada).
 @type    Static Function
 @author  Ricardo P Sotomayor
 @since   01/09/2026
-@param   oAlt   , object   , Alteracao devolvida pela API
-@param   aTotal , array    , [Referencia] Totalizadores
+@param   oAlt   , object   , Alteracao devolvida pela API (item de clientes/alteracoes)
+@param   aTotal , array    , [Referencia] Totalizadores: [1] lidos [2] aplicados [3] ignorados [4] erros
 @param   cSeqMae, character, ZY_CODIGO do lote (SZY) deste retorno
 @return  Nil
 /*/
-Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
+Static Function BJAplicaCliente(oAlt, aTotal, cSeqMae)
 
-	Local cIdPlat  := ""
-	Local cChvCli  := ""
-	Local cCliente := ""
-	Local cLoja    := ""
-	Local cSeq     := ""
-	Local cLogErr  := ""
-	Local cFeito   := ""
-	Local aParte   := {}
-	Local aCampos  := {}
-	Local aMapa    := {}
-	Local cTexto   := ""
-	Local xValor   := Nil
-	Local nX       := 0
-	Local nTamLoj  := TamSX3("A1_LOJA")[1]
+	Local cIdPlat   := ""
+	Local cChvCli   := ""
+	Local cResto    := ""
+	Local cCliente  := ""
+	Local cLoja     := ""
+	Local cSeq      := ""
+	Local nRecSZZ   := 0
+	Local cErro     := ""
+	Local nColErro  := 4
+	Local lJaAplic  := .F.
+	Local lOk       := .F.
+	Local cQuery    := ""
+	Local cAlias    := ""
+	Local oStmt     := Nil
+	Local aMapa     := {}
+	Local aCampos   := {}
+	Local aErroMVC  := {}
+	Local aLog      := {}
+	Local cTexto    := ""
+	Local xValor    := Nil
+	Local nX        := 0
+	Local nHifens   := 0
+	Local nTamSeq   := TamSX3("ZZ_SEQUEN")[1]
+	Local nTamLoj   := TamSX3("A1_LOJA")[1]
+	Local oModel    := Nil
+	Local oErrExec  := Nil
+	Local bErro     := Nil
+	Local cResp     := ""
+	Local cErroHttp := ""
+	Local nHttp     := 0
+
+	Private lMsErroAuto    := .F.
+	Private lMsHelpAuto    := .T.
+	Private lAutoErrNoFile := .T.
 
 	// Item de array lido de um JsonObject e "J", nao "O"
 	If ValType(oAlt) != "J"
@@ -1087,302 +1073,351 @@ Static Function BJTrataAlt(oAlt, aTotal, cSeqMae)
 		Return Nil
 	EndIf
 
-	// Ja aplicada num ciclo anterior: falta so confirmar na plataforma
-	If U_BJACHOU("E", "clientes-alteracoes", cIdPlat, @cFeito)
-		If BJConfAlt(cIdPlat)
-			aTotal[2] += 1
+	// Ja aplicada num ciclo anterior: a SA1 esta certa, falta so confirmar na plataforma
+	cQuery := "SELECT ZZ_SEQUEN "
+	cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
+	cQuery += " WHERE SZZ.D_E_L_E_T_ = ' ' "
+	cQuery += "   AND SZZ.ZZ_FILIAL  = ? "
+	cQuery += "   AND SZZ.ZZ_ENTID   = ? "
+	cQuery += "   AND SZZ.ZZ_CHVORI  = ? "
+	cQuery += "   AND SZZ.ZZ_TIPO    = ? "
+	cQuery += "   AND SZZ.ZZ_STATUS  = ? "
+
+	oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+	oStmt:SetString(1, xFilial("SZZ"))
+	oStmt:SetString(2, PadR("clientes-alteracoes", TamSX3("ZZ_ENTID")[1]))
+	oStmt:SetString(3, PadR(cIdPlat, TamSX3("ZZ_CHVORI")[1]))
+	oStmt:SetString(4, "E")   // entrada: plataforma -> ERP
+	oStmt:SetString(5, "2")   // executada
+
+	cAlias   := oStmt:OpenAlias()
+	lJaAplic := (cAlias)->(!Eof())
+
+	(cAlias)->(dbCloseArea())
+	oStmt:Destroy()
+
+	If !lJaAplic
+
+		// Proxima sequencia da SZZ: MAX()+1 da filial, como nas demais mensagens
+		cQuery := "SELECT MAX(ZZ_SEQUEN) AS MAXSEQ "
+		cQuery += "  FROM " + RetSqlName("SZZ") + " SZZ "
+		cQuery += " WHERE SZZ.D_E_L_E_T_ = ' ' "
+		cQuery += "   AND SZZ.ZZ_FILIAL  = ? "
+
+		oStmt := FWExecStatement():New(ChangeQuery(cQuery))
+		oStmt:SetString(1, xFilial("SZZ"))
+		cAlias := oStmt:OpenAlias()
+
+		If (cAlias)->(!Eof()) .And. !Empty((cAlias)->MAXSEQ)
+			cSeq := Soma1(PadL(AllTrim((cAlias)->MAXSEQ), nTamSeq, "0"))
 		Else
-			aTotal[4] += 1
+			cSeq := StrZero(1, nTamSeq)
 		EndIf
-		Return Nil
+
+		(cAlias)->(dbCloseArea())
+		oStmt:Destroy()
+
+		dbSelectArea("SZZ")
+
+		If RecLock("SZZ", .T.)
+			SZZ->ZZ_FILIAL := xFilial("SZZ")
+			SZZ->ZZ_CODIGO := cSeqMae
+			SZZ->ZZ_SEQUEN := cSeq
+			SZZ->ZZ_TIPO   := "E"
+			SZZ->ZZ_ENTID  := "clientes-alteracoes"
+			SZZ->ZZ_CHVORI := cIdPlat
+			SZZ->ZZ_VERBO  := "GET"
+			SZZ->ZZ_STATUS := "1"   // pendente
+			SZZ->ZZ_HTTP   := 0
+			SZZ->ZZ_JSON   := oAlt:ToJson()
+			SZZ->ZZ_DTCRIA := Date()
+			SZZ->ZZ_HRCRIA := Time()
+			SZZ->(MsUnlock())
+			nRecSZZ := SZZ->(Recno())
+		Else
+			cSeq  := ""
+			cErro := "Nao foi possivel gravar a mensagem na fila (SZZ)."
+		EndIf
+
 	EndIf
 
-	cSeq := U_BJENFILA("E", "clientes-alteracoes", cIdPlat, "GET", oAlt:ToJson(), cSeqMae)
+	// Chave de integracao FILIAL-COD-LOJA ("01-000234-01" ou "-000234-01" em tabela
+	// compartilhada). Sem os dois hifens, assume codigo e loja colados.
+	If !lJaAplic .And. Empty(cErro)
 
-	If Empty(cSeq)
-		aTotal[4] += 1
-		Return Nil
-	EndIf
+		nHifens := Len(cChvCli) - Len(StrTran(cChvCli, "-", ""))
 
-	// O clienteChave volta prefixado pela filial, como saiu daqui.
-	aParte := U_BJCHAVE(cChvCli, {"A1_FILIAL", "A1_COD", "A1_LOJA"})
+		If nHifens == 2
+			cResto   := SubStr(cChvCli, At("-", cChvCli) + 1)
+			cCliente := SubStr(cResto, 1, At("-", cResto) - 1)
+			cLoja    := SubStr(cResto, At("-", cResto) + 1)
+		Else
+			cCliente := SubStr(cChvCli, 1, Len(cChvCli) - nTamLoj)
+			cLoja    := Right(cChvCli, nTamLoj)
+		EndIf
 
-	If Len(aParte) == 3
-		cCliente := aParte[2]
-		cLoja    := aParte[3]
-	Else
-		// Chave sem o prefixo de filial: codigo e loja colados
-		cCliente := SubStr(cChvCli, 1, Len(cChvCli) - nTamLoj)
-		cLoja    := Right(cChvCli, nTamLoj)
-	EndIf
+		dbSelectArea("SA1")
+		SA1->(dbSetOrder(1))   // A1_FILIAL + A1_COD + A1_LOJA
 
-	dbSelectArea("SA1")
-	SA1->(dbSetOrder(1))
+		If !SA1->(dbSeek(xFilial("SA1") + PadR(cCliente, TamSX3("A1_COD")[1]) + PadR(cLoja, nTamLoj)))
+			cErro := "Cliente " + cChvCli + " nao encontrado na SA1."
+		EndIf
 
-	If !SA1->(dbSeek(xFilial("SA1") + PadR(cCliente, TamSX3("A1_COD")[1]) + PadR(cLoja, TamSX3("A1_LOJA")[1])))
-		U_BJGRAVA(cSeqMae, cSeq, "3", 0, "Cliente " + cChvCli + " nao encontrado na SA1.", "")
-		aTotal[4] += 1
-		Return Nil
 	EndIf
 
 	// De-para dos campos que a plataforma pode alterar na SA1. E lista branca:
 	// campo fora dela nao volta, por mais que a plataforma mande.
-	//         Campo no contrato          Campo na SA1  Tipo (R = referencia prefixada pela filial)
-	aAdd(aMapa, {"razaoSocial"            , "A1_NOME"   , "C"})
-	aAdd(aMapa, {"nomeFantasia"           , "A1_NREDUZ" , "C"})
-	aAdd(aMapa, {"cnpjCpf"                , "A1_CGC"    , "C"})
-	aAdd(aMapa, {"inscricaoEstadual"      , "A1_INSCR"  , "C"})
-	aAdd(aMapa, {"inscricaoMunicipal"     , "A1_INSCRM" , "C"})
-	aAdd(aMapa, {"endereco"               , "A1_END"    , "C"})
-	aAdd(aMapa, {"complemento"            , "A1_COMPLEM", "C"})
-	aAdd(aMapa, {"bairro"                 , "A1_BAIRRO" , "C"})
-	aAdd(aMapa, {"municipio"              , "A1_MUN"    , "C"})
-	aAdd(aMapa, {"uf"                     , "A1_EST"    , "C"})
-	aAdd(aMapa, {"cep"                    , "A1_CEP"    , "C"})
-	aAdd(aMapa, {"contato"                , "A1_CONTATO", "C"})
-	aAdd(aMapa, {"email"                  , "A1_EMAIL"  , "C"})
-	aAdd(aMapa, {"telefone"               , "A1_TEL"    , "C"})
-	aAdd(aMapa, {"celular"                , "A1_CELULAR", "C"})
-	aAdd(aMapa, {"site"                   , "A1_HPAGE"  , "C"})
-	// Contatos (A1_CT*01 a 04). "T" = tipo (texto -> 1 a 4), "B" = booleano (1=Sim;2=Nao).
-	// Campo ausente no dicionario e ignorado pelo FieldPos abaixo.
-	aAdd(aMapa, {"contato1Tipo"      , "A1_CTTIP01", "T"})
-	aAdd(aMapa, {"contato1Nome"      , "A1_CTNOM01", "C"})
-	aAdd(aMapa, {"contato1Telefone"  , "A1_CTNUM01", "C"})
-	aAdd(aMapa, {"contato1Whatsapp"  , "A1_CTWAT01", "B"})
-	aAdd(aMapa, {"contato1Email"     , "A1_CTEML01", "C"})
-	aAdd(aMapa, {"contato2Tipo"      , "A1_CTTIP02", "T"})
-	aAdd(aMapa, {"contato2Nome"      , "A1_CTNOM02", "C"})
-	aAdd(aMapa, {"contato2Telefone"  , "A1_CTNUM02", "C"})
-	aAdd(aMapa, {"contato2Whatsapp"  , "A1_CTWAT02", "B"})
-	aAdd(aMapa, {"contato2Email"     , "A1_CTEML02", "C"})
-	aAdd(aMapa, {"contato3Tipo"      , "A1_CTTIP03", "T"})
-	aAdd(aMapa, {"contato3Nome"      , "A1_CTNOM03", "C"})
-	aAdd(aMapa, {"contato3Telefone"  , "A1_CTNUM03", "C"})
-	aAdd(aMapa, {"contato3Whatsapp"  , "A1_CTWAT03", "B"})
-	aAdd(aMapa, {"contato3Email"     , "A1_CTEML03", "C"})
-	aAdd(aMapa, {"contato4Tipo"      , "A1_CTTIP04", "T"})
-	aAdd(aMapa, {"contato4Nome"      , "A1_CTNOM04", "C"})
-	aAdd(aMapa, {"contato4Telefone"  , "A1_CTNUM04", "C"})
-	aAdd(aMapa, {"contato4Whatsapp"  , "A1_CTWAT04", "B"})
-	aAdd(aMapa, {"contato4Email"     , "A1_CTEML04", "C"})
-	// Referencia ("R") leva, na quarta posicao, os campos da chave unica da
-	// tabela referenciada, para desmontar a chave de integracao recebida.
-	aAdd(aMapa, {"vendedorChave"          , "A1_VEND"   , "R", {"A3_FILIAL", "A3_COD"}})
-	aAdd(aMapa, {"tabelaPrecoChave"       , "A1_TABELA" , "R", {"DA0_FILIAL", "DA0_CODTAB"}})
-	aAdd(aMapa, {"condicaoPagamentoChave" , "A1_COND"   , "R", {"E4_FILIAL", "E4_CODIGO"}})
-	aAdd(aMapa, {"limiteCredito"          , "A1_LC"     , "N"})
-	aAdd(aMapa, {"vencimentoLimite"       , "A1_VENCLC" , "D"})
-	aAdd(aMapa, {"latitude"               , "A1_XLAT"   , "C"})
-	aAdd(aMapa, {"longitude"              , "A1_XLNG"   , "C"})
-	// CNAE principal, ja com a mascara do CC3_COD ("4639-7/01"), como o
-	// UPD_SA1 grava. O codigo precisa existir na CC3 (carga do UPD_CC3).
-	aAdd(aMapa, {"cnae"                   , "A1_CNAE"   , "C"})
+	// Tipos: C texto, N numero, D data ISO, B booleano (1=Sim;2=Nao),
+	// T tipo de contato (texto -> 1 a 4), R referencia a outro cadastro.
+	//         Campo no contrato          Campo na SA1  Tipo
+	If !lJaAplic .And. Empty(cErro)
 
-	For nX := 1 To Len(aMapa)
+		aAdd(aMapa, {"razaoSocial"            , "A1_NOME"   , "C"})
+		aAdd(aMapa, {"nomeFantasia"           , "A1_NREDUZ" , "C"})
+		aAdd(aMapa, {"cnpjCpf"                , "A1_CGC"    , "C"})
+		aAdd(aMapa, {"inscricaoEstadual"      , "A1_INSCR"  , "C"})
+		aAdd(aMapa, {"inscricaoMunicipal"     , "A1_INSCRM" , "C"})
+		aAdd(aMapa, {"endereco"               , "A1_END"    , "C"})
+		aAdd(aMapa, {"complemento"            , "A1_COMPLEM", "C"})
+		aAdd(aMapa, {"bairro"                 , "A1_BAIRRO" , "C"})
+		aAdd(aMapa, {"municipio"              , "A1_MUN"    , "C"})
+		aAdd(aMapa, {"uf"                     , "A1_EST"    , "C"})
+		aAdd(aMapa, {"cep"                    , "A1_CEP"    , "C"})
+		aAdd(aMapa, {"contato"                , "A1_CONTATO", "C"})
+		aAdd(aMapa, {"email"                  , "A1_EMAIL"  , "C"})
+		aAdd(aMapa, {"telefone"               , "A1_TEL"    , "C"})
+		aAdd(aMapa, {"celular"                , "A1_CELULAR", "C"})
+		aAdd(aMapa, {"site"                   , "A1_HPAGE"  , "C"})
+		aAdd(aMapa, {"contato1Tipo"           , "A1_CTTIP01", "T"})
+		aAdd(aMapa, {"contato1Nome"           , "A1_CTNOM01", "C"})
+		aAdd(aMapa, {"contato1Telefone"       , "A1_CTNUM01", "C"})
+		aAdd(aMapa, {"contato1Whatsapp"       , "A1_CTWAT01", "B"})
+		aAdd(aMapa, {"contato1Email"          , "A1_CTEML01", "C"})
+		aAdd(aMapa, {"contato2Tipo"           , "A1_CTTIP02", "T"})
+		aAdd(aMapa, {"contato2Nome"           , "A1_CTNOM02", "C"})
+		aAdd(aMapa, {"contato2Telefone"       , "A1_CTNUM02", "C"})
+		aAdd(aMapa, {"contato2Whatsapp"       , "A1_CTWAT02", "B"})
+		aAdd(aMapa, {"contato2Email"          , "A1_CTEML02", "C"})
+		aAdd(aMapa, {"contato3Tipo"           , "A1_CTTIP03", "T"})
+		aAdd(aMapa, {"contato3Nome"           , "A1_CTNOM03", "C"})
+		aAdd(aMapa, {"contato3Telefone"       , "A1_CTNUM03", "C"})
+		aAdd(aMapa, {"contato3Whatsapp"       , "A1_CTWAT03", "B"})
+		aAdd(aMapa, {"contato3Email"          , "A1_CTEML03", "C"})
+		aAdd(aMapa, {"contato4Tipo"           , "A1_CTTIP04", "T"})
+		aAdd(aMapa, {"contato4Nome"           , "A1_CTNOM04", "C"})
+		aAdd(aMapa, {"contato4Telefone"       , "A1_CTNUM04", "C"})
+		aAdd(aMapa, {"contato4Whatsapp"       , "A1_CTWAT04", "B"})
+		aAdd(aMapa, {"contato4Email"          , "A1_CTEML04", "C"})
+		aAdd(aMapa, {"vendedorChave"          , "A1_VEND"   , "R"})
+		aAdd(aMapa, {"tabelaPrecoChave"       , "A1_TABELA" , "R"})
+		aAdd(aMapa, {"condicaoPagamentoChave" , "A1_COND"   , "R"})
+		aAdd(aMapa, {"limiteCredito"          , "A1_LC"     , "N"})
+		aAdd(aMapa, {"vencimentoLimite"       , "A1_VENCLC" , "D"})
+		aAdd(aMapa, {"latitude"               , "A1_XLAT"   , "C"})
+		aAdd(aMapa, {"longitude"              , "A1_XLNG"   , "C"})
+		// CNAE principal ja com a mascara do CC3_COD ("4639-7/01"); precisa existir na CC3
+		aAdd(aMapa, {"cnae"                   , "A1_CNAE"   , "C"})
 
-		xValor := oAlt:GetJsonObject(aMapa[nX][1])
+		For nX := 1 To Len(aMapa)
 
-		If xValor == Nil
-			Loop
+			xValor := oAlt:GetJsonObject(aMapa[nX][1])
+
+			// Campo que nao veio, ou que nao existe neste dicionario, e ignorado
+			If xValor == Nil .Or. SA1->(FieldPos(aMapa[nX][2])) == 0
+				Loop
+			EndIf
+
+			Do Case
+				Case aMapa[nX][3] == "N"
+					If ValType(xValor) == "N"
+						aAdd(aCampos, {aMapa[nX][2], xValor, Nil})
+					EndIf
+
+				Case aMapa[nX][3] == "R"
+					// A referencia volta como a chave de integracao que saiu daqui
+					// ("01-000234" ou "-000234"). A SA1 guarda so o codigo, sem filial
+					// e sem hifen.
+					cTexto := AllTrim(cValToChar(xValor))
+					cTexto := SubStr(cTexto, At("-", cTexto) + 1)
+					aAdd(aCampos, {aMapa[nX][2], PadR(cTexto, TamSX3(aMapa[nX][2])[1]), Nil})
+
+				Case aMapa[nX][3] == "T"
+					cTexto := Lower(AllTrim(cValToChar(xValor)))
+					Do Case
+						Case cTexto == "cliente"
+							aAdd(aCampos, {aMapa[nX][2], "1", Nil})
+						Case cTexto == "comprador"
+							aAdd(aCampos, {aMapa[nX][2], "2", Nil})
+						Case cTexto == "financeiro"
+							aAdd(aCampos, {aMapa[nX][2], "3", Nil})
+						Case cTexto == "geral"
+							aAdd(aCampos, {aMapa[nX][2], "4", Nil})
+						Otherwise
+							aAdd(aCampos, {aMapa[nX][2], "", Nil})
+					EndCase
+
+				Case aMapa[nX][3] == "B"
+					// A API manda true/false; a SA1 guarda 1=Sim;2=Nao
+					If ValType(xValor) == "L"
+						If xValor
+							aAdd(aCampos, {aMapa[nX][2], "1", Nil})
+						Else
+							aAdd(aCampos, {aMapa[nX][2], "2", Nil})
+						EndIf
+					EndIf
+
+				Case aMapa[nX][3] == "D"
+					// A API devolve ISO 8601: "2026-08-26T00:00:00.000Z"
+					If ValType(xValor) == "C" .And. Len(AllTrim(xValor)) >= 10
+						aAdd(aCampos, {aMapa[nX][2], SToD(StrTran(SubStr(AllTrim(xValor), 1, 10), "-", "")), Nil})
+					EndIf
+
+				Otherwise
+					aAdd(aCampos, {aMapa[nX][2], AllTrim(cValToChar(xValor)), Nil})
+			EndCase
+
+		Next nX
+
+		If Len(aCampos) == 0
+			cErro    := "Alteracao sem nenhum campo reconhecido no de-para."
+			nColErro := 3
 		EndIf
 
-		// Campo que nao existe neste dicionario e ignorado, nao derruba a alteracao
-		If SA1->(FieldPos(aMapa[nX][2])) == 0
-			Loop
-		EndIf
-
-		Do Case
-			Case aMapa[nX][3] == "N"
-				If ValType(xValor) == "N"
-					aAdd(aCampos, {aMapa[nX][2], xValor, Nil})
-				EndIf
-
-			Case aMapa[nX][3] == "R"
-				// Referencia a outra entidade: volta como a chave de integracao que
-				// saiu daqui (01-000234). A SA1 guarda so o codigo, sem filial e
-				// sem hifen.
-				cTexto := U_BJSEMFIL(AllTrim(cValToChar(xValor)), aMapa[nX][4])
-
-				aAdd(aCampos, {aMapa[nX][2], cTexto, Nil})
-
-			Case aMapa[nX][3] == "T"
-				cTexto := Lower(AllTrim(cValToChar(xValor)))
-				Do Case
-					Case cTexto == "cliente"
-						aAdd(aCampos, {aMapa[nX][2], "1", Nil})
-					Case cTexto == "comprador"
-						aAdd(aCampos, {aMapa[nX][2], "2", Nil})
-					Case cTexto == "financeiro"
-						aAdd(aCampos, {aMapa[nX][2], "3", Nil})
-					Case cTexto == "geral"
-						aAdd(aCampos, {aMapa[nX][2], "4", Nil})
-					Otherwise
-						aAdd(aCampos, {aMapa[nX][2], "", Nil})
-				EndCase
-
-			Case aMapa[nX][3] == "B"
-				// A API manda true/false; a SA1 guarda 1=Sim;2=Nao
-				If ValType(xValor) == "L"
-					aAdd(aCampos, {aMapa[nX][2], IIf(xValor, "1", "2"), Nil})
-				EndIf
-
-			Case aMapa[nX][3] == "D"
-				// A API devolve ISO 8601: "2026-08-26T00:00:00.000Z"
-				If ValType(xValor) == "C" .And. Len(AllTrim(xValor)) >= 10
-					aAdd(aCampos, {aMapa[nX][2], SToD(StrTran(SubStr(AllTrim(xValor), 1, 10), "-", "")), Nil})
-				EndIf
-
-			Otherwise
-				aAdd(aCampos, {aMapa[nX][2], AllTrim(cValToChar(xValor)), Nil})
-		EndCase
-
-	Next nX
-
-	If Len(aCampos) == 0
-		U_BJGRAVA(cSeqMae, cSeq, "3", 0, "Alteracao sem nenhum campo reconhecido no de-para.", "")
-		aTotal[3] += 1
-		Return Nil
 	EndIf
 
-	// A gravacao e a marcacao andam juntas, pelo mesmo motivo do orcamento:
-	// cadastro alterado sem rastro voltaria a ser alterado no ciclo seguinte.
-	Begin Transaction
+	// A gravacao na SA1 e a marcacao da mensagem andam juntas: se uma falha, a outra volta.
+	// Nada de tela aqui (PAT-008) e nenhuma saida por Return/Exit de dentro da transacao.
+	If !lJaAplic .And. Empty(cErro)
 
-		If BJGravSA1(aCampos, @cLogErr)
+		bErro := ErrorBlock({|e| Break(e)})
 
-			If !U_BJGRAVA(cSeqMae, cSeq, "2", 0, "Cliente " + cChvCli + " alterado por CRMA980.", cChvCli)
-				cLogErr := "Cliente alterado, mas a mensagem " + cSeq + " nao pode ser marcada."
+		Begin Transaction
+
+			Begin Sequence
+
+				oModel := FWLoadModel("CRMA980")
+
+				If oModel == Nil
+					cErro := "Nao foi possivel carregar o modelo CRMA980. Confira se MV_MVCSA1 esta ligado."
+					Break
+				EndIf
+
+				lOk := FWMVCRotAuto(oModel, "SA1", MODEL_OPERATION_UPDATE, {{"SA1MASTER", aCampos}}, .F., .T.)
+
+				If lMsErroAuto
+					lOk  := .F.
+					aLog := GetAutoGRLog()
+					For nX := 1 To Len(aLog)
+						cErro += AllTrim(StrTran(StrTran(aLog[nX], Chr(13), " "), Chr(10), " ")) + " | "
+					Next nX
+				EndIf
+
+				// No MVC a recusa de uma validacao (campo obrigatorio, CNAE fora da CC3)
+				// fica no proprio modelo e nem sempre chega ao log da rotina automatica.
+				// Tem que ser lida antes do DeActivate(). [4] campo, [6] mensagem, [7] solucao, [8] valor.
+				If !lOk .And. Empty(cErro)
+					aErroMVC := oModel:GetErrorMessage()
+					If ValType(aErroMVC) == "A" .And. Len(aErroMVC) >= 6 .And. !Empty(aErroMVC[6])
+						If !Empty(aErroMVC[4])
+							cErro += "Campo " + AllTrim(cValToChar(aErroMVC[4])) + ": "
+						EndIf
+						cErro += AllTrim(cValToChar(aErroMVC[6]))
+						If Len(aErroMVC) >= 7 .And. !Empty(aErroMVC[7])
+							cErro += " Solucao: " + AllTrim(cValToChar(aErroMVC[7]))
+						EndIf
+						If Len(aErroMVC) >= 8 .And. !Empty(aErroMVC[8])
+							cErro += " Valor: " + AllTrim(cValToChar(aErroMVC[8]))
+						EndIf
+					EndIf
+				EndIf
+
+				If !lOk .And. Empty(cErro)
+					cErro := "CRMA980 recusou a alteracao sem detalhamento."
+				EndIf
+
+			Recover Using oErrExec
+
+				lOk := .F.
+
+				// oErrExec vem do ErrorBlock (erro de execucao); o Break() manual do
+				// modelo nao carregado chega aqui sem ele, ja com cErro preenchido.
+				If Empty(cErro)
+					cErro := "Erro nao tratado ao alterar o cliente pelo CRMA980."
+					If ValType(oErrExec) == "O"
+						cErro += " " + AllTrim(oErrExec:Description)
+					EndIf
+				EndIf
+
+			End Sequence
+
+			ErrorBlock(bErro)
+
+			If oModel != Nil
+				oModel:DeActivate()
+				oModel:Destroy()
+			EndIf
+
+			If lOk
+
+				SZZ->(dbGoTo(nRecSZZ))
+
+				If RecLock("SZZ", .F.)
+					SZZ->ZZ_STATUS := "2"   // executada
+					SZZ->ZZ_HTTP   := 0
+					SZZ->ZZ_DTEXEC := Date()
+					SZZ->ZZ_HREXEC := Time()
+					SZZ->ZZ_RETORN := "Cliente " + cChvCli + " alterado por CRMA980."
+					SZZ->ZZ_CHVDES := cChvCli
+					SZZ->(MsUnlock())
+				Else
+					lOk   := .F.
+					cErro := "Cliente alterado, mas a mensagem " + cSeq + " nao pode ser marcada."
+				EndIf
+
+			EndIf
+
+			If !lOk
 				DisarmTransaction()
 			EndIf
 
-		Else
+		End Transaction
 
-			DisarmTransaction()
-
-		EndIf
-
-	End Transaction
-
-	If !Empty(cLogErr)
-		U_BJGRAVA(cSeqMae, cSeq, "3", 0, cLogErr, "")
-		aTotal[4] += 1
-		Return Nil
 	EndIf
 
-	If BJConfAlt(cIdPlat)
+	// Falha em qualquer etapa acima: a mensagem fica com erro na SZZ, visivel no monitor
+	If !Empty(cErro)
+
+		cErro := SubStr(StrTran(StrTran(cErro, Chr(13), " "), Chr(10), " "), 1, 400)
+
+		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Alteracao de cliente " + cIdPlat + ": " + cErro, 0, 0, {})
+
+		If nRecSZZ > 0
+			SZZ->(dbGoTo(nRecSZZ))
+			If RecLock("SZZ", .F.)
+				SZZ->ZZ_STATUS := "3"   // erro
+				SZZ->ZZ_HTTP   := 0
+				SZZ->ZZ_DTEXEC := Date()
+				SZZ->ZZ_HREXEC := Time()
+				SZZ->ZZ_RETORN := cErro
+				SZZ->(MsUnlock())
+			EndIf
+		EndIf
+
+		aTotal[nColErro] += 1
+		Return Nil
+
+	EndIf
+
+	// Aplicada (agora ou num ciclo anterior): a plataforma tira o item da fila
+	If U_BJHTTP("PATCH", "/integracao/clientes/alteracoes/" + cIdPlat + "/aplicada", "{}", @cResp, @nHttp, @cErroHttp)
 		aTotal[2] += 1
 	Else
+		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao confirmar a alteracao " + cIdPlat + ;
+			" na plataforma (HTTP " + cValToChar(nHttp) + "): " + cErroHttp, 0, 0, {})
 		aTotal[4] += 1
 	EndIf
 
 Return Nil
-
-/*/{Protheus.doc} BJGravSA1
-Grava a alteracao no cadastro de clientes pelo modelo MVC.
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   aCampos, array    , Campos no formato {cCampo, xValor, Nil}
-@param   cErro  , character, [Referencia] Motivo da recusa
-@return  logical, .T. quando o cadastro foi gravado
-/*/
-Static Function BJGravSA1(aCampos, cErro)
-
-	Local lRet     := .F.
-	Local oModel   := Nil
-	Local oErrExec := Nil
-	Local bErro    := ErrorBlock({|e| Break(e)})
-
-	Private lMsErroAuto    := .F.
-	Private lMsHelpAuto    := .T.
-	Private lAutoErrNoFile := .T.
-
-	Default aCampos := {}
-	Default cErro   := ""
-
-	cErro := ""
-
-	If Len(aCampos) == 0
-		cErro := "Nenhum campo informado."
-		Return .F.
-	EndIf
-
-	Begin Sequence
-
-		oModel := FWLoadModel("CRMA980")
-
-		If oModel == Nil
-			cErro := "Nao foi possivel carregar o modelo CRMA980. Confira se MV_MVCSA1 esta ligado."
-			Break
-		EndIf
-
-		lRet := FWMVCRotAuto(oModel, "SA1", MODEL_OPERATION_UPDATE, {{"SA1MASTER", aCampos}}, .F., .T.)
-
-		If lMsErroAuto
-			lRet  := .F.
-			cErro := BJLogAuto()
-		EndIf
-
-		// No MVC a recusa de uma validacao (campo obrigatorio, CNAE fora da CC3)
-		// fica no proprio modelo e nem sempre chega ao log da rotina automatica:
-		// sem ler daqui, o motivo se perdia no Destroy() logo abaixo.
-		If !lRet .And. (Empty(cErro) .Or. "Sem detalhamento" $ cErro)
-			cErro := BJErroMVC(oModel)
-		EndIf
-
-		If !lRet .And. Empty(cErro)
-			cErro := "CRMA980 recusou a alteracao sem detalhamento."
-		EndIf
-
-	Recover Using oErrExec
-
-		lRet := .F.
-
-		// oErrExec vem do ErrorBlock (erro de execucao); o Break() manual do
-		// modelo nao carregado chega aqui sem ele, ja com cErro preenchido.
-		If Empty(cErro)
-			cErro := "Erro nao tratado ao alterar o cliente pelo CRMA980."
-			If ValType(oErrExec) == "O"
-				cErro += " " + AllTrim(StrTran(StrTran(oErrExec:Description, Chr(13), " "), Chr(10), " "))
-			EndIf
-			cErro := SubStr(cErro, 1, 400)
-		EndIf
-
-	End Sequence
-
-	ErrorBlock(bErro)
-
-	If oModel != Nil
-		oModel:DeActivate()
-		oModel:Destroy()
-	EndIf
-
-Return lRet
-
-/*/{Protheus.doc} BJConfAlt
-Confirma na plataforma que a alteracao foi aplicada no ERP.
-@type    Static Function
-@author  Ricardo P Sotomayor
-@since   01/09/2026
-@param   cIdPlat, character, Id interno da plataforma
-@return  logical, .T. quando a plataforma aceitou a confirmacao
-/*/
-Static Function BJConfAlt(cIdPlat)
-
-	Local lRet  := .F.
-	Local cResp := ""
-	Local cErro := ""
-	Local nHttp := 0
-
-	lRet := U_BJHTTP("PATCH", "/integracao/clientes/alteracoes" + "/" + AllTrim(cIdPlat) + "/aplicada", "{}", @cResp, @nHttp, @cErro)
-
-	If !lRet
-		FwLogMsg("ERROR", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Falha ao confirmar a alteracao " + cIdPlat + ;
-			" na plataforma (HTTP " + cValToChar(nHttp) + "): " + cErro, 0, 0, {})
-	EndIf
-
-Return lRet
 
 // ===========================================================================
 // DRENAGEM

@@ -13,7 +13,7 @@ antes de escrever.
   nem sempre leva a recusa de validação ao `GetAutoGRLog()`: o motivo fica em
   `oModel:GetErrorMessage()` (array: [4] campo, [6] mensagem, [7] solução,
   [8] valor). Leia **antes** do `DeActivate()`/`Destroy()` — depois some. Ver
-  `BJErroMVC` no BJPLA004.
+  `BJAplicaCliente` no BJPLA004 (o trecho que lê `GetErrorMessage()`).
 - **`MV_MVCSA1` desligado** = `FWLoadModel("CRMA980")` devolve Nil.
 - **Recover sem `Using`** perde a descrição do erro. `Recover Using oErr` e
   `oErr:Description` — mas o `Break()` manual chega sem objeto
