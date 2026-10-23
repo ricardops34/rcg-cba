@@ -43,6 +43,23 @@ export async function resolverTabelaPrecoCliente(
     select: { tabelaPrecoId: true, municipio: true, uf: true },
   });
   if (!cliente) return null;
+  return resolverTabelaPrecoPorPraca(tx, empresaId, cliente);
+}
+
+/**
+ * Mesma regra, a partir de quem não tem cadastro: o interessado de um orçamento
+ * avulso só informa a praça (município/UF), e cai na tabela padrão dela.
+ */
+export async function resolverTabelaPrecoPorPraca(
+  tx: TenantTx,
+  empresaId: string,
+  cliente: {
+    tabelaPrecoId?: string | null;
+    municipio?: string | null;
+    uf?: string | null;
+  },
+): Promise<string | null> {
+  const vinculada = cliente.tabelaPrecoId ?? null;
 
   // Poucas tabelas ativas por empresa (2 na RCG hoje): uma consulta só resolve
   // tanto a validação da tabela do cliente quanto a escolha do padrão.
@@ -51,14 +68,14 @@ export async function resolverTabelaPrecoCliente(
     select: { id: true, codigoErp: true, descricao: true },
   });
 
-  const doCliente = ativas.find((t) => t.id === cliente.tabelaPrecoId);
+  const doCliente = ativas.find((t) => t.id === vinculada);
   if (doCliente) return doCliente.id;
 
   const empresa = await tx.empresa.findUnique({
     where: { id: empresaId },
     select: { municipio: true, uf: true },
   });
-  if (!empresa?.municipio) return cliente.tabelaPrecoId;
+  if (!empresa?.municipio) return vinculada;
 
   const capital =
     normalizar(empresa.municipio) === normalizar(cliente.municipio) &&
@@ -74,5 +91,5 @@ export async function resolverTabelaPrecoCliente(
 
   // Sem tabela padrão cadastrada, devolve o vínculo do cliente como estava —
   // o chamador já trata id inexistente como "sem preço de tabela".
-  return padrao?.id ?? cliente.tabelaPrecoId;
+  return padrao?.id ?? vinculada;
 }

@@ -46,7 +46,7 @@ export interface OrcamentoParaAtividade {
   /** Nº do pedido, mostrado no histórico do ERP (sem número de proposta). */
   codigoErp?: string | null;
   titulo: string;
-  clienteId: string;
+  clienteId: string | null;
   vendedorId: string;
   oportunidadeId: string | null;
 }

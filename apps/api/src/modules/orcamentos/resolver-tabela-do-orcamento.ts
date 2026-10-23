@@ -1,6 +1,9 @@
 import { BadRequestException, ConflictException } from '@nestjs/common';
 import type { TenantTx } from '../../common/prisma/prisma.service';
-import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
+import {
+  resolverTabelaPrecoCliente,
+  resolverTabelaPrecoPorPraca,
+} from '../../common/precos/resolver-tabela-preco-cliente';
 
 /**
  * Tabela de preços com que o orçamento é precificado.
@@ -17,12 +20,16 @@ import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-
 export async function resolverTabelaDoOrcamento(
   tx: TenantTx,
   empresaId: string,
-  clienteId: string,
+  clienteId: string | null,
   escolhida: string | null | undefined,
   permiteAlterar: boolean,
   atual: string | null = null,
+  /** Praça do interessado, no orçamento sem cliente cadastrado. */
+  praca: { municipio?: string | null; uf?: string | null } = {},
 ): Promise<string | null> {
-  const padrao = await resolverTabelaPrecoCliente(tx, empresaId, clienteId);
+  const padrao = clienteId
+    ? await resolverTabelaPrecoCliente(tx, empresaId, clienteId)
+    : await resolverTabelaPrecoPorPraca(tx, empresaId, praca);
   if (!escolhida || escolhida === padrao || escolhida === atual) {
     return escolhida && escolhida === atual ? atual : padrao;
   }

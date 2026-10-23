@@ -68,7 +68,7 @@ export class IntegracaoOrcamentosService {
       id: row.id,
       chave: row.chave ?? '',
       codigoErp: row.codigoErp,
-      clienteChave: row.cliente.chave ?? '',
+      clienteChave: row.cliente?.chave ?? '',
       vendedorChave: row.vendedor.chave ?? '',
       condicaoPagamentoChave: row.condicaoPagamento?.chave ?? null,
       titulo: row.titulo,
@@ -145,6 +145,9 @@ export class IntegracaoOrcamentosService {
       const where = {
         empresaId,
         chave: null,
+        // Sem cliente cadastrado (orçamento avulso) o ERP não tem a quem
+        // faturar: fica fora da fila.
+        clienteId: { not: null },
         status: 'aprovado' as const,
         // Recusado pelo ERP sai da fila e fica como erro; o caminho é copiar
         // (decisão do usuário, 29/09/2026). Sem isto o ERP tentaria de novo
@@ -314,7 +317,7 @@ export class IntegracaoOrcamentosService {
   private async montarItens(
     tx: TenantTx,
     empresaId: string,
-    clienteId: string,
+    clienteId: string | null,
     itens: IntegracaoOrcamentoItem[],
     vendedorId: string,
   ) {

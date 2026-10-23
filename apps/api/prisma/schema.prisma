@@ -4056,7 +4056,17 @@ model Orcamento {
   // codigoErp, que só aparece quando o ERP integra. Nulo no pedido que veio
   // do ERP como histórico (origem erp): não é proposta, e mostra o codigoErp.
   numero              Int?
-  clienteId           String
+  // Nulo no orçamento para quem ainda não é cliente: aí vale o bloco prospect*
+  // abaixo, digitado no próprio orçamento. Um orçamento sem cliente não vai
+  // para o ERP (fica fora de /integracao/orcamentos/pendentes) e não é efetivado
+  // até ser vinculado a um cadastro.
+  clienteId           String?
+  prospectNome        String?
+  prospectDocumento   String?
+  prospectTelefone    String?
+  prospectEmail       String?
+  prospectMunicipio   String?
+  prospectUf          String?
   vendedorId          String
   oportunidadeId      String?
   condicaoPagamentoId String?
@@ -4132,11 +4142,11 @@ model Orcamento {
   deletedBy String?
 
   empresa            Empresa            @relation(fields: [empresaId], references: [id])
-  cliente            Cliente            @relation(fields: [clienteId], references: [id])
+  cliente            Cliente?           @relation(fields: [clienteId], references: [id])
   vendedor           Vendedor           @relation(fields: [vendedorId], references: [id])
   oportunidade       Oportunidade?      @relation(fields: [oportunidadeId], references: [id])
   condicaoPagamento  CondicaoPagamento? @relation(fields: [condicaoPagamentoId], references: [id])
-  tabelaPreco         TabelaPreco?       @relation(fields: [tabelaPrecoId], references: [id])
+  tabelaPreco         TabelaPreco?      @relation(fields: [tabelaPrecoId], references: [id])
   itens              OrcamentoItem[]
   atividades         Atividade[]
   clienteDecididoPor ClienteContato?    @relation("OrcamentoDecisaoContato", fields: [clienteDecididoPorContatoId], references: [id])

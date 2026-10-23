@@ -325,7 +325,7 @@ export default function OrcamentosPage() {
       header: "Cliente",
       cell: (o) => (
         <span className="text-xs">
-          {o.cliente.nomeFantasia || o.cliente.razaoSocial}
+          {o.cliente ? o.cliente.nomeFantasia || o.cliente.razaoSocial : `${o.prospectNome ?? ""} (não cliente)`}
         </span>
       ),
     },
@@ -543,7 +543,7 @@ export default function OrcamentosPage() {
                     {!o.ativo ? <span className="text-xs text-muted-foreground">inativo</span> : null}
                   </div>
                   <p className="break-words text-sm font-medium">
-                    {o.cliente.nomeFantasia || o.cliente.razaoSocial}
+                    {o.cliente ? o.cliente.nomeFantasia || o.cliente.razaoSocial : `${o.prospectNome ?? ""} (não cliente)`}
                   </p>
                   <p className="text-xs text-muted-foreground">
                     {o.vendedor.nomeReduzido || o.vendedor.nome}

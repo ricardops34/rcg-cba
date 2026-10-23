@@ -7,6 +7,7 @@ import type {
   StatusOrcamento,
 } from '@prisma/client';
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
@@ -47,7 +48,10 @@ import { calcularItensOrcamento } from './calcular-itens-orcamento';
 import { resolverTabelaDoOrcamento } from './resolver-tabela-do-orcamento';
 import { montarOrcamentoPdf } from './orcamento-pdf';
 import { proximoNumeroOrcamento } from './proximo-numero-orcamento';
-import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
+import {
+  resolverTabelaPrecoCliente,
+  resolverTabelaPrecoPorPraca,
+} from '../../common/precos/resolver-tabela-preco-cliente';
 import { resolverRegrasDescontoDosItens } from '../../common/precos/resolver-regra-desconto-item';
 import {
   PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
@@ -75,6 +79,22 @@ function numeroDeBusca(search: string): number | null {
   const n = Number(search.trim());
   return n > 0 && n <= 2147483647 ? n : null;
 }
+
+type Praca = { municipio?: string | null; uf?: string | null };
+
+const MSG_SEM_CLIENTE_NAO_EFETIVA =
+  'Orçamento de quem ainda não é cliente não pode ser aprovado — ' +
+  'cadastre o cliente e faça o orçamento para ele';
+
+/** Os dados do interessado só existem sem cliente; com cliente, vão a nulo. */
+const SEM_PROSPECT = {
+  prospectNome: null,
+  prospectDocumento: null,
+  prospectTelefone: null,
+  prospectEmail: null,
+  prospectMunicipio: null,
+  prospectUf: null,
+};
 
 const CLIENTE_SELECT = {
   select: { id: true, razaoSocial: true, nomeFantasia: true },
@@ -243,16 +263,17 @@ export class OrcamentosService {
   async tabelaPrecoDoCliente(
     empresaId: string,
     user: AuthenticatedUser,
-    clienteId: string,
+    clienteId: string | null,
+    praca: Praca = {},
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
-      await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId);
-      const tabelaPrecoId = await resolverTabelaPrecoCliente(
-        tx,
-        empresaId,
-        clienteId,
-      );
+      if (clienteId) {
+        await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId);
+      }
+      const tabelaPrecoId = clienteId
+        ? await resolverTabelaPrecoCliente(tx, empresaId, clienteId)
+        : await resolverTabelaPrecoPorPraca(tx, empresaId, praca);
       const podeAlterar = await this.parametros.obterBoolean(
         empresaId,
         PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
@@ -280,13 +301,16 @@ export class OrcamentosService {
   async precoProduto(
     empresaId: string,
     user: AuthenticatedUser,
-    clienteId: string,
+    clienteId: string | null,
     produtoId: string,
     tabelaEscolhida?: string,
+    praca: Praca = {},
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
-      await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId);
+      if (clienteId) {
+        await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId);
+      }
 
       const tabelaPrecoId = await resolverTabelaDoOrcamento(
         tx,
@@ -298,6 +322,8 @@ export class OrcamentosService {
           PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
           false,
         ),
+        null,
+        praca,
       );
       const [tabelaItem, produto, estoque] = await Promise.all([
         tabelaPrecoId
@@ -528,14 +554,16 @@ export class OrcamentosService {
       const escopo = opcoes.ignorarEscopo
         ? null
         : await resolverEscopoVendedores(tx, empresaId, user);
-      const vendedorDoCliente = await this.garantirClienteNoEscopo(
-        tx,
-        empresaId,
-        escopo,
-        input.clienteId,
-      );
+      const clienteId = input.clienteId || null;
+      if (!clienteId && input.status === 'aprovado') {
+        throw new ConflictException(MSG_SEM_CLIENTE_NAO_EFETIVA);
+      }
+      const vendedorDoCliente = clienteId
+        ? await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId)
+        : null;
       // O vendedor do orçamento é o do cadastro do cliente — o que vier no
-      // payload só vale se o cliente não tiver vendedor vinculado.
+      // payload só vale se o cliente não tiver vendedor vinculado (ou se não
+      // houver cliente, que é o orçamento para quem ainda não o é).
       const vendedorId = vendedorDoCliente ?? input.vendedorId;
       this.garantirVendedorNoEscopo(escopo, vendedorId);
       if (input.oportunidadeId) {
@@ -551,9 +579,15 @@ export class OrcamentosService {
         tx,
         empresaId,
         user,
-        vendedorDoCliente,
+        vendedorDoCliente ?? vendedorId,
       );
-      const { itens, ...header } = { ...input, vendedorId, origem };
+      const { itens, ...header } = {
+        ...input,
+        clienteId,
+        ...(clienteId ? SEM_PROSPECT : {}),
+        vendedorId,
+        origem,
+      };
       header.dataValidade = await ajustarValidadeOrcamento(tx, empresaId, header.dataValidade);
       if (header.dataRetorno) {
         header.dataRetorno = await ajustarRetornoOrcamento(tx, empresaId, {
@@ -571,18 +605,20 @@ export class OrcamentosService {
       const tabelaPrecoId = await resolverTabelaDoOrcamento(
         tx,
         empresaId,
-        input.clienteId,
+        clienteId,
         input.tabelaPrecoId,
         await this.parametros.obterBoolean(
           empresaId,
           PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
           false,
         ),
+        null,
+        { municipio: input.prospectMunicipio, uf: input.prospectUf },
       );
       const { data: itensData, vlrTotal } = await calcularItensOrcamento(
         tx,
         empresaId,
-        input.clienteId,
+        clienteId,
         itens,
         vendedorId,
         await this.parametros.obterBoolean(
@@ -675,6 +711,25 @@ export class OrcamentosService {
         );
       }
 
+      // `clienteId` null no payload converte o orçamento em avulso (para quem
+      // ainda não é cliente); ausente, o cliente gravado continua.
+      const clienteId =
+        input.clienteId !== undefined
+          ? input.clienteId || null
+          : orcamento.clienteId;
+      const virouAvulso = input.clienteId === null || input.clienteId === '';
+      if (
+        !clienteId &&
+        !(input.prospectNome ?? orcamento.prospectNome)?.trim()
+      ) {
+        throw new BadRequestException(
+          'Selecione um cliente ou informe o nome do interessado',
+        );
+      }
+      if (!clienteId && input.status === 'aprovado') {
+        throw new ConflictException(MSG_SEM_CLIENTE_NAO_EFETIVA);
+      }
+
       let vendedorDoCliente: string | null = null;
       if (input.clienteId)
         vendedorDoCliente = await this.garantirClienteNoEscopo(
@@ -696,14 +751,20 @@ export class OrcamentosService {
       // cliente traz junto o vendedor do novo cadastro; sem troca de cliente,
       // fica o que já estava gravado, mesmo que o payload traga outro.
       const clienteTrocado =
-        !!input.clienteId && input.clienteId !== orcamento.clienteId;
+        (!!input.clienteId && input.clienteId !== orcamento.clienteId) ||
+        virouAvulso;
       const vendedorId =
         clienteTrocado && vendedorDoCliente
           ? vendedorDoCliente
           : orcamento.vendedorId;
       this.garantirVendedorNoEscopo(escopo, vendedorId);
 
-      const { itens, ...header } = { ...input, vendedorId };
+      const { itens, ...header } = {
+        ...input,
+        ...(input.clienteId !== undefined ? { clienteId } : {}),
+        ...(clienteId ? SEM_PROSPECT : {}),
+        vendedorId,
+      };
       header.dataValidade = await ajustarValidadeOrcamento(tx, empresaId, header.dataValidade);
       // Retorno e validade se conferem sempre que um dos dois vem no payload:
       // mudar só a validade para antes do retorno gravado também é erro.
@@ -731,7 +792,7 @@ export class OrcamentosService {
       const tabelaPrecoId = await resolverTabelaDoOrcamento(
         tx,
         empresaId,
-        input.clienteId ?? orcamento.clienteId,
+        clienteId,
         clienteTrocado
           ? input.tabelaPrecoId
           : (input.tabelaPrecoId ?? orcamento.tabelaPrecoId),
@@ -741,11 +802,14 @@ export class OrcamentosService {
           false,
         ),
         clienteTrocado ? null : orcamento.tabelaPrecoId,
+        {
+          municipio: input.prospectMunicipio ?? orcamento.prospectMunicipio,
+          uf: input.prospectUf ?? orcamento.prospectUf,
+        },
       );
       let itensUpdate: Record<string, unknown> = {};
       if (itens) {
         await tx.orcamentoItem.deleteMany({ where: { orcamentoId: id } });
-        const clienteId = input.clienteId ?? orcamento.clienteId;
         const { data: itensData, vlrTotal } = await calcularItensOrcamento(
           tx,
           empresaId,
@@ -1092,9 +1156,9 @@ export class OrcamentosService {
       // O orçamento traz só o resumo do cliente (razão social/fantasia); o
       // cabeçalho da proposta precisa do cadastro completo — documento,
       // endereço e contato.
-      const cliente = await tx.cliente.findFirst({
-        where: { id: orcamento.clienteId },
-      });
+      const cliente = orcamento.clienteId
+        ? await tx.cliente.findFirst({ where: { id: orcamento.clienteId } })
+        : null;
 
       if (opcoes.registrarEvento !== false) {
         await registrarAtividadeOrcamento(
@@ -1131,21 +1195,27 @@ export class OrcamentosService {
       observacao: orcamento.observacao,
       // Decimal do Prisma não é number, e o gerador só formata número.
       vlrTotal: this.numeroOuNulo(orcamento.vlrTotal),
+      // Sem cadastro, o cabeçalho sai com o que foi digitado no orçamento.
       cliente: {
-        razaoSocial: cliente?.razaoSocial ?? orcamento.cliente.razaoSocial,
-        nomeFantasia: cliente?.nomeFantasia ?? orcamento.cliente.nomeFantasia,
-        cnpjCpf: cliente?.cnpjCpf,
+        razaoSocial:
+          cliente?.razaoSocial ??
+          orcamento.cliente?.razaoSocial ??
+          orcamento.prospectNome ??
+          '',
+        nomeFantasia:
+          cliente?.nomeFantasia ?? orcamento.cliente?.nomeFantasia ?? null,
+        cnpjCpf: cliente?.cnpjCpf ?? orcamento.prospectDocumento,
         inscricaoEstadual: cliente?.inscricaoEstadual,
         endereco: cliente?.endereco,
         complemento: cliente?.complemento,
         bairro: cliente?.bairro,
-        municipio: cliente?.municipio,
-        uf: cliente?.uf,
+        municipio: cliente?.municipio ?? orcamento.prospectMunicipio,
+        uf: cliente?.uf ?? orcamento.prospectUf,
         cep: cliente?.cep,
         contato: cliente?.contato,
-        telefone: cliente?.telefone,
+        telefone: cliente?.telefone ?? orcamento.prospectTelefone,
         celular: cliente?.celular,
-        email: cliente?.email,
+        email: cliente?.email ?? orcamento.prospectEmail,
       },
       vendedor: orcamento.vendedor,
       condicaoPagamento: orcamento.condicaoPagamento,

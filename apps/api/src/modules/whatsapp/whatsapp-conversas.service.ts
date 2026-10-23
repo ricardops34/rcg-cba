@@ -916,7 +916,7 @@ export class WhatsappConversasService {
         distinct: ['clienteId'],
       });
       pendentes.forEach((orcamento) =>
-        aprovacaoPendente.add(orcamento.clienteId),
+        orcamento.clienteId && aprovacaoPendente.add(orcamento.clienteId),
       );
     }
 

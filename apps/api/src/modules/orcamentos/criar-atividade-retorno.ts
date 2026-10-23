@@ -20,7 +20,7 @@ export async function criarAtividadeRetorno(
   params: {
     orcamentoId: string;
     titulo: string;
-    clienteId: string;
+    clienteId: string | null;
     vendedorId: string;
     oportunidadeId: string | null;
     dataRetorno: Date;

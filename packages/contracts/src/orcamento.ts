@@ -186,8 +186,20 @@ export type OrcamentoItemLinha = z.infer<typeof orcamentoItemLinhaSchema> & {
   chave?: string | null;
 };
 
-export const orcamentoCreateSchema = z.object({
-  clienteId: z.string().uuid("Selecione um cliente"),
+// Dados de quem ainda não é cliente, digitados no próprio orçamento. Valem
+// quando não há `clienteId`; com cliente, o servidor os ignora e zera.
+const prospectCampos = {
+  prospectNome: z.string().trim().max(150).nullable().optional(),
+  prospectDocumento: z.string().trim().max(20).nullable().optional(),
+  prospectTelefone: z.string().trim().max(30).nullable().optional(),
+  prospectEmail: z.string().trim().max(150).nullable().optional(),
+  prospectMunicipio: z.string().trim().max(80).nullable().optional(),
+  prospectUf: z.string().trim().max(2).nullable().optional(),
+};
+
+const orcamentoCreateBase = z.object({
+  clienteId: z.string().uuid("Selecione um cliente").nullable().optional(),
+  ...prospectCampos,
   // O vendedor do orçamento é o cadastrado no cliente: o servidor sobrescreve
   // o que vier aqui pelo vendedor do cliente, e só usa este valor quando o
   // cliente não tem vendedor vinculado. Na edição, o vendedor gravado só muda
@@ -208,9 +220,16 @@ export const orcamentoCreateSchema = z.object({
   ativo: z.boolean().default(true),
   itens: z.array(orcamentoItemLinhaSchema).default([]),
 });
+export const orcamentoCreateSchema = orcamentoCreateBase.refine(
+  (o) => !!o.clienteId || !!o.prospectNome?.trim(),
+  {
+    message: "Selecione um cliente ou informe o nome do interessado",
+    path: ["clienteId"],
+  },
+);
 export type OrcamentoCreate = z.infer<typeof orcamentoCreateSchema>;
 
-export const orcamentoUpdateSchema = orcamentoCreateSchema.partial();
+export const orcamentoUpdateSchema = orcamentoCreateBase.partial();
 export type OrcamentoUpdate = z.infer<typeof orcamentoUpdateSchema>;
 
 // Item — leitura, com o produto embutido (evita um segundo fetch no form/tabela).
@@ -257,7 +276,8 @@ export const orcamentoSchema = z.object({
   // codigoErp (chave do ERP, preenchida só na integração). Nulo no histórico
   // de pedidos do ERP (origem "erp") — mostrar com numeroOrcamento().
   numero: z.number().int().nullable(),
-  clienteId: z.string().uuid(),
+  clienteId: z.string().uuid().nullable(),
+  ...prospectCampos,
   vendedorId: z.string().uuid(),
   oportunidadeId: z.string().uuid().nullable(),
   condicaoPagamentoId: z.string().uuid().nullable(),
@@ -289,11 +309,13 @@ export const orcamentoSchema = z.object({
   erroIntegracaoEm: z.string().datetime().nullable(),
   notasErp: z.array(notaErpOrcamentoSchema).nullable(),
   itensErp: z.array(itemErpOrcamentoSchema).nullable(),
-  cliente: z.object({
-    id: z.string().uuid(),
-    razaoSocial: z.string(),
-    nomeFantasia: z.string().nullable(),
-  }),
+  cliente: z
+    .object({
+      id: z.string().uuid(),
+      razaoSocial: z.string(),
+      nomeFantasia: z.string().nullable(),
+    })
+    .nullable(),
   vendedor: z.object({
     id: z.string().uuid(),
     nome: z.string(),

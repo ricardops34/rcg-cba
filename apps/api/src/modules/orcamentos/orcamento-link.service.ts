@@ -87,6 +87,13 @@ export class OrcamentoLinkService {
           'Só orçamento em rascunho ou enviado pode ter link para o cliente',
         );
       }
+      // O link existe para o cliente aprovar, e orçamento de quem ainda não é
+      // cliente não pode ser aprovado: a proposta segue em PDF.
+      if (!orc.clienteId) {
+        throw new ConflictException(
+          'Orçamento de quem ainda não é cliente não tem link de aprovação — envie a proposta em PDF',
+        );
+      }
       if (orc.dataValidade && this.venceu(orc.dataValidade)) {
         throw new ConflictException(
           'Orçamento vencido — faça uma cópia para gerar um novo',

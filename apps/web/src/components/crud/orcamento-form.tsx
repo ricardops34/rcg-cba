@@ -638,6 +638,12 @@ export function OrcamentoFormContent({
   const schema = orcamento ? orcamentoUpdateSchema : orcamentoCreateSchema;
   const empty: OrcamentoCreate = {
     clienteId: "",
+    prospectNome: "",
+    prospectDocumento: "",
+    prospectTelefone: "",
+    prospectEmail: "",
+    prospectMunicipio: "",
+    prospectUf: "",
     vendedorId: "",
     oportunidadeId: null,
     condicaoPagamentoId: null,
@@ -655,6 +661,12 @@ export function OrcamentoFormContent({
     defaultValues: orcamento
       ? {
           clienteId: orcamento.clienteId,
+          prospectNome: orcamento.prospectNome ?? "",
+          prospectDocumento: orcamento.prospectDocumento ?? "",
+          prospectTelefone: orcamento.prospectTelefone ?? "",
+          prospectEmail: orcamento.prospectEmail ?? "",
+          prospectMunicipio: orcamento.prospectMunicipio ?? "",
+          prospectUf: orcamento.prospectUf ?? "",
           vendedorId: orcamento.vendedorId,
           oportunidadeId: orcamento.oportunidadeId,
           condicaoPagamentoId: orcamento.condicaoPagamentoId,
@@ -676,6 +688,36 @@ export function OrcamentoFormContent({
 
   const linhas = useFieldArray({ control: form.control, name: "itens" });
   const clienteId = form.watch("clienteId");
+  // Orçamento para quem ainda não é cliente: os dados do interessado são
+  // digitados aqui mesmo, sem cadastro. Não vai para o ERP nem é efetivado.
+  const [avulso, setAvulso] = useState(!!orcamento && !orcamento.clienteId);
+  const prospectNome = form.watch("prospectNome") ?? "";
+  const prospectMunicipio = form.watch("prospectMunicipio") ?? "";
+  const prospectUf = form.watch("prospectUf") ?? "";
+  // Com cliente ou avulso o orçamento pode receber itens e consultar preço.
+  const podeOrcar = !!clienteId || avulso;
+  // Quem o preço considera: o cliente, ou a praça informada do interessado.
+  const quemConsulta = clienteId
+    ? { clienteId }
+    : { municipio: prospectMunicipio || undefined, uf: prospectUf || undefined };
+  const alternarAvulso = (ligado: boolean) => {
+    setAvulso(ligado);
+    if (ligado) {
+      form.setValue("clienteId", null);
+    } else {
+      form.setValue("clienteId", "");
+      for (const campo of [
+        "prospectNome",
+        "prospectDocumento",
+        "prospectTelefone",
+        "prospectEmail",
+        "prospectMunicipio",
+        "prospectUf",
+      ] as const) {
+        form.setValue(campo, "");
+      }
+    }
+  };
   const vendedorId = form.watch("vendedorId");
   const status = form.watch("status");
   // % base de comissão do vendedor escolhido — entra no cálculo por linha.
@@ -813,6 +855,11 @@ export function OrcamentoFormContent({
       form.setValue("titulo", `Orçamento Cliente ${nomeClienteSelecionado}`);
     }
   }, [orcamento, nomeClienteSelecionado, form]);
+  useEffect(() => {
+    if (!orcamento && avulso && prospectNome.trim()) {
+      form.setValue("titulo", `Orçamento ${prospectNome.trim()}`);
+    }
+  }, [orcamento, avulso, prospectNome, form]);
 
   // Ao criar, sugere "Condição de pagamento" = a cadastrada no cliente,
   // acompanhando o cliente escolhido enquanto o vendedor não mexer
@@ -837,23 +884,26 @@ export function OrcamentoFormContent({
   // Tabela de preços: começa a do cadastro do cliente; só dá para trocar se o
   // parâmetro ORCAMENTO_ALTERA_TABELA_PRECO permitir (o servidor também barra).
   const tabelaClienteQuery = useQuery({
-    queryKey: ["orcamentos", "tabela-preco-cliente", clienteId],
+    queryKey: ["orcamentos", "tabela-preco-cliente", clienteId, prospectMunicipio, prospectUf],
     queryFn: () =>
-      apiFetch<TabelaPrecoDoCliente>("/orcamentos/tabela-preco-cliente", { query: { clienteId } }),
-    enabled: !!clienteId,
+      apiFetch<TabelaPrecoDoCliente>("/orcamentos/tabela-preco-cliente", { query: quemConsulta }),
+    enabled: podeOrcar,
   });
   const tabelaCliente = tabelaClienteQuery.data;
   const podeAlterarTabela = tabelaCliente?.podeAlterar ?? false;
   const tabelaPrecoId = form.watch("tabelaPrecoId") ?? null;
   const tabelaAplicadaPara = useRef<string | null>(null);
+  const chaveTabela = clienteId || `avulso:${prospectUf}:${prospectMunicipio}`;
   useEffect(() => {
-    if (!tabelaCliente || tabelaAplicadaPara.current === clienteId) return;
-    tabelaAplicadaPara.current = clienteId;
-    // Edição do mesmo cliente mantém a tabela gravada (se houver).
-    const mesmoCliente = orcamento && !copiando && clienteId === orcamento.clienteId;
+    if (!tabelaCliente || tabelaAplicadaPara.current === chaveTabela) return;
+    tabelaAplicadaPara.current = chaveTabela;
+    // Edição do mesmo cliente mantém a tabela gravada (se houver). No avulso,
+    // trocar a praça refaz a tabela só enquanto o orçamento não foi gravado.
+    const mesmoCliente =
+      orcamento && !copiando && (clienteId ? clienteId === orcamento.clienteId : !orcamento.clienteId);
     if (mesmoCliente && form.getValues("tabelaPrecoId")) return;
     form.setValue("tabelaPrecoId", tabelaCliente.tabelaPrecoId);
-  }, [tabelaCliente, clienteId, orcamento, copiando, form]);
+  }, [tabelaCliente, chaveTabela, clienteId, orcamento, copiando, form]);
   const opcoesTabela = [
     ...(tabelaCliente?.tabela ? [tabelaCliente.tabela] : []),
     ...(tabelaCliente?.opcoes ?? []),
@@ -870,7 +920,13 @@ export function OrcamentoFormContent({
     setEstoquePadraoAplicado(true);
     orcamento.itens.forEach((item, index) => {
       apiFetch<PrecoProdutoResposta>("/orcamentos/preco-produto", {
-        query: { clienteId: orcamento.clienteId, produtoId: item.produtoId },
+        query: orcamento.clienteId
+          ? { clienteId: orcamento.clienteId, produtoId: item.produtoId }
+          : {
+              municipio: orcamento.prospectMunicipio ?? undefined,
+              uf: orcamento.prospectUf ?? undefined,
+              produtoId: item.produtoId,
+            },
       })
         .then((resp) => {
           setInfoPorLinha((arr) =>
@@ -1168,11 +1224,11 @@ export function OrcamentoFormContent({
   const trocarTabela = async (novaId: string) => {
     form.setValue("tabelaPrecoId", novaId);
     const itens = form.getValues("itens");
-    if (!clienteId || itens.length === 0) return;
+    if (!podeOrcar || itens.length === 0) return;
     const respostas = await Promise.all(
       itens.map((i) =>
         apiFetch<PrecoProdutoResposta>("/orcamentos/preco-produto", {
-          query: { clienteId, produtoId: i.produtoId, tabelaPrecoId: novaId },
+          query: { ...quemConsulta, produtoId: i.produtoId, tabelaPrecoId: novaId },
         }).catch(() => null),
       ),
     );
@@ -1196,10 +1252,10 @@ export function OrcamentoFormContent({
   const onSelecionarProduto = async (index: number, produto: Produto | null) => {
     if (!produto) return;
     form.setValue(`itens.${index}.produtoId`, produto.id);
-    if (!clienteId) return;
+    if (!podeOrcar) return;
     try {
       const resp = await apiFetch<PrecoProdutoResposta>("/orcamentos/preco-produto", {
-        query: { clienteId, produtoId: produto.id, ...consultaTabela() },
+        query: { ...quemConsulta, produtoId: produto.id, ...consultaTabela() },
       });
       form.setValue(`itens.${index}.vlrUnitario`, resp.vlrTabela ?? resp.ultimoPreco ?? 0);
       setInfoPorLinha((arr) =>
@@ -1271,10 +1327,10 @@ export function OrcamentoFormContent({
     ]);
     toast.success("Item adicionado ao orçamento");
 
-    if (!clienteId) return;
+    if (!podeOrcar) return;
     try {
       const resp = await apiFetch<PrecoProdutoResposta>("/orcamentos/preco-produto", {
-        query: { clienteId, produtoId: produto.produtoId, ...consultaTabela() },
+        query: { ...quemConsulta, produtoId: produto.produtoId, ...consultaTabela() },
       });
       setInfoPorLinha((arr) =>
         arr.map((v, i) =>
@@ -1574,12 +1630,33 @@ export function OrcamentoFormContent({
                     </Tooltip>
                   )}
                 </FieldLabel>
-                <ClienteCombobox
-                  value={form.watch("clienteId") || null}
-                  onChange={(id) => form.setValue("clienteId", id ?? "")}
-                  disabled={!orcamento && !!clienteIdPadrao}
-                />
+                {avulso ? (
+                  <Input
+                    id="prospectNome"
+                    placeholder="Nome ou razão social do interessado"
+                    maxLength={150}
+                    {...form.register("prospectNome")}
+                  />
+                ) : (
+                  <ClienteCombobox
+                    value={form.watch("clienteId") || null}
+                    onChange={(id) => form.setValue("clienteId", id ?? "")}
+                    disabled={!orcamento && !!clienteIdPadrao}
+                  />
+                )}
                 <FieldError errors={[form.formState.errors.clienteId]} />
+                {/* Troca de modo só antes de gravar: um orçamento já feito para
+                    um cliente não volta a ser avulso, e o avulso só ganha cliente
+                    na edição, escolhendo-o aqui. */}
+                {!clienteIdPadrao && (
+                  <label className="mt-1 flex cursor-pointer items-center gap-2 text-sm text-muted-foreground">
+                    <Checkbox
+                      checked={avulso}
+                      onCheckedChange={(v) => alternarAvulso(v === true)}
+                    />
+                    Não é cliente (orçamento avulso)
+                  </label>
+                )}
               </Field>
               {/* Vendedor é o do cadastro do cliente, e **não se escolhe
                   aqui**: o servidor sobrescreve de qualquer forma
@@ -1617,7 +1694,7 @@ export function OrcamentoFormContent({
                     >
                       <SelectTrigger id="vendedorId" className="w-full">
                         <SelectValue
-                          placeholder={clienteId ? "Selecione o vendedor" : "Escolha um cliente primeiro"}
+                          placeholder={podeOrcar ? "Selecione o vendedor" : "Escolha um cliente primeiro"}
                         />
                       </SelectTrigger>
                       <SelectContent>
@@ -1636,6 +1713,39 @@ export function OrcamentoFormContent({
                 <FieldError errors={[form.formState.errors.vendedorId]} />
               </Field>
             </div>
+
+            {avulso && (
+              <div className="space-y-2 rounded-lg border border-dashed px-3 py-3">
+                <p className="text-xs text-muted-foreground">
+                  Dados do interessado — ficam só neste orçamento. O preço usa a tabela padrão da praça
+                  informada. Para aprovar e enviar ao ERP, cadastre o cliente e refaça o orçamento para ele.
+                </p>
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <Field>
+                    <FieldLabel htmlFor="prospectDocumento">CPF/CNPJ</FieldLabel>
+                    <Input id="prospectDocumento" maxLength={20} {...form.register("prospectDocumento")} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="prospectTelefone">Telefone</FieldLabel>
+                    <Input id="prospectTelefone" maxLength={30} {...form.register("prospectTelefone")} />
+                  </Field>
+                  <Field>
+                    <FieldLabel htmlFor="prospectEmail">E-mail</FieldLabel>
+                    <Input id="prospectEmail" type="email" maxLength={150} {...form.register("prospectEmail")} />
+                  </Field>
+                  <div className="grid grid-cols-[1fr_5rem] gap-3">
+                    <Field>
+                      <FieldLabel htmlFor="prospectMunicipio">Município</FieldLabel>
+                      <Input id="prospectMunicipio" maxLength={80} {...form.register("prospectMunicipio")} />
+                    </Field>
+                    <Field>
+                      <FieldLabel htmlFor="prospectUf">UF</FieldLabel>
+                      <Input id="prospectUf" maxLength={2} className="uppercase" {...form.register("prospectUf")} />
+                    </Field>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
               <Field>
@@ -1695,7 +1805,7 @@ export function OrcamentoFormContent({
                   disabled={!podeAlterarTabela || bloqueado}
                 >
                   <SelectTrigger id="tabelaPrecoId" className="w-full">
-                    <SelectValue placeholder={clienteId ? "Sem tabela de preços" : "Escolha um cliente primeiro"} />
+                    <SelectValue placeholder={podeOrcar ? "Sem tabela de preços" : "Escolha um cliente primeiro"} />
                   </SelectTrigger>
                   <SelectContent>
                     {opcoesTabela.map((t) => (
@@ -1802,7 +1912,7 @@ export function OrcamentoFormContent({
                       type="button"
                       variant="outline"
                       size="sm"
-                      disabled={!clienteId}
+                      disabled={!podeOrcar}
                       onClick={adicionarItem}
                     >
                       <Plus className="size-3.5" />
@@ -1810,10 +1920,10 @@ export function OrcamentoFormContent({
                     </Button>
                   </div>
 
-                  {!clienteId && (
+                  {!podeOrcar && (
                     <p className="text-sm text-muted-foreground">Selecione um cliente primeiro.</p>
                   )}
-                  {clienteId && linhas.fields.length === 0 && (
+                  {podeOrcar && linhas.fields.length === 0 && (
                     <p className="text-sm text-muted-foreground">Nenhum item adicionado.</p>
                   )}
 

@@ -44,23 +44,29 @@ export class OrcamentosController {
       'retornado como referência quando não há preço de tabela. Alimenta o pré-preenchimento ' +
       'do form de orçamento. Requer orcamentos.visualizar.',
   })
-  @ApiQuery({ name: 'clienteId', required: true })
+  @ApiQuery({ name: 'clienteId', required: false })
+  @ApiQuery({ name: 'municipio', required: false })
+  @ApiQuery({ name: 'uf', required: false })
   @ApiQuery({ name: 'produtoId', required: true })
   @ApiQuery({ name: 'tabelaPrecoId', required: false })
   @RequirePermission('orcamentos', 'visualizar')
   @Get('preco-produto')
   precoProduto(
-    @Query('clienteId') clienteId: string,
+    @Query('clienteId') clienteId: string | undefined,
     @Query('produtoId') produtoId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Query('tabelaPrecoId') tabelaPrecoId?: string,
+    // Praça do interessado, no orçamento para quem ainda não é cliente.
+    @Query('municipio') municipio?: string,
+    @Query('uf') uf?: string,
   ) {
     return this.service.precoProduto(
       user.empresaAtivaId,
       user,
-      clienteId,
+      clienteId || null,
       produtoId,
       tabelaPrecoId || undefined,
+      { municipio, uf },
     );
   }
 
@@ -70,17 +76,22 @@ export class OrcamentosController {
       'Devolve a tabela com que o orçamento começa (a do cadastro do cliente) e podeAlterar, ' +
       'que vem do parâmetro ORCAMENTO_ALTERA_TABELA_PRECO. Requer orcamentos.visualizar.',
   })
-  @ApiQuery({ name: 'clienteId', required: true })
+  @ApiQuery({ name: 'clienteId', required: false })
+  @ApiQuery({ name: 'municipio', required: false })
+  @ApiQuery({ name: 'uf', required: false })
   @RequirePermission('orcamentos', 'visualizar')
   @Get('tabela-preco-cliente')
   tabelaPrecoCliente(
-    @Query('clienteId') clienteId: string,
+    @Query('clienteId') clienteId: string | undefined,
     @CurrentUser() user: AuthenticatedUser,
+    @Query('municipio') municipio?: string,
+    @Query('uf') uf?: string,
   ) {
     return this.service.tabelaPrecoDoCliente(
       user.empresaAtivaId,
       user,
-      clienteId,
+      clienteId || null,
+      { municipio, uf },
     );
   }
 

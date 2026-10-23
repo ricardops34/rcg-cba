@@ -27,7 +27,7 @@ import { resolverRegrasDescontoDosItens } from '../../common/precos/resolver-reg
 export async function calcularItensOrcamento(
   tx: TenantTx,
   empresaId: string,
-  clienteId: string,
+  clienteId: string | null,
   itens: OrcamentoItemLinha[],
   vendedorId: string,
   /** Parâmetro DESCONTO_ACIMA_LIMITE_BLOQUEIA da empresa. */
@@ -45,7 +45,9 @@ export async function calcularItensOrcamento(
   const tabelaPrecoId =
     tabelaPrecoEscolhida !== undefined
       ? tabelaPrecoEscolhida
-      : await resolverTabelaPrecoCliente(tx, empresaId, clienteId);
+      : clienteId
+        ? await resolverTabelaPrecoCliente(tx, empresaId, clienteId)
+        : null;
 
   const [precos, regrasPorProduto, vendedor] = await Promise.all([
     tabelaPrecoId
