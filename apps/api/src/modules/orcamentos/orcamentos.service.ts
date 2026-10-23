@@ -838,6 +838,7 @@ export class OrcamentosService {
           descontoSolicitadoPor: null,
           descontoAutorizadoEm: null,
           descontoAutorizadoPor: null,
+          descontoJustificativa: null,
         };
       }
 
@@ -1063,6 +1064,7 @@ export class OrcamentosService {
     empresaId: string,
     user: AuthenticatedUser,
     id: string,
+    justificativa: string,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const orcamento = await this.buscarParaAcao(
@@ -1087,6 +1089,7 @@ export class OrcamentosService {
         data: {
           descontoAutorizadoEm: new Date(),
           descontoAutorizadoPor: user.id,
+          descontoJustificativa: justificativa,
           updatedBy: user.id,
         },
         include: INCLUDE,
@@ -1112,7 +1115,7 @@ export class OrcamentosService {
         user.id,
         'autorizacao_concedida',
         atualizado,
-        `Desconto acima do máximo liberado para o orçamento "${atualizado.titulo}".`,
+        `Desconto acima do máximo liberado para o orçamento "${atualizado.titulo}". Justificativa: ${justificativa}`,
       );
       return ocultarComissaoDosItens(
         atualizado,

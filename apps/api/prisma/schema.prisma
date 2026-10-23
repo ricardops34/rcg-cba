@@ -4122,6 +4122,8 @@ model Orcamento {
   descontoSolicitadoPor       String?
   descontoAutorizadoEm        DateTime?
   descontoAutorizadoPor       String?
+  // Por que o superior liberou o desconto: obrigatória, e vai para o histórico.
+  descontoJustificativa       String?
   clienteDecididoEm           DateTime?
   clienteDecididoPorContatoId String?
   clienteDecisao              String?

@@ -16,6 +16,7 @@ import { ApiProduces, ApiQuery } from '@nestjs/swagger';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { OrcamentosService } from './orcamentos.service';
 import {
+  OrcamentoAutorizarDescontoDto,
   OrcamentoCreateDto,
   OrcamentoQueryDto,
   OrcamentoUpdateDto,
@@ -181,15 +182,21 @@ export class OrcamentosController {
     description:
       'Segunda etapa: libera a proposta em PDF e a efetivação (status aprovado) do orçamento, ' +
       'conclui a pendência aberta na solicitação e registra o evento no histórico. A autorização ' +
-      'vale para os itens como estão — alterá-los derruba a liberação. Requer orcamentos.aprovar.',
+      'vale para os itens como estão — alterá-los derruba a liberação. Exige justificativa. Requer orcamentos.aprovar.',
   })
   @RequirePermission('orcamentos', 'aprovar')
   @Post(':id/autorizar-desconto')
   autorizarDesconto(
     @Param('id') id: string,
+    @Body() dto: OrcamentoAutorizarDescontoDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.autorizarDesconto(user.empresaAtivaId, user, id);
+    return this.service.autorizarDesconto(
+      user.empresaAtivaId,
+      user,
+      id,
+      dto.justificativa,
+    );
   }
 
   @ApiOperation({

@@ -229,6 +229,18 @@ export const orcamentoCreateSchema = orcamentoCreateBase.refine(
 );
 export type OrcamentoCreate = z.infer<typeof orcamentoCreateSchema>;
 
+// Liberação de desconto acima do máximo da regra: a justificativa é obrigatória.
+export const orcamentoAutorizarDescontoSchema = z.object({
+  justificativa: z
+    .string()
+    .trim()
+    .min(5, "Informe a justificativa da liberação")
+    .max(500),
+});
+export type OrcamentoAutorizarDesconto = z.infer<
+  typeof orcamentoAutorizarDescontoSchema
+>;
+
 export const orcamentoUpdateSchema = orcamentoCreateBase.partial();
 export type OrcamentoUpdate = z.infer<typeof orcamentoUpdateSchema>;
 
@@ -296,6 +308,7 @@ export const orcamentoSchema = z.object({
   descontoSolicitadoPor: z.string().nullable(),
   descontoAutorizadoEm: z.string().datetime().nullable(),
   descontoAutorizadoPor: z.string().nullable(),
+  descontoJustificativa: z.string().nullish(),
   // Resposta do cliente e por onde entrou: link, portal ou sistema (vendedor na tela).
   clienteDecisao: z.string().nullish(),
   clienteDecididoEm: z.string().datetime().nullish(),

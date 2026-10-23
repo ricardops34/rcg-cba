@@ -50,6 +50,14 @@ import { ProdutoCombobox } from "@/components/crud/produto-combobox";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
 import {
   Field,
@@ -1156,14 +1164,23 @@ export function OrcamentoFormContent({
    * Enquanto não houver liberação, PDF e efetivação ficam travados.
    */
   const [acaoAutorizacao, setAcaoAutorizacao] = useState(false);
-  const chamarAutorizacao = async (rota: "solicitar-autorizacao-desconto" | "autorizar-desconto") => {
+  // Liberar exige justificativa: o superior escreve o motivo num diálogo.
+  const [liberandoDesconto, setLiberandoDesconto] = useState(false);
+  const [justificativaDesconto, setJustificativaDesconto] = useState("");
+  const chamarAutorizacao = async (
+    rota: "solicitar-autorizacao-desconto" | "autorizar-desconto",
+    justificativa?: string,
+  ) => {
     if (!registro) return;
     setAcaoAutorizacao(true);
     try {
       const atualizado = await apiFetch<Orcamento>(`/orcamentos/${registro.id}/${rota}`, {
         method: "POST",
+        ...(justificativa ? { body: { justificativa } } : {}),
       });
       setSalvoNaSessao(atualizado);
+      setLiberandoDesconto(false);
+      setJustificativaDesconto("");
       void queryClient.invalidateQueries({ queryKey: ["atividades"] });
       void queryClient.invalidateQueries({ queryKey: ["orcamentos"] });
       toast.success(
@@ -1557,7 +1574,7 @@ export function OrcamentoFormContent({
                   type="button"
                   size="sm"
                   disabled={acaoAutorizacao}
-                  onClick={() => void chamarAutorizacao("autorizar-desconto")}
+                  onClick={() => setLiberandoDesconto(true)}
                 >
                   Autorizar desconto
                 </Button>
@@ -2730,6 +2747,35 @@ export function OrcamentoFormContent({
           )}
         </CardFooter>
       </form>
+    <Dialog open={liberandoDesconto} onOpenChange={setLiberandoDesconto}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Autorizar desconto</DialogTitle>
+            <DialogDescription>
+              Informe a justificativa da liberação. Ela fica registrada no histórico do orçamento.
+            </DialogDescription>
+          </DialogHeader>
+          <Textarea
+            rows={4}
+            maxLength={500}
+            value={justificativaDesconto}
+            onChange={(e) => setJustificativaDesconto(e.target.value)}
+            placeholder="Justificativa"
+          />
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => setLiberandoDesconto(false)}>
+              Cancelar
+            </Button>
+            <Button
+              type="button"
+              disabled={acaoAutorizacao || justificativaDesconto.trim().length < 5}
+              onClick={() => void chamarAutorizacao("autorizar-desconto", justificativaDesconto.trim())}
+            >
+              Autorizar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Card>
   );
 }
