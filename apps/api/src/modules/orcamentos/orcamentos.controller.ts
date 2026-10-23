@@ -162,18 +162,20 @@ export class OrcamentosController {
       'Primeira etapa da liberação de um orçamento com item cujo desconto alcançou ou passou o ' +
       '"% Desc Máximo" da regra: registra a solicitação e abre uma Atividade pendente na agenda ' +
       'do supervisor (ou gerente) do vendedor. Recusa com 409 se não houver item nessa situação, ' +
-      'ou se o desconto já estiver autorizado. Requer orcamentos.editar.',
+      'ou se o desconto já estiver autorizado. Exige a justificativa do vendedor. Requer orcamentos.editar.',
   })
   @RequirePermission('orcamentos', 'editar')
   @Post(':id/solicitar-autorizacao-desconto')
   solicitarAutorizacaoDesconto(
     @Param('id') id: string,
+    @Body() dto: OrcamentoAutorizarDescontoDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.solicitarAutorizacaoDesconto(
       user.empresaAtivaId,
       user,
       id,
+      dto.justificativa,
     );
   }
 

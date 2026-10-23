@@ -4120,6 +4120,9 @@ model Orcamento {
   // senão daria para autorizar 15% e gravar 40% depois.
   descontoSolicitadoEm        DateTime?
   descontoSolicitadoPor       String?
+  // Por que o vendedor precisa do desconto: obrigatória no pedido, para o
+  // superior entender a solicitação sem ter de perguntar.
+  descontoSolicitacaoMotivo   String?
   descontoAutorizadoEm        DateTime?
   descontoAutorizadoPor       String?
   // Por que o superior liberou o desconto: obrigatória, e vai para o histórico.

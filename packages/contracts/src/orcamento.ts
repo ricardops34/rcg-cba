@@ -309,6 +309,7 @@ export const orcamentoSchema = z.object({
   descontoAutorizadoEm: z.string().datetime().nullable(),
   descontoAutorizadoPor: z.string().nullable(),
   descontoJustificativa: z.string().nullish(),
+  descontoSolicitacaoMotivo: z.string().nullish(),
   descontoRecusadoEm: z.string().datetime().nullish(),
   descontoRecusaMotivo: z.string().nullish(),
   // Resposta do cliente e por onde entrou: link, portal ou sistema (vendedor na tela).

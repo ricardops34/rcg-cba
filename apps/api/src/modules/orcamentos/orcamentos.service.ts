@@ -836,6 +836,7 @@ export class OrcamentosService {
           // solicita de novo se o novo desconto ainda passar do máximo.
           descontoSolicitadoEm: null,
           descontoSolicitadoPor: null,
+          descontoSolicitacaoMotivo: null,
           descontoAutorizadoEm: null,
           descontoAutorizadoPor: null,
           descontoJustificativa: null,
@@ -1011,6 +1012,7 @@ export class OrcamentosService {
     empresaId: string,
     user: AuthenticatedUser,
     id: string,
+    justificativa: string,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const orcamento = await this.buscarParaAcao(
@@ -1035,6 +1037,7 @@ export class OrcamentosService {
         data: {
           descontoSolicitadoEm: new Date(),
           descontoSolicitadoPor: user.id,
+          descontoSolicitacaoMotivo: justificativa,
           descontoRecusadoEm: null,
           descontoRecusadoPor: null,
           descontoRecusaMotivo: null,
@@ -1048,7 +1051,7 @@ export class OrcamentosService {
         user.id,
         'autorizacao_solicitada',
         atualizado,
-        `Desconto acima do máximo da regra no orçamento "${atualizado.titulo}" — aguardando autorização.`,
+        `Desconto acima do máximo da regra no orçamento "${atualizado.titulo}" — aguardando autorização. Justificativa do vendedor: ${justificativa}`,
       );
       return ocultarComissaoDosItens(
         atualizado,
@@ -1162,6 +1165,7 @@ export class OrcamentosService {
         data: {
           descontoSolicitadoEm: null,
           descontoSolicitadoPor: null,
+          descontoSolicitacaoMotivo: null,
           descontoRecusadoEm: new Date(),
           descontoRecusadoPor: user.id,
           descontoRecusaMotivo: justificativa,

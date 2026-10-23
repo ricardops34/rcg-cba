@@ -109,6 +109,12 @@ export function LiberacoesDesconto({ clienteId }: { clienteId: string }) {
               </Button>
             </div>
           </div>
+          {o.descontoSolicitacaoMotivo && (
+            <p className="rounded-md bg-muted/50 px-3 py-2 text-sm">
+              <span className="font-medium">Justificativa do vendedor: </span>
+              {o.descontoSolicitacaoMotivo}
+            </p>
+          )}
           <Table className="text-xs">
             <TableHeader>
               <TableRow>
