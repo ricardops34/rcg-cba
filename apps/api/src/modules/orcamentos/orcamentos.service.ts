@@ -274,11 +274,13 @@ export class OrcamentosService {
       const tabelaPrecoId = clienteId
         ? await resolverTabelaPrecoCliente(tx, empresaId, clienteId)
         : await resolverTabelaPrecoPorPraca(tx, empresaId, praca);
-      const podeAlterar = await this.parametros.obterBoolean(
+      const podeAlterar =
+      (await this.parametros.obterBoolean(
         empresaId,
         PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
         false,
-      );
+      )) ||
+      !clienteId; // sem cliente (orçamento avulso), a tabela é livre
       const select = { id: true, descricao: true } as const;
       // As opções vêm daqui, e não de /tabelas-preco, porque aquela lista pede
       // permissão de cadastro, que o vendedor não tem.
@@ -317,11 +319,12 @@ export class OrcamentosService {
         empresaId,
         clienteId,
         tabelaEscolhida,
-        await this.parametros.obterBoolean(
+        (await this.parametros.obterBoolean(
           empresaId,
           PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
           false,
-        ),
+        )) ||
+        !clienteId, // sem cliente, a tabela é livre
         null,
         praca,
       );
@@ -607,11 +610,12 @@ export class OrcamentosService {
         empresaId,
         clienteId,
         input.tabelaPrecoId,
-        await this.parametros.obterBoolean(
+        (await this.parametros.obterBoolean(
           empresaId,
           PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
           false,
-        ),
+        )) ||
+        !clienteId, // sem cliente, a tabela é livre
         null,
         { municipio: input.prospectMunicipio, uf: input.prospectUf },
       );
@@ -796,11 +800,12 @@ export class OrcamentosService {
         clienteTrocado
           ? input.tabelaPrecoId
           : (input.tabelaPrecoId ?? orcamento.tabelaPrecoId),
-        await this.parametros.obterBoolean(
+        (await this.parametros.obterBoolean(
           empresaId,
           PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
           false,
-        ),
+        )) ||
+        !clienteId, // sem cliente, a tabela é livre
         clienteTrocado ? null : orcamento.tabelaPrecoId,
         {
           municipio: input.prospectMunicipio ?? orcamento.prospectMunicipio,
