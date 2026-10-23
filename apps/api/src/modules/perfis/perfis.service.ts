@@ -186,6 +186,57 @@ export class PerfisService {
     }
   }
 
+  /**
+   * Cópia, no grupo da empresa ativa, de um perfil da plataforma — com as
+   * permissões — para o administrador da empresa poder ajustar as rotinas sem
+   * mexer no modelo que vale para todos os clientes. Os de sistema
+   * (`sistemaBase`/`administraPlataforma`) ficam de fora: o código os procura
+   * e concede por conta própria. A cópia tem o mesmo nome, então passa a
+   * ocupar o lugar do modelo na listagem do grupo (ver `visiveis`); quem já
+   * usa o modelo continua nele até ser trocado em Usuários.
+   */
+  async personalizar(id: string, user: AuthenticatedUser) {
+    const grupoEconomicoId = await this.grupoDoAtor(user);
+    if (!grupoEconomicoId) {
+      throw new ForbiddenException('A empresa ativa não pertence a um grupo econômico');
+    }
+    const origem = await this.findOne(id, user);
+    if (origem.grupoEconomicoId !== null) {
+      throw new ConflictException('Este perfil já é do seu grupo');
+    }
+    if (origem.sistemaBase || origem.administraPlataforma) {
+      throw new ForbiddenException('Perfil de sistema não pode ser personalizado');
+    }
+    try {
+      const copia = await this.prisma.perfil.create({
+        data: {
+          nome: origem.nome,
+          descricao: origem.descricao,
+          ativo: origem.ativo,
+          rotinaInicialId: origem.rotinaInicialId,
+          carteiraCompleta: origem.carteiraCompleta,
+          grupoEconomicoId,
+          createdBy: user.id,
+          updatedBy: user.id,
+          permissoes: {
+            create: origem.permissoes.map((p) => ({
+              rotinaId: p.rotinaId,
+              acao: p.acao,
+              permitido: p.permitido,
+              createdBy: user.id,
+              updatedBy: user.id,
+            })),
+          },
+        },
+        include: { rotinaInicial: { include: { menu: true } } },
+      });
+      return formatPerfil(copia);
+    } catch (err) {
+      if (nomeRepetido(err)) throw new ConflictException('Seu grupo já tem um perfil com este nome');
+      throw err;
+    }
+  }
+
   async update(id: string, input: PerfilUpdate, user: AuthenticatedUser) {
     await this.garantirPodeAlterar(id, user);
     try {

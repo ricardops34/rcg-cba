@@ -85,6 +85,20 @@ export class PerfisController {
   }
 
   @ApiOperation({
+    summary: 'Personalizar perfil da plataforma para o grupo',
+    description:
+      'Cria no grupo da empresa ativa uma cópia (com as permissões) de um perfil da plataforma, ' +
+      'que o administrador da empresa pode editar. Perfis de sistema não são copiados. ' +
+      'Requer perfis.cadastrar.',
+  })
+  @ApiParam({ name: 'id', example: PERFIL_ID_EXAMPLE })
+  @RequirePermission('perfis', 'cadastrar')
+  @Post(':id/personalizar')
+  personalizar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.personalizar(id, user);
+  }
+
+  @ApiOperation({
     summary: 'Editar perfil',
     description:
       'Requer perfis.editar. Perfil do grupo: o administrador da empresa edita. Perfil da plataforma ' +

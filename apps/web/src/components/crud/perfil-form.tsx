@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { perfilCreateSchema, type Perfil, type PerfilCreate } from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
@@ -33,12 +33,29 @@ type PerfilTab = "dados" | "permissoes";
 
 export function PerfilForm({ perfil, initialTab = "dados" }: { perfil?: Perfil; initialTab?: PerfilTab }) {
   const router = useRouter();
+  const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState<PerfilTab>(initialTab);
   const { create, update } = useResourceMutations<PerfilCreate, Partial<PerfilCreate>>("perfis");
   const administradorPlataforma = useAuthStore((s) => s.user?.administradorPlataforma === true);
   // Perfil da plataforma vale para todas as empresas: só o administrador da
   // plataforma altera (a API recusa os demais). O da empresa cria o seu.
   const somenteLeitura = !!perfil && perfil.grupoEconomicoId === null && !administradorPlataforma;
+
+  const [personalizando, setPersonalizando] = useState(false);
+  const personalizar = async () => {
+    if (!perfil) return;
+    setPersonalizando(true);
+    try {
+      const copia = await apiFetch<Perfil>(`/perfis/${perfil.id}/personalizar`, { method: "POST" });
+      await qc.invalidateQueries({ queryKey: ["perfis"] });
+      toast.success("Cópia criada no seu grupo — ajuste as permissões e troque o perfil dos usuários");
+      router.push(`/admin/perfis/${copia.id}?tab=permissoes`);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao personalizar perfil");
+    } finally {
+      setPersonalizando(false);
+    }
+  };
 
   const { data: modulos } = useQuery({
     queryKey: ["modulos", "all"],
@@ -110,11 +127,20 @@ export function PerfilForm({ perfil, initialTab = "dados" }: { perfil?: Perfil; 
       {somenteLeitura && (
         <div className="flex items-start gap-2 rounded-lg border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-300">
           <Lock className="mt-0.5 size-4 shrink-0" />
-          <p>
-            Este é um perfil da plataforma e vale para todas as empresas, por isso fica só para
-            consulta. Para ajustar permissões, crie um perfil do seu grupo em{" "}
-            <strong>Novo perfil</strong>.
-          </p>
+          <div className="space-y-2">
+            <p>
+              Este é um perfil da plataforma e vale para todas as empresas, por isso fica só para
+              consulta.{" "}
+              {perfil?.sistemaBase
+                ? "É um perfil base do sistema e não pode ser personalizado; para um acesso sob medida, crie um perfil em Novo perfil."
+                : "Para ajustar as rotinas da sua empresa, personalize uma cópia dele para o seu grupo."}
+            </p>
+            {perfil && !perfil.sistemaBase && !perfil.administraPlataforma && (
+              <Button type="button" size="sm" onClick={personalizar} disabled={personalizando}>
+                Personalizar para o meu grupo
+              </Button>
+            )}
+          </div>
         </div>
       )}
 
