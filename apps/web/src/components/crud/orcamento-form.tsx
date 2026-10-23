@@ -1165,10 +1165,10 @@ export function OrcamentoFormContent({
    */
   const [acaoAutorizacao, setAcaoAutorizacao] = useState(false);
   // Liberar exige justificativa: o superior escreve o motivo num diálogo.
-  const [liberandoDesconto, setLiberandoDesconto] = useState(false);
+  const [liberandoDesconto, setLiberandoDesconto] = useState<"autorizar" | "recusar" | null>(null);
   const [justificativaDesconto, setJustificativaDesconto] = useState("");
   const chamarAutorizacao = async (
-    rota: "solicitar-autorizacao-desconto" | "autorizar-desconto",
+    rota: "solicitar-autorizacao-desconto" | "autorizar-desconto" | "recusar-desconto",
     justificativa?: string,
   ) => {
     if (!registro) return;
@@ -1179,14 +1179,16 @@ export function OrcamentoFormContent({
         ...(justificativa ? { body: { justificativa } } : {}),
       });
       setSalvoNaSessao(atualizado);
-      setLiberandoDesconto(false);
+      setLiberandoDesconto(null);
       setJustificativaDesconto("");
       void queryClient.invalidateQueries({ queryKey: ["atividades"] });
       void queryClient.invalidateQueries({ queryKey: ["orcamentos"] });
       toast.success(
         rota === "autorizar-desconto"
           ? "Desconto autorizado — PDF e efetivação liberados"
-          : "Autorização solicitada ao supervisor",
+          : rota === "recusar-desconto"
+            ? "Desconto recusado — o vendedor foi avisado"
+            : "Autorização solicitada ao supervisor",
       );
     } catch (err) {
       toast.error(
@@ -1555,7 +1557,9 @@ export function OrcamentoFormContent({
                   ? `Desconto autorizado em ${dataHoraBr(registro?.descontoAutorizadoEm ?? null)} — PDF e efetivação liberados.`
                   : situacaoAutorizacao === "pendente"
                     ? `Autorização solicitada em ${dataHoraBr(registro?.descontoSolicitadoEm ?? null)} — aguardando liberação. PDF e efetivação seguem bloqueados.`
-                    : "Há item com desconto igual ou acima do máximo da regra. PDF e efetivação ficam bloqueados até a autorização."}
+                    : registro?.descontoRecusaMotivo
+                      ? `Desconto recusado em ${dataHoraBr(registro.descontoRecusadoEm ?? null)}: ${registro.descontoRecusaMotivo}`
+                      : "Há item com desconto igual ou acima do máximo da regra. PDF e efetivação ficam bloqueados até a autorização."}
               </span>
               </div>
               {registro && situacaoAutorizacao === "nao_solicitada" && (
@@ -1574,9 +1578,20 @@ export function OrcamentoFormContent({
                   type="button"
                   size="sm"
                   disabled={acaoAutorizacao}
-                  onClick={() => setLiberandoDesconto(true)}
+                  onClick={() => setLiberandoDesconto("autorizar")}
                 >
                   Autorizar desconto
+                </Button>
+              )}
+              {registro && situacaoAutorizacao === "pendente" && podeAutorizarDesconto && (
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  disabled={acaoAutorizacao}
+                  onClick={() => setLiberandoDesconto("recusar")}
+                >
+                  Recusar
                 </Button>
               )}
               {!registro && (
@@ -2747,12 +2762,14 @@ export function OrcamentoFormContent({
           )}
         </CardFooter>
       </form>
-    <Dialog open={liberandoDesconto} onOpenChange={setLiberandoDesconto}>
+    <Dialog open={liberandoDesconto !== null} onOpenChange={(o) => !o && setLiberandoDesconto(null)}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Autorizar desconto</DialogTitle>
+            <DialogTitle>{liberandoDesconto === "recusar" ? "Recusar desconto" : "Autorizar desconto"}</DialogTitle>
             <DialogDescription>
-              Informe a justificativa da liberação. Ela fica registrada no histórico do orçamento.
+              {liberandoDesconto === "recusar"
+                ? "Informe o motivo da recusa. O vendedor é avisado e vê o motivo no orçamento."
+                : "Informe a justificativa da liberação. Ela fica registrada no histórico do orçamento."}
             </DialogDescription>
           </DialogHeader>
           <Textarea
@@ -2763,15 +2780,20 @@ export function OrcamentoFormContent({
             placeholder="Justificativa"
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setLiberandoDesconto(false)}>
+            <Button type="button" variant="outline" onClick={() => setLiberandoDesconto(null)}>
               Cancelar
             </Button>
             <Button
               type="button"
               disabled={acaoAutorizacao || justificativaDesconto.trim().length < 5}
-              onClick={() => void chamarAutorizacao("autorizar-desconto", justificativaDesconto.trim())}
+              onClick={() =>
+                void chamarAutorizacao(
+                  liberandoDesconto === "recusar" ? "recusar-desconto" : "autorizar-desconto",
+                  justificativaDesconto.trim(),
+                )
+              }
             >
-              Autorizar
+              {liberandoDesconto === "recusar" ? "Recusar" : "Autorizar"}
             </Button>
           </DialogFooter>
         </DialogContent>

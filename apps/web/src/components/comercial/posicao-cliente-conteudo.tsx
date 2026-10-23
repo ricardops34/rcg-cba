@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import type { PosicaoCliente, SugestaoCompraCalculada } from "@plataforma/contracts";
 import { apiFetch, assetUrl } from "@/lib/api-client";
@@ -32,6 +32,8 @@ import {
   useSmsDisponivel,
 } from "@/components/comercial/segunda-via";
 import { HistoricoAtendimento } from "@/components/comercial/historico-atendimento";
+import { LiberacoesDesconto, useLiberacoesPendentes } from "@/components/comercial/posicao-cliente-liberacoes";
+import { useAuthStore } from "@/stores/auth-store";
 import { Paginacao } from "@/components/crud/paginacao";
 import {
   CartoesPorAno,
@@ -560,6 +562,11 @@ export function PosicaoClienteConteudo({
   const id = clienteId;
   const celular = useIsMobile();
   const router = useRouter();
+  // Liberação de desconto: só quem aprova orçamento vê a aba, e o aviso do
+  // sino chega com ?aba=liberacoes.
+  const podeLiberarDesconto = useAuthStore((s) => s.hasPermission)("orcamentos", "aprovar");
+  const abaPedida = useSearchParams().get("aba");
+  const liberacoesPendentes = useLiberacoesPendentes(id, podeLiberarDesconto);
   const abrirAtendimento = useAtendimentoJanelaStore((s) => s.abrir);
 
   const [notaSearch, setNotaSearch] = useState("");
@@ -943,7 +950,7 @@ export function PosicaoClienteConteudo({
       {!celular && dadosDoCliente}
 
       <Tabs
-        defaultValue="notas"
+        defaultValue={podeLiberarDesconto && abaPedida === "liberacoes" ? "liberacoes" : "notas"}
         data-tour="posicao-cliente-detalhe-conteudo"
         className={preencherAltura ? "md:min-h-[280px] md:flex-1" : undefined}
       >
@@ -969,6 +976,11 @@ export function PosicaoClienteConteudo({
             <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
             <TabsTrigger value="sugestao">Sugestão ({sugestaoCalculada?.itens.length ?? 0})</TabsTrigger>
             <TabsTrigger value="historico">Histórico de atendimento</TabsTrigger>
+            {podeLiberarDesconto && (
+              <TabsTrigger value="liberacoes">
+                Liberação de desconto ({liberacoesPendentes.data?.length ?? 0})
+              </TabsTrigger>
+            )}
           </TabsList>
         </div>
 
@@ -1240,6 +1252,12 @@ export function PosicaoClienteConteudo({
         <TabsContent value="historico" className={rolagemAba}>
           <HistoricoAtendimento clienteId={id} />
         </TabsContent>
+
+        {podeLiberarDesconto && (
+          <TabsContent value="liberacoes" className={rolagemAba}>
+            <LiberacoesDesconto clienteId={id} />
+          </TabsContent>
+        )}
 
         <TabsContent value="equipamentos" className={rolagemAba}>
           <TabelaEquipamentos

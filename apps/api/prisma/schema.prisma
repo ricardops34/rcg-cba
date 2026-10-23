@@ -4124,6 +4124,11 @@ model Orcamento {
   descontoAutorizadoPor       String?
   // Por que o superior liberou o desconto: obrigatória, e vai para o histórico.
   descontoJustificativa       String?
+  // Recusa do superior: o pedido volta a "não solicitado" e o motivo fica aqui
+  // para o vendedor ver no orçamento. Um novo pedido limpa estes campos.
+  descontoRecusadoEm          DateTime?
+  descontoRecusadoPor         String?
+  descontoRecusaMotivo        String?
   clienteDecididoEm           DateTime?
   clienteDecididoPorContatoId String?
   clienteDecisao              String?
@@ -5314,6 +5319,12 @@ enum NotificacaoTipo {
   whatsapp_aguardando
   /// Lead captado pela IA no numero institucional, aguardando alguem.
   lead_novo
+  /// Orçamento com desconto acima do máximo esperando o superior liberar.
+  desconto_pendente
+  /// O superior liberou o desconto (aviso ao vendedor).
+  desconto_liberado
+  /// O superior recusou o desconto (aviso ao vendedor, com o motivo).
+  desconto_recusado
   /// Recado interno da equipe enviado para o usuário.
   recado_interno
   /// O "Calcular" em lote da Sugestão de Compra terminou (ou falhou).

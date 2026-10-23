@@ -1035,6 +1035,9 @@ export class OrcamentosService {
         data: {
           descontoSolicitadoEm: new Date(),
           descontoSolicitadoPor: user.id,
+          descontoRecusadoEm: null,
+          descontoRecusadoPor: null,
+          descontoRecusaMotivo: null,
           updatedBy: user.id,
         },
         include: INCLUDE,
@@ -1116,6 +1119,77 @@ export class OrcamentosService {
         'autorizacao_concedida',
         atualizado,
         `Desconto acima do máximo liberado para o orçamento "${atualizado.titulo}". Justificativa: ${justificativa}`,
+      );
+      return ocultarComissaoDosItens(
+        atualizado,
+        user,
+        await this.comissaoOcultaParaTodos(empresaId),
+      );
+    });
+  }
+
+  /**
+   * O superior recusa o pedido de liberação, com o motivo. O pedido volta a
+   * "não solicitado": o vendedor vê o motivo no orçamento, ajusta o desconto
+   * (o que derruba qualquer liberação) ou pede de novo.
+   */
+  async recusarDesconto(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    justificativa: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const orcamento = await this.buscarParaAcao(
+        tx,
+        empresaId,
+        { tipo: 'usuario', user },
+        id,
+      );
+      if (orcamento.descontoAutorizadoEm) {
+        throw new ConflictException(
+          'O desconto deste orçamento já está autorizado',
+        );
+      }
+      if (!orcamento.descontoSolicitadoEm) {
+        throw new ConflictException(
+          'Não há pedido de autorização de desconto para recusar',
+        );
+      }
+
+      const atualizado = await tx.orcamento.update({
+        where: { id },
+        data: {
+          descontoSolicitadoEm: null,
+          descontoSolicitadoPor: null,
+          descontoRecusadoEm: new Date(),
+          descontoRecusadoPor: user.id,
+          descontoRecusaMotivo: justificativa,
+          updatedBy: user.id,
+        },
+        include: INCLUDE,
+      });
+      // Fecha a pendência da agenda: a decisão já foi tomada.
+      await tx.atividade.updateMany({
+        where: {
+          orcamentoId: id,
+          empresaId,
+          concluida: false,
+          titulo: { startsWith: 'Autorização de desconto solicitada' },
+        },
+        data: {
+          concluida: true,
+          dataConclusao: new Date(),
+          updatedBy: user.id,
+        },
+      });
+      await registrarAtividadeOrcamento(
+        tx,
+        empresaId,
+        user.id,
+        'autorizacao_recusada',
+        atualizado,
+        `Desconto recusado no orçamento "${atualizado.titulo}". Motivo: ${justificativa}`,
       );
       return ocultarComissaoDosItens(
         atualizado,

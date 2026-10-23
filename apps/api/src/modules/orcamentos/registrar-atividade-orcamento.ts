@@ -25,7 +25,8 @@ export type EventoOrcamento =
   | 'aprovacao_cliente'
   | 'recusa_cliente'
   | 'autorizacao_solicitada'
-  | 'autorizacao_concedida';
+  | 'autorizacao_concedida'
+  | 'autorizacao_recusada';
 
 const TITULO: Record<EventoOrcamento, (numero: string) => string> = {
   criacao: (n) => `Orçamento nº ${n} cadastrado`,
@@ -38,6 +39,7 @@ const TITULO: Record<EventoOrcamento, (numero: string) => string> = {
   autorizacao_solicitada: (n) =>
     `Autorização de desconto solicitada — orçamento nº ${n}`,
   autorizacao_concedida: (n) => `Desconto autorizado — orçamento nº ${n}`,
+  autorizacao_recusada: (n) => `Desconto recusado — orçamento nº ${n}`,
 };
 
 export interface OrcamentoParaAtividade {
@@ -114,9 +116,20 @@ export async function registrarAtividadeOrcamento(
       ? ('orcamento_aprovado' as const)
       : evento === 'recusa_cliente'
         ? ('orcamento_recusado' as const)
-        : null;
+        : evento === 'autorizacao_solicitada'
+          ? ('desconto_pendente' as const)
+          : evento === 'autorizacao_concedida'
+            ? ('desconto_liberado' as const)
+            : evento === 'autorizacao_recusada'
+              ? ('desconto_recusado' as const)
+              : null;
+  // O pedido de liberação vai para o superior; a resposta, para o vendedor.
   const usuarioId = tipo
-    ? await usuarioDoVendedor(tx, empresaId, orcamento.vendedorId)
+    ? await usuarioDoVendedor(
+        tx,
+        empresaId,
+        tipo === 'desconto_pendente' ? vendedorDestino : orcamento.vendedorId,
+      )
     : null;
   if (tipo && usuarioId) {
     await registrarNotificacao(tx, {
@@ -129,8 +142,13 @@ export async function registrarAtividadeOrcamento(
           codigoErp: orcamento.codigoErp ?? null,
         }),
       ),
-      descricao: orcamento.titulo,
-      rota: `/crm/orcamentos/${orcamento.id}`,
+      descricao: descricao ?? orcamento.titulo,
+      // O pedido de liberação abre na Posição de Cliente: o superior decide
+      // com os títulos e o histórico do cliente à vista.
+      rota:
+        tipo === 'desconto_pendente' && orcamento.clienteId
+          ? `/comercial/posicao-cliente/${orcamento.clienteId}?aba=liberacoes`
+          : `/crm/orcamentos/${orcamento.id}`,
       referenciaId: orcamento.id,
       // Quem registrou a resposta do cliente não precisa ser avisado dela;
       // o aviso existe para quando **outra pessoa** (supervisor, integração)

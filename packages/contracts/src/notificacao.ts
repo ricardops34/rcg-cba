@@ -36,6 +36,9 @@ export const NOTIFICACAO_TIPOS = [
   "roteiro_cancelado",
   /** Supervisão: o horário passou sem o atendimento ser feito. */
   "roteiro_atraso",
+  "desconto_pendente",
+  "desconto_liberado",
+  "desconto_recusado",
 ] as const;
 export const notificacaoTipoSchema = z.enum(NOTIFICACAO_TIPOS);
 export type NotificacaoTipo = z.infer<typeof notificacaoTipoSchema>;

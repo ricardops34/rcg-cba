@@ -200,6 +200,27 @@ export class OrcamentosController {
   }
 
   @ApiOperation({
+    summary: 'Recusar o pedido de autorização de desconto',
+    description:
+      'Devolve o pedido ao vendedor com o motivo (obrigatório), conclui a pendência da agenda ' +
+      'e avisa o vendedor no sino. Requer orcamentos.aprovar.',
+  })
+  @RequirePermission('orcamentos', 'aprovar')
+  @Post(':id/recusar-desconto')
+  recusarDesconto(
+    @Param('id') id: string,
+    @Body() dto: OrcamentoAutorizarDescontoDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.recusarDesconto(
+      user.empresaAtivaId,
+      user,
+      id,
+      dto.justificativa,
+    );
+  }
+
+  @ApiOperation({
     summary: 'Baixar a proposta comercial em PDF',
     description:
       'Monta o arquivo no servidor e registra a emissão no histórico do orçamento/cliente. ' +

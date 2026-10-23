@@ -16,6 +16,7 @@ import {
   UserPlus,
   Building2,
   Lightbulb,
+  TriangleAlert,
 } from "lucide-react";
 import type {
   NotificacaoItem,
@@ -45,6 +46,9 @@ const ICONE: Record<NotificacaoTipo, typeof Bell> = {
   // chaves, e o TypeScript vinha acusando sem ninguem ver.
   whatsapp_aguardando: MessageCircle,
   lead_novo: UserPlus,
+  desconto_pendente: TriangleAlert,
+  desconto_liberado: CircleCheck,
+  desconto_recusado: CircleX,
   recado_interno: Bell,
   sugestao_compra_calculada: Lightbulb,
   clientes_receita_atualizados: Building2,
@@ -66,6 +70,10 @@ const URGENTE: Record<NotificacaoTipo, boolean> = {
   // Cliente esperando e lead novo sao oportunidade, nao falha: aparecem sem
   // vermelho, que fica reservado para prazo estourado.
   whatsapp_aguardando: false,
+  // Esperando decisão do superior: chama atenção, mas não é falha.
+  desconto_pendente: true,
+  desconto_liberado: false,
+  desconto_recusado: true,
   lead_novo: false,
   recado_interno: false,
   sugestao_compra_calculada: false,
