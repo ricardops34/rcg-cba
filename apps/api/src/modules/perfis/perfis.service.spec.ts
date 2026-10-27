@@ -138,3 +138,44 @@ describe('PerfisService — dono do perfil', () => {
     expect(prisma.perfil.create.mock.calls[0][0].data.grupoEconomicoId).toBeNull();
   });
 });
+
+describe('PerfisService — copiar', () => {
+  it('cria no grupo do ator, com o nome novo e as permissões do original', async () => {
+    const { service, prisma } = montar({ grupoEconomicoId: GRUPO });
+    prisma.perfil.findFirst.mockResolvedValue({
+      id: 'perfil-1',
+      nome: 'Vendedor',
+      sistemaBase: false,
+      administraPlataforma: false,
+      grupoEconomicoId: null,
+      carteiraCompleta: true,
+      permissoes: [{ rotinaId: 'r1', acao: 'visualizar', permitido: true }],
+    });
+
+    await service.copiar('perfil-1', { nome: 'Vendedor Sênior' }, adminEmpresa);
+
+    const dados = (prisma.perfil.create.mock.calls[0][0] as { data: Record<string, unknown> }).data;
+    expect(dados).toMatchObject({
+      nome: 'Vendedor Sênior',
+      grupoEconomicoId: GRUPO,
+      carteiraCompleta: true,
+    });
+    expect((dados.permissoes as { create: unknown[] }).create).toHaveLength(1);
+  });
+
+  it('não copia perfil de sistema', async () => {
+    const { service, prisma } = montar({ sistemaBase: true });
+    prisma.perfil.findFirst.mockResolvedValue({
+      id: 'perfil-1',
+      sistemaBase: true,
+      administraPlataforma: false,
+      grupoEconomicoId: null,
+      permissoes: [],
+    });
+
+    await expect(
+      service.copiar('perfil-1', { nome: 'Outro' }, adminEmpresa),
+    ).rejects.toThrow(ForbiddenException);
+    expect(prisma.perfil.create).not.toHaveBeenCalled();
+  });
+});

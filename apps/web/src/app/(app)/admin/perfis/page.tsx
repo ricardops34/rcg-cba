@@ -5,7 +5,17 @@ import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Perfil } from "@plataforma/contracts";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
-import { ApiError } from "@/lib/api-client";
+import { ApiError, apiFetch } from "@/lib/api-client";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { Input } from "@/components/ui/input";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 import { StatusDot } from "@/components/crud/status-dot";
@@ -41,6 +51,7 @@ import {
   Plus,
   MoreHorizontal,
   Pencil,
+  Copy,
   Trash2,
 } from "lucide-react";
 
@@ -72,6 +83,23 @@ export default function PerfisPage() {
         : {}),
     });
   const { remove } = useResourceMutations("perfis");
+  const queryClient = useQueryClient();
+
+  // Copiar: pede o nome do novo perfil e abre a matriz dele, para ajustar.
+  const [copiando, setCopiando] = useState<Perfil | null>(null);
+  const [nomeCopia, setNomeCopia] = useState("");
+  const copiar = useMutation({
+    mutationFn: ({ id, nome }: { id: string; nome: string }) =>
+      apiFetch<Perfil>(`/perfis/${id}/copiar`, { method: "POST", body: { nome } }),
+    onSuccess: (novo) => {
+      void queryClient.invalidateQueries({ queryKey: ["perfis"] });
+      toast.success("Perfil copiado. Ajuste as permissões do novo perfil.");
+      setCopiando(null);
+      router.push(`/admin/perfis/${novo.id}?tab=permissoes`);
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Erro ao copiar o perfil"),
+  });
 
   const filtrosAtivos = sistemaBase !== "todos";
   const limparFiltros = () => {
@@ -175,6 +203,16 @@ export default function PerfisPage() {
             <DropdownMenuItem onClick={() => openEdit(p)}>
               <Pencil className="size-4" /> {podeAlterar(p) ? "Editar perfil" : "Ver perfil"}
             </DropdownMenuItem>
+            {!p.sistemaBase && (
+              <DropdownMenuItem
+                onClick={() => {
+                  setCopiando(p);
+                  setNomeCopia(`Cópia de ${p.nome}`);
+                }}
+              >
+                <Copy className="size-4" /> Copiar perfil
+              </DropdownMenuItem>
+            )}
             {!p.sistemaBase && podeAlterar(p) && (
               <DropdownMenuItem
                 variant="destructive"
@@ -355,6 +393,37 @@ export default function PerfisPage() {
           setSortOrder(order);
         }}
       />
+
+      <Dialog open={!!copiando} onOpenChange={(aberto) => !aberto && setCopiando(null)}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Copiar perfil</DialogTitle>
+            <DialogDescription>
+              Cria um perfil novo com as mesmas permissões, rotina inicial e
+              alcance de carteira de &quot;{copiando?.nome}&quot;. Depois é só
+              ajustar o que for diferente.
+            </DialogDescription>
+          </DialogHeader>
+          <Input
+            autoFocus
+            maxLength={80}
+            value={nomeCopia}
+            onChange={(e) => setNomeCopia(e.target.value)}
+            placeholder="Nome do novo perfil"
+          />
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setCopiando(null)}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={nomeCopia.trim().length < 2 || copiar.isPending}
+              onClick={() => copiando && copiar.mutate({ id: copiando.id, nome: nomeCopia.trim() })}
+            >
+              {copiar.isPending ? "Copiando..." : "Copiar"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

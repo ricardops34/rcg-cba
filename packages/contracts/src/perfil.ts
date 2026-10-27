@@ -24,6 +24,11 @@ export const perfilCreateSchema = z.object({
 });
 export type PerfilCreate = z.infer<typeof perfilCreateSchema>;
 
+export const perfilCopiarSchema = z.object({
+  nome: z.string().trim().min(2).max(80).describe("Nome do novo perfil (deve ser diferente dos já existentes)"),
+});
+export type PerfilCopiar = z.infer<typeof perfilCopiarSchema>;
+
 export const perfilUpdateSchema = perfilCreateSchema.partial();
 export type PerfilUpdate = z.infer<typeof perfilUpdateSchema>;
 

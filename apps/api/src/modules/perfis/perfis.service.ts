@@ -13,6 +13,7 @@ import {
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { grupoDaEmpresa } from '../../common/perfil/perfil-do-grupo';
 import type {
+  PerfilCopiar,
   PerfilCreate,
   PerfilPermissoesUpdate,
   PerfilQuery,
@@ -233,6 +234,58 @@ export class PerfisService {
       return formatPerfil(copia);
     } catch (err) {
       if (nomeRepetido(err)) throw new ConflictException('Seu grupo já tem um perfil com este nome');
+      throw err;
+    }
+  }
+
+  /**
+   * Cria um perfil novo a partir de outro, com as permissões, a rotina
+   * inicial e o alcance de carteira — o jeito de montar "Vendedor Sênior" sem
+   * marcar a matriz inteira de novo. A cópia nasce no grupo do ator (ou na
+   * plataforma, para o administrador dela), como `create`.
+   *
+   * Perfil de sistema não se copia: o código o procura e o concede por conta
+   * própria, e uma cópia com os mesmos poderes seria um caminho de
+   * escalonamento. Quem não é administrador da plataforma também não copia
+   * perfil que dá acesso à plataforma.
+   */
+  async copiar(id: string, input: PerfilCopiar, user: AuthenticatedUser) {
+    const grupoEconomicoId = user.administradorPlataforma
+      ? null
+      : await this.grupoDoAtor(user);
+    if (!user.administradorPlataforma && !grupoEconomicoId) {
+      throw new ForbiddenException('A empresa ativa não pertence a um grupo econômico');
+    }
+    const origem = await this.findOne(id, user);
+    if (origem.sistemaBase || origem.administraPlataforma) {
+      throw new ForbiddenException('Perfil de sistema não pode ser copiado');
+    }
+    try {
+      const copia = await this.prisma.perfil.create({
+        data: {
+          nome: input.nome,
+          descricao: origem.descricao,
+          ativo: origem.ativo,
+          rotinaInicialId: origem.rotinaInicialId,
+          carteiraCompleta: origem.carteiraCompleta,
+          grupoEconomicoId,
+          createdBy: user.id,
+          updatedBy: user.id,
+          permissoes: {
+            create: origem.permissoes.map((p) => ({
+              rotinaId: p.rotinaId,
+              acao: p.acao,
+              permitido: p.permitido,
+              createdBy: user.id,
+              updatedBy: user.id,
+            })),
+          },
+        },
+        include: { rotinaInicial: { include: { menu: true } } },
+      });
+      return formatPerfil(copia);
+    } catch (err) {
+      if (nomeRepetido(err)) throw new ConflictException('Já existe um perfil com este nome');
       throw err;
     }
   }

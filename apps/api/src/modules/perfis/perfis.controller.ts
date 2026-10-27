@@ -23,6 +23,7 @@ import {
 } from '@plataforma/contracts';
 import { PerfisService } from './perfis.service';
 import {
+  PerfilCopiarDto,
   PerfilCreateDto,
   PerfilPermissoesUpdateDto,
   PerfilQueryDto,
@@ -96,6 +97,24 @@ export class PerfisController {
   @Post(':id/personalizar')
   personalizar(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
     return this.service.personalizar(id, user);
+  }
+
+  @ApiOperation({
+    summary: 'Copiar perfil',
+    description:
+      'Cria um perfil novo, com o nome informado, a partir de outro: copia as permissões, a rotina inicial ' +
+      'e o alcance de carteira. Perfis de sistema não são copiados. Requer perfis.cadastrar.',
+  })
+  @ApiParam({ name: 'id', example: PERFIL_ID_EXAMPLE })
+  @ApiBodyExample({ nome: 'Vendedor Sênior' })
+  @RequirePermission('perfis', 'cadastrar')
+  @Post(':id/copiar')
+  copiar(
+    @Param('id') id: string,
+    @Body() dto: PerfilCopiarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.copiar(id, dto, user);
   }
 
   @ApiOperation({
