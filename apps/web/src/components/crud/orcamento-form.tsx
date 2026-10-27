@@ -1749,8 +1749,9 @@ export function OrcamentoFormContent({
             {avulso && (
               <div className="space-y-2 rounded-lg border border-dashed px-3 py-3">
                 <p className="text-xs text-muted-foreground">
-                  Dados do interessado — ficam só neste orçamento. O preço usa a tabela padrão da praça
-                  informada. Para aprovar e enviar ao ERP, cadastre o cliente e refaça o orçamento para ele.
+                  Dados do interessado — ficam só neste orçamento. Escolha a tabela de preços adequada
+                  a ele no campo &quot;Tabela de preços&quot;. Para aprovar, desmarque &quot;Não é cliente
+                  (orçamento avulso)&quot; e selecione o cliente no cadastro.
                 </p>
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <Field>
