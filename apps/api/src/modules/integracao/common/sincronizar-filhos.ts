@@ -4,7 +4,7 @@ import { BadRequestException } from '@nestjs/common';
  * Consolida repetições da mesma chave antes de resolver FKs ou montar o nested
  * write do Prisma.
  *
- * O Protheus mantém fisicamente registros excluídos. Em versões antigas do
+ * O ERP mantém fisicamente registros excluídos. Em versões antigas do
  * integrador, um JOIN podia mandar a versão ativa e a excluída da mesma chave
  * no mesmo payload. Nesse caso a ativa representa o estado atual. Repetições
  * idênticas também são inofensivas; duas versões ativas diferentes, porém,

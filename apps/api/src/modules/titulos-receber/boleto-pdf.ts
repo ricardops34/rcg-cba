@@ -187,7 +187,7 @@ export function linhasPagador(p: BoletoPdfDados['pagador']): string[] {
 }
 
 // ---------------------------------------------------------------------------
-// Desenho — no padrão do boleto impresso pelo ERP (Protheus). As colunas foram
+// Desenho — no padrão do boleto impresso pelo ERP. As colunas foram
 // medidas no PDF de referência: a da direita (vencimento, valores) tem ~33 mm
 // e começa em 157,6 mm; as divisórias internas caem nos mesmos pontos em todas
 // as vias.

@@ -5,7 +5,7 @@ import type { TenantTx } from '../../../common/prisma/prisma.service';
  * Traduz o `produtoChave` enviado pelo ERP no id do Produto.
  *
  * Só **igualdade**, na ordem em que o ERP identifica o produto:
- * 1. `chave` (com e sem espaços nas pontas — o Protheus alinha campo com espaço);
+ * 1. `chave` (com e sem espaços nas pontas — o ERP alinha campo com espaço);
  * 2. `codigoErp`, igualmente.
  *
  * Havia um terceiro passo, "contém" em `chave` e `codigoErp`, e ele ligava o

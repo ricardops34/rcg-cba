@@ -11,7 +11,7 @@ import {
 } from "./orcamento";
 
 // Plano docs/planos/2026-09-22-chave-integracao.md. Todo registro da integração
-// é identificado pela `chave`: a chave única do Protheus (X2_UNICO), com "-"
+// é identificado pela `chave`: a chave única do ERP (X2_UNICO), com "-"
 // entre os campos. É por ela que a API cadastra, atualiza, exclui e liga os
 // registros, e as referências entre registros vão como `…Chave`. O
 // `codigoErp` é só informativo (título "Código" na tela) e existe nos
@@ -210,7 +210,7 @@ export const integracaoArmazemCreateSchema = z.object({
     .boolean()
     .default(true)
     .describe(
-      "Armazém de revenda (MV_BJAPI16 no Protheus). Só o estoque destes conta na plataforma",
+      "Armazém de revenda (MV_BJAPI16 no ERP). Só o estoque destes conta na plataforma",
     ),
 });
 export type IntegracaoArmazemCreate = z.infer<
@@ -752,7 +752,7 @@ export const integracaoEstoqueCreateSchema = z.object({
     .number()
     .nullable()
     .optional()
-    .describe("Saldo disponível para venda (SaldoSB2 no Protheus)"),
+    .describe("Saldo disponível para venda (SaldoSB2 no ERP)"),
   dataEnvio: z.coerce
     .date()
     .describe("Data e hora UTC em que o saldo foi coletado para envio"),
@@ -995,7 +995,7 @@ export const integracaoNotaSaidaCreateSchema = z.object({
   vlrDevolucao: z.coerce.number().default(0),
   chaveNfe: z.string().trim().max(44).nullable().optional(),
   dtNfe: dataCivilSchema.nullable().optional(),
-  // Mensagem da nota (F2_MENNOTA/F1_MENNOTA é memo no Protheus): no banco é
+  // Mensagem da nota (F2_MENNOTA/F1_MENNOTA é memo no ERP): no banco é
   // texto sem limite. Os 500 de antes recusavam a nota inteira.
   mensagem: z.string().trim().max(10000).nullable().optional(),
   // F2_DUPL. Vazio = a nota não gerou financeiro (comodato, bonificação,
@@ -1381,7 +1381,7 @@ export const integracaoNotaEntradaCreateSchema = z.object({
   vlrDespesa: z.coerce.number().default(0),
   chaveNfe: z.string().trim().max(44).nullable().optional(),
   dtNfe: dataCivilSchema.nullable().optional(),
-  // Mensagem da nota (F2_MENNOTA/F1_MENNOTA é memo no Protheus): no banco é
+  // Mensagem da nota (F2_MENNOTA/F1_MENNOTA é memo no ERP): no banco é
   // texto sem limite. Os 500 de antes recusavam a nota inteira.
   mensagem: z.string().trim().max(10000).nullable().optional(),
   // F1_DUPL: a nota gerou contas a pagar. Mesmo comportamento da saída
@@ -1503,7 +1503,7 @@ export const INTEGRACAO_NOTA_ENTRADA_EXAMPLE: IntegracaoNotaEntrada = {
 // ------------------------------------------------------------------
 // Baixas do título (mestre-detalhe) — o que o cliente pagou de verdade.
 // ------------------------------------------------------------------
-// Espelho da SE5 do Protheus. A plataforma **não cria, não altera e não
+// Espelho da SE5 do ERP. A plataforma **não cria, não altera e não
 // estorna** baixa: ela é ato financeiro do ERP e chega só por aqui.
 //
 // Vem como lista dentro do título, com as mesmas regras de item das notas:
@@ -1529,7 +1529,7 @@ export const integracaoTituloReceberBaixaSchema = z.object({
     .date()
     .nullable()
     .optional()
-    .describe("Data da baixa (E5_DATA no Protheus)"),
+    .describe("Data da baixa (E5_DATA no ERP)"),
   valor: z.coerce
     .number()
     .default(0)
@@ -1675,7 +1675,7 @@ export const integracaoTituloReceberCreateSchema = z.object({
     .nullable()
     .optional()
     .describe(
-      "Código de compensação do banco cobrador (E1_PORTADO no Protheus). 237 = Bradesco.",
+      "Código de compensação do banco cobrador (E1_PORTADO no ERP). 237 = Bradesco.",
     ),
   bancoNome: z
     .string()
@@ -2453,7 +2453,7 @@ export function integracaoLoteItemSchema<T extends z.AnyZodObject>(
     .partial()
     .extend({
       // Sem espaços nas pontas, como as chaves de referência: tabela
-      // compartilhada do Protheus manda a filial em branco ("  -01"), e a
+      // compartilhada do ERP manda a filial em branco ("  -01"), e a
       // referência a ela chega aparada ("-01"). Gravada com os espaços, a
       // chave nunca casava — categoria pai, produto, cliente, vendedor.
       chave: z.string().trim().min(1),

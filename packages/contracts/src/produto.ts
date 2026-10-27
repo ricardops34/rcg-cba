@@ -73,7 +73,7 @@ export const produtoSchema = produtoCreateSchema.extend({
   empresaId: z.string().uuid(),
   // Chave de integração (X2_UNICO). Só leitura: quem a define é o ERP, e é ela
   // que diz de onde o produto veio — com chave, o cadastro é espelho do
-  // Protheus e a tela não edita os campos que o import sobrescreve; sem chave,
+  // ERP e a tela não edita os campos que o import sobrescreve; sem chave,
   // o produto nasceu aqui e é editável por inteiro.
   chave: z.string().nullable().optional(),
   fabricanteId: z.string().uuid().nullable().optional(),

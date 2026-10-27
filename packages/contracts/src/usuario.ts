@@ -83,7 +83,7 @@ export const usuarioEmpresaCreateSchema = z.object({
     .trim()
     .max(40)
     .optional()
-    .describe("Código do vendedor no ERP de origem (ex.: Protheus), usado para conciliar vendas importadas"),
+    .describe("Código do vendedor no ERP de origem, usado para conciliar vendas importadas"),
   nomeReduzido: z
     .string()
     .trim()

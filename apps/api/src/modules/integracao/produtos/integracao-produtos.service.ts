@@ -413,7 +413,7 @@ export class IntegracaoProdutosService {
     informado: string | null | undefined,
   ) {
     const valorInformado = informado?.trim();
-    // Integrações Protheus antigas concatenavam FILIAL + "-" + B1_LOCPAD.
+    // Integrações antigas concatenavam FILIAL + "-" + B1_LOCPAD.
     // Quando ambos estavam vazios, o resultado era apenas "-", que representa
     // ausência de armazém e deve acionar o fallback da empresa.
     const chaveInformada =

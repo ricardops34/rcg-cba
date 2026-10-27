@@ -22,7 +22,7 @@ export class IntegracaoFileController {
   }
 
   @Get('exportar')
-  @ApiOperation({ summary: 'Exporta as pendências da plataforma em formato TXT para o Protheus' })
+  @ApiOperation({ summary: 'Exporta as pendências da plataforma em formato TXT para o ERP' })
   @ApiProduces('text/plain')
   async exportarArquivo(
     @CurrentIntegracao() ctx: IntegracaoContext,

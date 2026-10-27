@@ -62,7 +62,7 @@ export type EncargosCalculados = {
  * - **Juros**: o valor por dia de atraso do título, multiplicado pelos dias.
  *
  * **Só o valor do ERP** (decisão do usuário, 2026-10-09): `multaValor` e
- * `jurosValorDia`, o que o Protheus calculou e imprimiu no boleto original. O
+ * `jurosValorDia`, o que o ERP calculou e imprimiu no boleto original. O
  * percentual da conta bancária não entra mais — título sem valor do ERP não
  * tem encargo, e a conta devolve o próprio saldo. Inventar encargo cobraria do
  * cliente um valor que o boleto na mão dele não diz.

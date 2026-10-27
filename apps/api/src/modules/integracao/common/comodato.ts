@@ -3,7 +3,7 @@ import type { TenantTx } from '../../../common/prisma/prisma.service';
 /**
  * Comodato marcado pelo CFOP do item, e não só pelo que o ERP informa.
  *
- * O Protheus nunca mandou `comodato` (conferido em 2026-10-06: falso nas 113
+ * O ERP nunca mandou `comodato` (conferido em 2026-10-06: falso nas 113
  * mil notas de saída, inclusive nas 5 mil remessas), mas o CFOP é o que a lei
  * exige no documento e não falha:
  *

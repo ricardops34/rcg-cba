@@ -11,7 +11,7 @@ import {
 } from '../../../common/pagination/paginate';
 import { CAMPOS_ENVIO_ERP } from '../../clientes/cliente-alteracoes.service';
 
-/** CNAE em 7 dígitos com a máscara do CC3 do Protheus: 4639701 → 4639-7/01. */
+/** CNAE em 7 dígitos com a máscara do CC3 do ERP: 4639701 → 4639-7/01. */
 const cnaeComMascara = (codigo: string | null | undefined) =>
   codigo && codigo.length === 7
     ? `${codigo.slice(0, 4)}-${codigo[4]}/${codigo.slice(5)}`

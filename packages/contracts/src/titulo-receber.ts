@@ -8,7 +8,7 @@ export const tituloReceberStatusSchema = z.enum(["aberto", "vencido", "baixado"]
 export type TituloReceberStatus = z.infer<typeof tituloReceberStatusSchema>;
 
 // Uma baixa do título: o que o cliente pagou, movimento a movimento. Vem da
-// SE5 do Protheus pelo import. A plataforma não cria nem estorna baixa — ela
+// SE5 do ERP pelo import. A plataforma não cria nem estorna baixa — ela
 // só mostra o que o ERP liquidou.
 //
 // Os encargos são sempre positivos: o sinal está no nome do campo. O que

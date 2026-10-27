@@ -20,7 +20,7 @@ import type { NfeDados, NfeItem } from './nfe-xml';
  *   arquivo que foi transmitido seria produzir um papel que não corresponde à
  *   nota — e o papel é justamente o que o cliente e o fiscal olham.
  *
- * O layout reproduz o DANFE retrato que o Protheus imprime (pedido do usuário,
+ * O layout reproduz o DANFE retrato que o ERP imprime (pedido do usuário,
  * 01/10/2026, com o PDF do ERP como modelo): mesmos quadros, na mesma ordem,
  * com a mesma composição de campos — o cliente recebe pelo WhatsApp o mesmo
  * papel que receberia do faturamento. Datas e horas saem como estão no XML,

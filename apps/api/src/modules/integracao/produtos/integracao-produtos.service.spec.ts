@@ -83,7 +83,7 @@ describe('IntegracaoProdutosService', () => {
     );
   });
 
-  it('trata a chave "-" do Protheus como armazém vazio', async () => {
+  it('trata a chave "-" do ERP como armazém vazio', async () => {
     const { service, tx, parametros } = montar('01-01');
 
     await service.create(empresaId, apiKeyId, {

@@ -238,7 +238,7 @@ export const MENUS: DefinicaoMenu[] = [
   // código só, quem pode consultar veria também a tela de manutenção.
   //
   // Num produto vindo do ERP a tela de manutenção não altera os campos que o
-  // Protheus manda (ver CAMPOS_DO_ERP em produtos.service.ts).
+  // ERP manda (ver CAMPOS_DO_ERP em produtos.service.ts).
   {
     id: 'seed-menu-produtos-cadastro',
     nome: 'Produtos',
@@ -565,7 +565,7 @@ export const MENUS: DefinicaoMenu[] = [
     moduloId: MODULO.cadastros,
   },
   // Notas de Saída e Títulos a Receber são espelho do ERP: leitura do que o
-  // Protheus mandou, sem CRUD próprio. Ficavam no módulo Comercial e mudaram
+  // ERP mandou, sem CRUD próprio. Ficavam no módulo Comercial e mudaram
   // para Cadastros em 2026-09-02, a pedido do usuário — o Comercial é o que o
   // vendedor **faz** (atender, orçar, cobrar), e estes dois são o registro do
   // que já foi faturado. A rota continua `/comercial/...`: notificações e

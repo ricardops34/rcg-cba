@@ -138,7 +138,7 @@ export function ProdutoDetalheContent({
             <Info label="Unidade" value={produto.unidade} />
             <Info label="Qtd. embalagem" value={numero(produto.qtdEmbalagem)} />
             <Info label="Peso" value={numero(produto.peso)} />
-            {/* No Protheus a regra vive no item da tabela de preço (DA1_XDESC);
+            {/* No ERP a regra vive no item da tabela de preço (DA1_XDESC);
                 o produto só tem vínculo próprio quando cadastrado na plataforma. */}
             {produto.regraDesconto ? (
               <Info label="Regra de desconto" value={regraDescontoLabel(produto.regraDesconto)} />

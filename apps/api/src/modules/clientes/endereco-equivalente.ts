@@ -1,6 +1,6 @@
 /**
  * Tipo de logradouro: a forma que o cadastro grava (abreviada, como chega do
- * Protheus: "AV.", "R.") e as grafias que contam como o mesmo tipo na
+ * ERP: "AV.", "R.") e as grafias que contam como o mesmo tipo na
  * comparação. Decisão do usuário, 2026-10-09: abreviar, e endereço que só
  * difere na abreviatura do tipo não é alteração.
  */

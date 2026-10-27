@@ -9,7 +9,7 @@ const expiracaoFutura = z.coerce
   .refine((d) => d == null || d.getTime() > Date.now(), "A data de expiração precisa ser futura");
 
 export const integracaoApiKeyCreateSchema = z.object({
-  nome: z.string().trim().min(1, "Informe um nome").max(100).describe("Ex.: \"ERP Protheus - produção\""),
+  nome: z.string().trim().min(1, "Informe um nome").max(100).describe("Ex.: \"ERP - produção\""),
   expiraEm: expiracaoFutura.describe("Data de expiração — nulo = não expira"),
 });
 export type IntegracaoApiKeyCreate = z.infer<typeof integracaoApiKeyCreateSchema>;
@@ -49,7 +49,7 @@ export type IntegracaoApiKeyQuery = z.infer<typeof integracaoApiKeyQuerySchema>;
 export const INTEGRACAO_API_KEY_EXAMPLE: IntegracaoApiKey = {
   id: "3a4b5c6d-7e8f-4091-a2b3-c4d5e6f70819",
   empresaId: "7b2f2f64-9b1c-4a86-9d3e-1f4a5b6c7d8e",
-  nome: "ERP Protheus - produção",
+  nome: "ERP - produção",
   prefixo: "itg_a1b2c3d4",
   ativo: true,
   expiraEm: null,
@@ -67,6 +67,6 @@ export const INTEGRACAO_API_KEY_CRIADA_EXAMPLE: IntegracaoApiKeyCriada = {
 };
 
 export const INTEGRACAO_API_KEY_CREATE_EXAMPLE: IntegracaoApiKeyCreate = {
-  nome: "ERP Protheus - produção",
+  nome: "ERP - produção",
   expiraEm: null,
 };

@@ -35,7 +35,7 @@ const SORT_FIELDS = new Set([
 /**
  * Campos que o import do ERP grava (ver `integracao-produtos.service.ts`) e
  * que por isso não se editam pela tela num produto que tem `chave`: o próximo
- * sync do Protheus sobrescreveria o que a pessoa digitou, sem avisar ninguém.
+ * sync do ERP sobrescreveria o que a pessoa digitou, sem avisar ninguém.
  *
  * Produto nascido na plataforma não tem `chave` — nele tudo é editável, e o
  * import (que casa por `chave`) nunca encosta.
@@ -364,7 +364,7 @@ export class ProdutosService {
         if (bloqueados.length > 0) {
           throw new BadRequestException(
             `Este produto vem do ERP (chave ${produto.chave}). ` +
-              `Altere no Protheus — o próximo import sobrescreveria o que for ` +
+              `Altere no ERP — o próximo import sobrescreveria o que for ` +
               `mudado aqui em: ${bloqueados.join(', ')}.`,
           );
         }
@@ -388,12 +388,12 @@ export class ProdutosService {
       });
       if (!produto) throw new NotFoundException('Produto não encontrado');
       // Excluir um produto do ERP aqui não resolveria nada: o próximo import
-      // recria pela mesma `chave`. A baixa é no Protheus, que então manda a
+      // recria pela mesma `chave`. A baixa é no ERP, que então manda a
       // exclusão pela integração.
       if (produto.chave) {
         throw new BadRequestException(
           `Este produto vem do ERP (chave ${produto.chave}) e o import o recriaria. ` +
-            'Exclua no Protheus.',
+            'Exclua no ERP.',
         );
       }
       return tx.produto.update({

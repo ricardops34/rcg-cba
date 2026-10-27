@@ -75,7 +75,7 @@ export function* linhasDoArquivo(
 ): Generator<{ linha: number; conteudo: string }> {
   let inicio = 0;
   let numero = 0;
-  // BOM do UTF-8: o Protheus grava com ele conforme a função usada.
+  // BOM do UTF-8: o ERP grava com ele conforme a função usada.
   if (texto[0] === 0xef && texto[1] === 0xbb && texto[2] === 0xbf) inicio = 3;
 
   while (inicio < texto.length) {

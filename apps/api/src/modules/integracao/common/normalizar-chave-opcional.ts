@@ -1,5 +1,5 @@
 /**
- * Normaliza chaves compostas opcionais vindas do Protheus.
+ * Normaliza chaves compostas opcionais vindas do ERP.
  *
  * Campos vazios de tabelas compartilhadas podem chegar como `01-`: a filial
  * foi concatenada, mas o código do relacionamento estava em branco. Isso

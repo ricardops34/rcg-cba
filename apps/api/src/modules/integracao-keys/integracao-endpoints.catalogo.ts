@@ -136,7 +136,7 @@ export const CATALOGO_ENDPOINTS_INTEGRACAO: IntegracaoEndpointCatalogoItem[] = [
   },
   {
     endpointKey: 'arquivo',
-    nome: 'Arquivos TXT Protheus',
+    nome: 'Arquivos TXT do ERP',
     descricao: 'Importação e exportação de arquivos em lote (TXT/JSON).',
     metodos: ['GET', 'POST'],
     rota: '/api/v1/integracao/arquivo',

@@ -75,7 +75,7 @@ export const clienteAlteracaoSchema = z.object({
   motivoRecusa: z.string().nullable(),
   /**
    * Envio ao ERP (fila `cliente_envios_erp`) da alteração aprovada: pendente
-   * até o Protheus confirmar que gravou na SA1. null quando não gerou envio —
+   * até o ERP confirmar que gravou na SA1. null quando não gerou envio —
    * pendente, recusada, vinda do próprio ERP, ou só campo que a SA1 não tem.
    */
   envioErp: z

@@ -44,7 +44,7 @@ import { Eraser, FileText, FileUp, Loader2, Play, RefreshCw, RotateCcw, Trash2, 
 
 /**
  * Carga por arquivo pela tela, em duas abas: **Upload** sobe os arquivos
- * (gerados pelo Protheus ou pelo SQL de docs/integracao/sql) e os deixa
+ * (gerados pelo ERP ou pelo SQL de docs/integracao/sql) e os deixa
  * aguardando; **Processamento** manda processar e acompanha. Quem grava é a
  * API, em segundo plano no servidor — a janela pode ser fechada depois de
  * mandar processar —, pelo mesmo schema e `upsertLote` do PUT de cada
@@ -56,7 +56,7 @@ const CHAVE_CARGAS = ["integracao-cargas"] as const;
 /**
  * A ordem em que a plataforma precisa receber as entidades: vendedor antes de
  * cliente, cliente antes de título. Ela processa na ordem de chegada, então é
- * a ordem do upload que decide. A mesma do catálogo do Protheus (BJCATALO).
+ * a ordem do upload que decide. A mesma do catálogo do ERP (BJCATALO).
  */
 export const ORDEM_CARGA = [
   "regras-desconto",
@@ -275,7 +275,7 @@ export function UploadCargasTab({ onEnviados }: { onEnviados?: () => void }) {
         <div>
           <p className="font-medium">Upload de arquivos de carga</p>
           <p className="text-sm text-muted-foreground">
-            Arquivos JSON gerados pelo Protheus ou pelo SQL, um registro por linha. Escolha vários
+            Arquivos JSON gerados pelo ERP ou pelo SQL, um registro por linha. Escolha vários
             de uma vez: eles sobem um por um, na ordem de carga (vendedores antes de clientes,
             clientes antes de títulos), e ficam <strong>aguardando</strong> — o processamento é
             na aba Processamento. Mantenha esta janela aberta até o upload terminar.

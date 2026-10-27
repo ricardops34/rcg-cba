@@ -13,7 +13,7 @@ const ARMAZEM_SELECT = { select: { id: true, codigoErp: true, descricao: true, a
 // Consulta read-only: o saldo entra só pelo import do legado (e no futuro
 // pela API externa de manutenção) — nada de create/update/delete manual.
 //
-// Só conta o estoque dos armazéns de revenda (MV_BJAPI16 no Protheus, marcado
+// Só conta o estoque dos armazéns de revenda (MV_BJAPI16 no ERP, marcado
 // pelo ERP em armazem.revenda) — decisão de 29/09/2026, vale em toda leitura
 // de estoque da plataforma.
 //

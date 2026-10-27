@@ -9,7 +9,7 @@ export const armazemSchema = z.object({
   codigoErp: z.string(),
   descricao: z.string(),
   ativo: z.boolean(),
-  // Armazém do MV_BJAPI16 no Protheus — só o estoque destes conta na plataforma.
+  // Armazém do MV_BJAPI16 no ERP — só o estoque destes conta na plataforma.
   revenda: z.boolean(),
   ...auditFieldsSchema.shape,
 });

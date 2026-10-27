@@ -115,7 +115,7 @@ export const INTEGRACAO_CARGA_FORMATOS: Record<
     chave: "Escolhida por quem gera; sugestão: <vendedorChave>-<AAAA>-<MM>",
     dependeDe: ["vendedores", "categorias"],
     observacao:
-      "Sem origem no Protheus. As metas por categoria substituem o conjunto inteiro da meta a cada envio.",
+      "Sem origem no ERP. As metas por categoria substituem o conjunto inteiro da meta a cada envio.",
     exemplo: INTEGRACAO_OBJETIVO_CREATE_EXAMPLE,
   },
   "notas-saida": {

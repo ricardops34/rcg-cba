@@ -251,7 +251,7 @@ export class OrcamentosService {
    * orçamento (vlrTabela da Tabela de Preço vinculada ao cliente, com
    * ultimoPreco do produto como fallback informativo quando não há
    * tabela/preço cadastrado) e a coluna "Estoque": o **disponível** (SaldoSB2
-   * do Protheus) somado nos armazéns de revenda — linha enviada antes de o ERP
+   * do ERP) somado nos armazéns de revenda — linha enviada antes de o ERP
    * mandar o disponível cai no saldo físico. Usa a permissão de orcamentos, não a de estoque — é só
    * informativo dentro do form, não a tela de Estoque em si.
    */

@@ -101,7 +101,7 @@ export class EnriquecimentoService {
 
     // Tipo, logradouro e número chegam separados; o cadastro tem um campo só.
     // Sem o tipo, "AV. ZILA CORREA MACHADO" virava "ZILA CORREA MACHADO" na
-    // proposta. Abreviado ("AVENIDA" → "AV."), como o cadastro do Protheus
+    // proposta. Abreviado ("AVENIDA" → "AV."), como o cadastro do ERP
     // grava — decisão do usuário, 2026-10-09. Que "AV." e "AVENIDA" contam
     // como o mesmo endereço é do diff (calcularDiff).
     const tipoReceita = texto(dados.descricao_tipo_de_logradouro);

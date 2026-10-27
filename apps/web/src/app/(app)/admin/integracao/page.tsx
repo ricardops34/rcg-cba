@@ -261,7 +261,7 @@ export default function IntegracaoPage() {
             onClick={() => setImportDialogAberta(true)}
           >
             <Upload className="size-4" />
-            Importar TXT Protheus
+            Importar TXT do ERP
           </Button>
           <Button
             type="button"
@@ -645,7 +645,7 @@ function NovaChaveDialog({ onClose }: { onClose: () => void }) {
                 <FieldLabel htmlFor="nome">Nome da Integração / Sistema</FieldLabel>
                 <Input
                   id="nome"
-                  placeholder="Ex.: ERP Protheus - Produção"
+                  placeholder="Ex.: ERP - Produção"
                   {...form.register("nome")}
                 />
                 <FieldError errors={[form.formState.errors.nome]} />
@@ -751,7 +751,7 @@ function ImportTxtDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Upload className="size-5 text-primary" />
-            Importar Arquivo TXT do Protheus
+            Importar Arquivo TXT do ERP
           </DialogTitle>
         </DialogHeader>
 

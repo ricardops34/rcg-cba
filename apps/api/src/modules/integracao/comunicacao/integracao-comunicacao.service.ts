@@ -8,7 +8,7 @@ import { autorIntegracao } from '../common/autor-integracao';
  * integrador avisa que passou por aqui, e a hora fica no parâmetro
  * ULTIMA_COMUNICACAO_ERP da empresa (Administração > Parâmetros).
  *
- * A hora é a do servidor da plataforma, não a do Protheus: um relógio só,
+ * A hora é a do servidor da plataforma, não a do ERP: um relógio só,
  * comparável com o de quem olha a tela.
  */
 @Injectable()
