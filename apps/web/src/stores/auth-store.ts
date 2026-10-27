@@ -30,9 +30,8 @@ export function ultimaEmpresaDoLogin(): string {
 
 interface AuthState {
   accessToken: string | null;
-  refreshToken: string | null;
   user: CurrentUser | null;
-  setTokens: (accessToken: string, refreshToken: string) => void;
+  setTokens: (accessToken: string) => void;
   setUser: (user: CurrentUser) => void;
   logout: () => void;
   hasPermission: (rotinaCodigo: string, acao: string) => boolean;
@@ -42,9 +41,10 @@ export const useAuthStore = create<AuthState>()(
   persist(
     (set, get) => ({
       accessToken: null,
-      refreshToken: null,
       user: null,
-      setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
+      // O refresh token NÃO fica aqui: vive num cookie HttpOnly que o servidor
+      // grava e o navegador envia sozinho (SEC-11) — script da página não o lê.
+      setTokens: (accessToken) => set({ accessToken }),
       setUser: (user) => {
         lembrarEmpresaDoLogin(user);
         set({ user });
@@ -57,7 +57,16 @@ export const useAuthStore = create<AuthState>()(
         // instância de WhatsApp de uma empresa na tela de outra, depois de
         // trocar de login sem fechar o navegador.
         queryClient.clear();
-        set({ accessToken: null, refreshToken: null, user: null });
+        // Encerra a sessão no servidor e apaga o cookie do refresh token. Sem
+        // esperar: a saída da tela não depende da resposta, e falha de rede
+        // aqui não pode prender o usuário logado.
+        void fetch(`${process.env.NEXT_PUBLIC_API_URL ?? "/api/v1"}/auth/logout`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: "{}",
+          credentials: "include",
+        }).catch(() => undefined);
+        set({ accessToken: null, user: null });
       },
       hasPermission: (rotinaCodigo, acao) => {
         const user = get().user;
@@ -65,6 +74,16 @@ export const useAuthStore = create<AuthState>()(
         return user.permissoes.includes(`${rotinaCodigo}.${acao}`);
       },
     }),
-    { name: "plataforma-auth" },
+    {
+      name: "plataforma-auth",
+      // v1: o refresh token saiu do armazenamento do navegador. Quem tinha o
+      // formato antigo perde o token guardado (precisa entrar de novo uma vez)
+      // e o valor antigo sai do localStorage.
+      version: 1,
+      migrate: (guardado) => {
+        const { refreshToken: _antigo, ...resto } = (guardado ?? {}) as Record<string, unknown>;
+        return resto as unknown as AuthState;
+      },
+    },
   ),
 );

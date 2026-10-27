@@ -143,7 +143,7 @@ function LoginForm() {
         method: "POST",
         body: { ...values, empresaAlias: branding?.alias ?? (alias.trim() || undefined) },
       });
-      setTokens(tokens.accessToken, tokens.refreshToken);
+      setTokens(tokens.accessToken);
 
       // "Lembrar de mim": sem a marca de sessão, o guard encerra o acesso
       // quando o navegador for fechado (nova sessão sem o marcador).

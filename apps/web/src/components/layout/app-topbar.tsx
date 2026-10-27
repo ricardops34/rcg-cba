@@ -75,9 +75,8 @@ export function AppTopbar({
     try {
       const tokens = await apiFetch<{
         accessToken: string;
-        refreshToken: string;
       }>("/auth/switch-empresa", { method: "POST", body: { empresaId } });
-      setTokens(tokens.accessToken, tokens.refreshToken);
+      setTokens(tokens.accessToken);
       const me = await apiFetch<CurrentUser>("/auth/me");
       setUser(me);
       // Recarrega a app inteira: garante que nenhum dado em cache da

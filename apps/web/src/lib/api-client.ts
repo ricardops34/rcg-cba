@@ -177,15 +177,18 @@ function empresaAtivaIdDoToken(accessToken: string): string | null {
 }
 
 async function refreshAccessToken(): Promise<string | null> {
-  const { refreshToken, user, setTokens, setUser, logout } = useAuthStore.getState();
-  if (!refreshToken) return null;
+  const { accessToken, user, setTokens, setUser, logout } = useAuthStore.getState();
+  // Sem sessão neste navegador não há o que renovar. O refresh token em si é um
+  // cookie HttpOnly: o navegador o envia, e o código não o enxerga (SEC-11).
+  if (!accessToken) return null;
 
   let res: Response;
   try {
     res = await fetch(`${resolveApiUrl()}/auth/refresh`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ refreshToken }),
+      body: "{}",
+      credentials: "include",
     });
   } catch (erro) {
     // API fora no meio de uma renovação. Registra e devolve null: quem chamou
@@ -214,7 +217,7 @@ async function refreshAccessToken(): Promise<string | null> {
   }
 
   const data = await res.json();
-  setTokens(data.accessToken, data.refreshToken);
+  setTokens(data.accessToken);
 
   // O refresh normalmente mantém a mesma empresa ativa da sessão, mas pode
   // cair em outra (ex.: vínculo original não existe mais) — se isso
@@ -250,6 +253,9 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     try {
       return await fetch(url.toString(), {
         method,
+        // O login, a troca de empresa e o suporte devolvem o cookie do refresh
+        // token: o navegador só o aceita com isto quando a API é de outra origem.
+        credentials: "include",
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -264,7 +270,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
   let token = useAuthStore.getState().accessToken;
   let res = await doRequest(token);
 
-  if (res.status === 401 && useAuthStore.getState().refreshToken) {
+  if (res.status === 401 && useAuthStore.getState().accessToken) {
     refreshPromise ??= refreshAccessToken().finally(() => {
       refreshPromise = null;
     });
@@ -331,7 +337,7 @@ export async function apiUpload<T>(
   let token = useAuthStore.getState().accessToken;
   let res = await doRequest(token);
 
-  if (res.status === 401 && useAuthStore.getState().refreshToken) {
+  if (res.status === 401 && useAuthStore.getState().accessToken) {
     refreshPromise ??= refreshAccessToken().finally(() => {
       refreshPromise = null;
     });
@@ -374,7 +380,7 @@ export async function apiDownload(path: string, nomePadrao: string): Promise<voi
   let token = useAuthStore.getState().accessToken;
   let res = await doRequest(token);
 
-  if (res.status === 401 && useAuthStore.getState().refreshToken) {
+  if (res.status === 401 && useAuthStore.getState().accessToken) {
     refreshPromise ??= refreshAccessToken().finally(() => {
       refreshPromise = null;
     });
@@ -448,7 +454,7 @@ export async function apiStream<T>(
   let token = useAuthStore.getState().accessToken;
   let res = await doRequest(token);
 
-  if (res.status === 401 && useAuthStore.getState().refreshToken) {
+  if (res.status === 401 && useAuthStore.getState().accessToken) {
     refreshPromise ??= refreshAccessToken().finally(() => {
       refreshPromise = null;
     });

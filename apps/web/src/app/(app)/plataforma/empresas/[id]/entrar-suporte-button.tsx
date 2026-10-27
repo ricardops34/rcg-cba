@@ -41,11 +41,11 @@ export function EntrarSuporteButton({ empresaId }: { empresaId: string }) {
   const entrar = async () => {
     setEntrando(true);
     try {
-      const tokens = await apiFetch<{ accessToken: string; refreshToken: string }>(
+      const tokens = await apiFetch<{ accessToken: string }>(
         `/auth/suporte/${empresaId}`,
         { method: "POST" },
       );
-      setTokens(tokens.accessToken, tokens.refreshToken);
+      setTokens(tokens.accessToken);
       setUser(await apiFetch<CurrentUser>("/auth/me"));
       // Recarrega a app inteira, como a troca de empresa: nada em cache da
       // empresa anterior fica na tela.

@@ -31,11 +31,11 @@ export function AvisoSuportePlataforma() {
     if (!destino) return;
     setSaindo(true);
     try {
-      const tokens = await apiFetch<{ accessToken: string; refreshToken: string }>(
+      const tokens = await apiFetch<{ accessToken: string }>(
         "/auth/switch-empresa",
         { method: "POST", body: { empresaId: destino.empresaId } },
       );
-      setTokens(tokens.accessToken, tokens.refreshToken);
+      setTokens(tokens.accessToken);
       setUser(await apiFetch<CurrentUser>("/auth/me"));
       window.location.assign(`/plataforma/empresas/${suporte.empresaId}`);
     } catch (err) {
