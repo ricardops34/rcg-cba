@@ -1,3 +1,4 @@
+import { sanitizarTermos } from '../../common/html/sanitizar-termos';
 import { existsSync, unlink } from 'node:fs';
 import { garantirVagaDeEmpresa } from '../../common/empresa/limite-empresas';
 import { validarDocumentoEmpresa } from '../../common/empresa/documento-empresa';
@@ -88,7 +89,11 @@ export class EmpresasService {
   /** Campo vazio do formulário vira null no banco (mesmo padrão dos demais cadastros). */
   private limpar<T extends Record<string, unknown>>(input: T) {
     const out: Record<string, unknown> = {};
-    for (const [k, v] of Object.entries(input)) out[k] = v === '' ? null : v;
+    for (const [k, v] of Object.entries(input)) {
+      // O texto dos termos é HTML exibido a todos os usuários da empresa: limpo
+      // aqui, ao gravar (SEC-10) — o navegador limpa de novo ao exibir.
+      out[k] = k === 'termosUso' && typeof v === 'string' ? sanitizarTermos(v) : v === '' ? null : v;
+    }
     return out;
   }
 
