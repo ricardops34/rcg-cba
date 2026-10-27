@@ -11,6 +11,7 @@ import * as bcrypt from 'bcryptjs';
 import { PrismaService, type TenantTx } from '../../common/prisma/prisma.service';
 import { garantirVagaDeUsuario } from '../../common/empresa/limite-usuarios';
 import { PoliticaSenhaService } from '../politica-senha/politica-senha.service';
+import { EntregaSenhaService } from './entrega-senha.service';
 import {
   buildPaginatedResult,
   paginationToSkipTake,
@@ -38,6 +39,7 @@ export class UsuariosService {
     private readonly prisma: PrismaService,
     private readonly politicaSenhaService: PoliticaSenhaService,
     private readonly horarioTrabalho: HorarioTrabalhoService,
+    private readonly entregaSenha: EntregaSenhaService,
   ) {}
 
   /**
@@ -226,13 +228,18 @@ export class UsuariosService {
     );
     if (existente) throw new ConflictException('E-mail já cadastrado');
 
-    await this.politicaSenhaService.validarSenhaDaEmpresa(
-      empresaId,
-      input.senha,
-    );
-    const senhaHash = await bcrypt.hash(input.senha, SALT_ROUNDS);
+    // Sem senha informada: o sistema gera uma provisória, entrega por e-mail
+    // (e SMS) e exige a troca no primeiro login — como no acesso de vendedor.
+    const provisoria = !input.senha;
+    const senha =
+      input.senha ??
+      (await this.politicaSenhaService.gerarSenhaProvisoria(empresaId));
+    if (!provisoria) {
+      await this.politicaSenhaService.validarSenhaDaEmpresa(empresaId, senha);
+    }
+    const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
 
-    return this.prisma.$transaction(async (tx) => {
+    const criado = await this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT set_config('app.current_empresa_id', ${empresaId}, true)`;
       // Dentro da transação de propósito: conferir a vaga fora dela deixaria
       // dois cadastros simultâneos passarem pelo mesmo último lugar.
@@ -249,6 +256,7 @@ export class UsuariosService {
           ativo: input.ativo,
           senhaHash,
           senhaAlteradaEm: new Date(),
+          deveTrocarSenha: provisoria,
           // Perfil e grupo são da conta; o vínculo é só o acesso à empresa.
           perfilId: input.perfilId,
           grupoEconomicoId: await grupoDaEmpresa(tx, empresaId),
@@ -266,6 +274,7 @@ export class UsuariosService {
           id: true,
           nome: true,
           email: true,
+          celular: true,
           ativo: true,
           createdAt: true,
           updatedAt: true,
@@ -289,6 +298,66 @@ export class UsuariosService {
 
       return usuario;
     });
+
+    const { celular, ...publico } = criado;
+    if (!provisoria) return publico;
+
+    // Envio FORA da transação: SMTP indisponível não pode impedir o cadastro.
+    // O acesso é o que importa; a entrega pode ser refeita por "Enviar senha
+    // provisória" no cadastro do usuário.
+    const entrega = await this.entregaSenha.entregar(empresaId, actorId, {
+      nome: publico.nome,
+      email: publico.email,
+      celular,
+      senha,
+      motivo: 'criado',
+    });
+    return { ...publico, ...entrega };
+  }
+
+  /**
+   * Gera uma nova senha provisória, grava (troca obrigatória no próximo login)
+   * e envia por e-mail/SMS. Alternativa ao reset com senha digitada.
+   */
+  async enviarSenhaProvisoria(id: string, empresaId: string, actorId: string) {
+    // Confere que o usuário tem vínculo com a empresa ativa (404 se não).
+    await this.findOne(id, empresaId);
+    const usuario = await this.prisma.usuario.findFirst({
+      where: { id, deletedAt: null },
+    });
+    if (!usuario) throw new NotFoundException('Usuário não encontrado');
+
+    const senha =
+      await this.politicaSenhaService.gerarSenhaProvisoria(empresaId);
+    const senhaHash = await bcrypt.hash(senha, SALT_ROUNDS);
+
+    await this.prisma.$transaction(async (tx) => {
+      await this.politicaSenhaService.registrarHistorico(
+        id,
+        usuario.senhaHash,
+        tx,
+      );
+      await tx.usuario.update({
+        where: { id },
+        data: {
+          senhaHash,
+          senhaAlteradaEm: new Date(),
+          deveTrocarSenha: true,
+          tentativasFalhas: 0,
+          bloqueadoAte: null,
+          updatedBy: actorId,
+        },
+      });
+    });
+
+    const entrega = await this.entregaSenha.entregar(empresaId, actorId, {
+      nome: usuario.nome,
+      email: usuario.email,
+      celular: usuario.celular,
+      senha,
+      motivo: 'redefinida',
+    });
+    return { success: true, ...entrega };
   }
 
   async update(id: string, input: UsuarioUpdate, actorId: string) {

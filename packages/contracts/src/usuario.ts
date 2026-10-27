@@ -17,7 +17,11 @@ export const usuarioCreateSchema = z.object({
     .string()
     .min(1, "Informe a senha")
     .max(128)
-    .describe("Senha inicial do usuário — validada contra a política de senha vigente"),
+    .optional()
+    .describe(
+      "Senha inicial do usuário, validada contra a política de senha vigente. " +
+        "Sem ela, o sistema gera uma senha provisória, envia por e-mail (e SMS) e exige a troca no primeiro login",
+    ),
   ativo: z.boolean().default(true).describe("Usuários inativos não conseguem autenticar"),
   perfilId: z
     .string()

@@ -230,6 +230,23 @@ export class UsuariosController {
   }
 
   @ApiOperation({
+    summary: 'Enviar uma senha provisória ao usuário por e-mail',
+    description:
+      'Gera uma senha provisória, grava e envia por e-mail (e SMS, se houver celular e o ' +
+      'envio estiver ligado); exige a troca no próximo login. Se nenhum canal entregar, a ' +
+      'senha volta na resposta para o admin repassar. Requer usuarios.editar.',
+  })
+  @ApiParam({ name: 'id', example: USUARIO_ID_EXAMPLE })
+  @RequirePermission('usuarios', 'editar')
+  @Post(':id/senha-provisoria')
+  enviarSenhaProvisoria(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.enviarSenhaProvisoria(id, user.empresaAtivaId, user.id);
+  }
+
+  @ApiOperation({
     summary: 'Consultar o horário de trabalho do usuário',
     description:
       'Faixas de expediente por dia da semana e o flag que liga a restrição. ' +

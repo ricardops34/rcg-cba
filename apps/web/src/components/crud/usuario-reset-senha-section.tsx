@@ -8,6 +8,7 @@ import { toast } from "sonner";
 import { resetPasswordSchema, type PoliticaSenha, type ResetPasswordInput } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { buildSenhaSchema, describeRequisitos } from "@/lib/politica-senha";
+import { mensagemDoEnvio, type AcessoEnviado } from "@/lib/acesso-enviado";
 import { Button } from "@/components/ui/button";
 import { PasswordInput } from "@/components/ui/password-input";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -44,6 +45,21 @@ export function UsuarioResetSenhaSection({ usuarioId }: { usuarioId: string }) {
     mutationFn: (input: ResetPasswordInput) =>
       apiFetch(`/usuarios/${usuarioId}/senha`, { method: "PATCH", body: input }),
   });
+
+  // Alternativa à senha digitada: o sistema gera uma provisória e envia ao usuário.
+  const enviarProvisoria = useMutation({
+    mutationFn: () =>
+      apiFetch<AcessoEnviado>(`/usuarios/${usuarioId}/senha-provisoria`, { method: "POST" }),
+  });
+
+  const onEnviarProvisoria = async () => {
+    try {
+      const r = await enviarProvisoria.mutateAsync();
+      toast.success(mensagemDoEnvio("Nova senha gerada", r), { duration: r.senhaProvisoria ? 30000 : undefined });
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Erro ao enviar a senha provisória");
+    }
+  };
 
   const onSubmit = async (values: ResetPasswordInput) => {
     try {
@@ -95,7 +111,16 @@ export function UsuarioResetSenhaSection({ usuarioId }: { usuarioId: string }) {
               Exigir troca no próximo login
             </label>
 
-            <div className="flex justify-end">
+            <div className="flex flex-wrap justify-end gap-2">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                onClick={onEnviarProvisoria}
+                disabled={enviarProvisoria.isPending}
+              >
+                Enviar senha provisória por e-mail
+              </Button>
               <Button
                 type="button"
                 size="sm"

@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -17,6 +18,7 @@ import {
 import { useResourceMutations } from "@/hooks/use-resource";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { buildSenhaSchema, describeRequisitos } from "@/lib/politica-senha";
+import { mensagemDoEnvio, type AcessoEnviado } from "@/lib/acesso-enviado";
 import { UsuarioEmpresasGrupo } from "@/components/crud/usuario-empresas-grupo";
 import { UsuarioDadosGrupo } from "@/components/crud/usuario-dados-grupo";
 import { UsuarioResetSenhaSection } from "@/components/crud/usuario-reset-senha-section";
@@ -58,9 +60,13 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
     enabled: !usuario,
   });
 
+  // Ligado, o sistema gera a senha provisória e a envia por e-mail; desligado,
+  // quem cadastra digita a senha inicial (validada pela política da empresa).
+  const [enviarPorEmail, setEnviarPorEmail] = useState(true);
+
   const schema = usuario
     ? usuarioUpdateSchema
-    : politica
+    : politica && !enviarPorEmail
       ? usuarioCreateSchema.extend({ senha: buildSenhaSchema(politica) })
       : usuarioCreateSchema;
 
@@ -68,7 +74,7 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
     resolver: zodResolver(schema as typeof usuarioCreateSchema),
     defaultValues: usuario
       ? { nome: usuario.nome, email: usuario.email, senha: "", ativo: usuario.ativo, perfilId: "" }
-      : { nome: "", email: "", senha: "", ativo: true, perfilId: perfis?.data[0]?.id ?? "" },
+      : { nome: "", email: "", ativo: true, perfilId: perfis?.data[0]?.id ?? "" },
   });
 
   const onSubmit = async (values: UsuarioCreate) => {
@@ -78,8 +84,12 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
         await update.mutateAsync({ id: usuario.id, input: { nome, email, ativo } });
         toast.success("Usuário atualizado com sucesso");
       } else {
-        await create.mutateAsync(values);
-        toast.success("Usuário cadastrado com sucesso");
+        const { senha, ...resto } = values;
+        const r = (await create.mutateAsync(
+          enviarPorEmail ? resto : { ...resto, senha },
+        )) as AcessoEnviado;
+        if (enviarPorEmail) toast.success(mensagemDoEnvio("Usuário cadastrado", r), { duration: r.senhaProvisoria ? 30000 : undefined });
+        else toast.success("Usuário cadastrado com sucesso");
         router.push(LIST_ROUTE);
       }
     } catch (err) {
@@ -122,12 +132,24 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
 
           {!usuario && (
             <>
-              <Field data-invalid={!!form.formState.errors.senha}>
-                <FieldLabel htmlFor="senha">Senha inicial de acesso</FieldLabel>
-                <PasswordInput id="senha" {...form.register("senha")} />
-                {politica && <FieldDescription>{describeRequisitos(politica).join(" · ")}</FieldDescription>}
-                <FieldError errors={[form.formState.errors.senha]} />
-              </Field>
+              <div className="flex items-center justify-between rounded-lg border bg-muted/20 p-3">
+                <div className="space-y-0.5">
+                  <FieldLabel htmlFor="enviar-por-email" className="text-sm font-medium">Enviar senha provisória por e-mail</FieldLabel>
+                  <FieldDescription className="text-xs">
+                    O sistema gera a senha e envia ao usuário (e por SMS, se houver celular); ele troca no primeiro acesso.
+                  </FieldDescription>
+                </div>
+                <Switch id="enviar-por-email" checked={enviarPorEmail} onCheckedChange={setEnviarPorEmail} />
+              </div>
+
+              {!enviarPorEmail && (
+                <Field data-invalid={!!form.formState.errors.senha}>
+                  <FieldLabel htmlFor="senha">Senha inicial de acesso</FieldLabel>
+                  <PasswordInput id="senha" {...form.register("senha")} />
+                  {politica && <FieldDescription>{describeRequisitos(politica).join(" · ")}</FieldDescription>}
+                  <FieldError errors={[form.formState.errors.senha]} />
+                </Field>
+              )}
 
               <Field data-invalid={!!form.formState.errors.perfilId}>
                 <FieldLabel htmlFor="perfilId">Perfil</FieldLabel>
