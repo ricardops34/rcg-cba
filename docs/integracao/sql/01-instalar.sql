@@ -35,9 +35,24 @@ IF OBJECT_ID('dbo.BJ_CARGA_CONFIG') IS NULL
         descricao nvarchar(400) NULL
     );
 
+-- Trocou de banco, empresa ou filial: o que foi lido da empresa anterior (SX6 e
+-- SYS_COMPANY) nao vale mais. Limpa para o bloco 5 preencher de novo, e descarta
+-- as linhas ja preparadas. O CORTE, que e ajuste manual, fica.
+IF EXISTS (SELECT 1 FROM dbo.BJ_CARGA_CONFIG
+            WHERE (nome = 'BANCO'   AND ISNULL(valor, '') <> @BANCO)
+               OR (nome = 'EMPRESA' AND ISNULL(valor, '') <> @EMPRESA)
+               OR (nome = 'FILIAL'  AND ISNULL(valor, '') <> @FILIAL))
+BEGIN
+    PRINT 'Banco, empresa ou filial diferente da instalacao anterior - limpando parametros e beneficiario.';
+    UPDATE dbo.BJ_CARGA_CONFIG SET valor = NULL
+     WHERE nome IN ('ARMAZENS', 'TIPOS_TITULO', 'PERC_JUROS', 'PERC_MULTA',
+                    'LINHAS_POR_ARQUIVO', 'BEN_NOME', 'BEN_DOC', 'BEN_ENDERECO');
+    IF OBJECT_ID('dbo.BJ_CARGA_LINHAS') IS NOT NULL DELETE dbo.BJ_CARGA_LINHAS;
+END
+
 MERGE dbo.BJ_CARGA_CONFIG AS c
 USING (VALUES
-    ('BANCO',        @BANCO,   N'Banco do Protheus'),
+    ('BANCO',       @BANCO,   N'Banco do Protheus'),
     ('EMPRESA',      @EMPRESA, N'Empresa (sufixo das tabelas)'),
     ('FILIAL',       @FILIAL,  N'Filial da integracao (cFilAnt)'),
     ('CORTE',        NULL,     N'Igual ao MV_BJAPI14, em UTC: AAAA-MM-DD HH:MM:SS. Vazio = origem inteira. Le so o que tem S_T_A_M_P_ >= corte'),
@@ -64,6 +79,24 @@ END;
 GO
 
 -- ---------------------------------------------------------------------------
+-- 2b. O banco informado existe? Se nao, para aqui (NOEXEC pula os demais
+-- blocos; o ultimo bloco do script o desliga) e mostra quais bancos desta
+-- instancia parecem ser o do Protheus.
+-- ---------------------------------------------------------------------------
+IF DB_ID(dbo.BJ_CFG('BANCO')) IS NULL
+BEGIN
+    DECLARE @msg nvarchar(400) = N'O banco "' + ISNULL(dbo.BJ_CFG('BANCO'), N'') +
+        N'" nao existe nesta instancia. Ajuste @BANCO no topo do script e rode de novo.';
+    RAISERROR(@msg, 16, 1);
+
+    PRINT 'Bancos desta instancia (os do Protheus costumam ter tabelas SX2*):';
+    SELECT name AS banco FROM sys.databases WHERE database_id > 4 ORDER BY name;
+
+    SET NOEXEC ON;
+END
+GO
+
+-- ---------------------------------------------------------------------------
 -- 3. Views BJ_<alias>
 --
 -- Os mapeadores leem varios campos so "se existirem" (FieldPos). A view
@@ -79,7 +112,7 @@ DECLARE @sql   nvarchar(max);
 -- alias : campos opcionais (c = caractere, n = numero, d = data/hora)
 DECLARE @tabs TABLE (alias varchar(3) PRIMARY KEY, opcionais varchar(max));
 INSERT @tabs VALUES
-    ('SZ0', ''),
+    ('SZ0', 'Z0_DESCAUT:n,Z0_COMISS:n'),
     ('SZ1', ''),
     ('SBM', 'BM_MSBLQL:c,BM_YTIPO:c'),
     ('SE4', 'E4_FORMA:c,E4_MSBLQL:c'),
@@ -1256,4 +1289,6 @@ GO
 -- ---------------------------------------------------------------------------
 -- 9. Confira a configuracao
 -- ---------------------------------------------------------------------------
+SET NOEXEC OFF;   -- religa a execucao, caso o bloco 2b tenha parado o script
+GO
 SELECT nome, '[' + valor + ']' AS valor, descricao FROM dbo.BJ_CARGA_CONFIG ORDER BY nome;
