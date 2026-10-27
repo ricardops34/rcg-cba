@@ -573,6 +573,28 @@ export class IntegracaoNotasSaidaService {
         },
         include: INCLUDE,
       });
+      // Os itens carregam cópia do cliente, vendedor e emissão do cabeçalho — é
+      // por elas que Dashboard, Objetivos e Consultas somam a venda. PATCH só do
+      // cabeçalho deixava os itens com o vendedor ou o mês antigos, e a venda
+      // seguia contando para quem já não era o dono dela.
+      if (
+        !input.itens &&
+        (input.clienteChave !== undefined ||
+          input.vendedorChave !== undefined ||
+          input.tipo !== undefined ||
+          dtEmissao !== undefined)
+      ) {
+        await tx.notaSaidaItem.updateMany({
+          where: { notaSaidaId: existente.id },
+          data: {
+            clienteId: atualizada.clienteId,
+            vendedorId: atualizada.vendedorId,
+            dtEmissao: atualizada.dtEmissao,
+            ano: atualizada.ano,
+            mes: atualizada.mes,
+          },
+        });
+      }
       // Sem itens nem `comodato` no PATCH, nada do que decide o cabeçalho
       // mudou.
       if (input.itens || input.comodato !== undefined) {

@@ -1,16 +1,23 @@
 import { z } from "zod";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
+/** Chave que já nasce vencida não serve a ninguém e esconde o erro de digitação da data. */
+const expiracaoFutura = z.coerce
+  .date()
+  .nullable()
+  .optional()
+  .refine((d) => d == null || d.getTime() > Date.now(), "A data de expiração precisa ser futura");
+
 export const integracaoApiKeyCreateSchema = z.object({
   nome: z.string().trim().min(1, "Informe um nome").max(100).describe("Ex.: \"ERP Protheus - produção\""),
-  expiraEm: z.coerce.date().nullable().optional().describe("Data de expiração — nulo = não expira"),
+  expiraEm: expiracaoFutura.describe("Data de expiração — nulo = não expira"),
 });
 export type IntegracaoApiKeyCreate = z.infer<typeof integracaoApiKeyCreateSchema>;
 
 export const integracaoApiKeyUpdateSchema = z.object({
   nome: z.string().trim().min(1).max(100).optional(),
   ativo: z.boolean().optional().describe("false revoga a chave imediatamente"),
-  expiraEm: z.coerce.date().nullable().optional(),
+  expiraEm: expiracaoFutura,
 });
 export type IntegracaoApiKeyUpdate = z.infer<typeof integracaoApiKeyUpdateSchema>;
 

@@ -77,6 +77,7 @@ export class IntegracaoKeysController {
       user.empresaAtivaId,
       endpointKey,
       dto.ativo,
+      user.id,
     );
   }
 

@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, ConflictException, NotFoundException } from '@nestjs/common';
 import { PrismaService, Prisma } from '../../../common/prisma/prisma.service';
 import {
   buildPaginatedResult,
@@ -130,15 +130,25 @@ export class IntegracaoEstoqueService {
           `armazemChave '${input.armazemChave}' não encontrado`,
         );
 
-      const existente = await tx.estoque.findFirst({
-        where: {
-          empresaId,
-          OR: [
-            { chave: input.chave },
-            { produtoId: produto.id, armazemId: armazem.id },
-          ],
-        },
+      // A chave de integração manda. Um `OR` entre ela e o par produto ×
+      // armazém podia casar **duas linhas diferentes** e atualizava uma delas ao
+      // acaso (`findFirst` sem ordem); aqui a chave é procurada primeiro, e o par
+      // só vale quando a chave é nova.
+      const porChave = await tx.estoque.findFirst({
+        where: { empresaId, chave: input.chave },
       });
+      const doPar = await tx.estoque.findFirst({
+        where: { empresaId, produtoId: produto.id, armazemId: armazem.id },
+      });
+      // A chave aponta para uma linha e o par produto × armazém para outra: o
+      // ERP está mandando a mesma posição com duas identidades. Gravar
+      // estouraria a unicidade no meio do lote — recusa com o motivo.
+      if (porChave && doPar && porChave.id !== doPar.id) {
+        throw new ConflictException(
+          `Estoque com chave '${input.chave}' colide com outra linha do mesmo produto e armazém (chave '${doPar.chave ?? ''}')`,
+        );
+      }
+      const existente = porChave ?? doPar;
       const decisao = decidirUpsert(existente);
 
       const dados = {

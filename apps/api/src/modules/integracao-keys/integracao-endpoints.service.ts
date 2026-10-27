@@ -39,6 +39,8 @@ export class IntegracaoEndpointsService {
     empresaId: string,
     endpointKey: string,
     ativo: boolean,
+    /** Quem ligou ou desligou — fica em `updatedBy`: desligar um endpoint para a integração é decisão que se pergunta "quem?". */
+    userId?: string,
   ): Promise<EndpointStatusItem> {
     const itemCatalogo = CATALOGO_ENDPOINTS_INTEGRACAO.find(
       (c) => c.endpointKey === endpointKey,
@@ -60,9 +62,12 @@ export class IntegracaoEndpointsService {
           endpointKey,
           nome: itemCatalogo.nome,
           ativo,
+          createdBy: userId ?? null,
+          updatedBy: userId ?? null,
         },
         update: {
           ativo,
+          updatedBy: userId ?? null,
         },
       });
 

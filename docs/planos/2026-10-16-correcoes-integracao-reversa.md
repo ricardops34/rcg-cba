@@ -41,6 +41,32 @@ Foco definido pelo usuário: integração com o ERP, ferramentas e relatórios (
   mesmo schema do `PUT`. `orcamentos`/`pedidos` seguem com recusa explícita
   ("entidade não suportada").
 - Testes: `integracao/integracao-controles.spec.ts` (7).
+
+## Feito em 27/10/2026, segunda leva (etapas 7, 8, 10, 11, 12, 13 e 14)
+
+- **4.6** `resolverProduto`: só igualdade (chave, depois `codigoErp`); sem "contém". Chave
+  que não existe é 404 (antes ligava ao produto de código parecido).
+- **4.7** `upsert`/`remove` de orçamento: recusam (409) orçamento **aprovado criado por
+  usuário** (o que o ERP transforma em pedido). O que o próprio ERP criou segue livre.
+  O que nasce pela rota agora grava `origem = erp`; a migration
+  `20261027150000_orcamento_origem_erp_importados` acerta os já importados
+  (`createdBy` `integracao:…`). Obs.: em dev, os importados antigos têm `createdBy`
+  vazio e ficam com a origem padrão — por isso "da plataforma" exige `createdBy` de usuário.
+- **4.8** nota de saída **e** de entrada: PATCH só do cabeçalho leva cliente, vendedor/
+  fornecedor e emissão (ano, mês) para os itens.
+- **4.9** estoque: a chave é procurada primeiro; chave de uma linha + par produto × armazém
+  de outra vira 409 com o motivo (antes atualizava ao acaso e estourava a unicidade).
+- **4.10:** `pedidos.upsertLote` conta pedido novo como `criado`; `vincular` ganhou trava
+  (`updateMany` de "sem chave" para "com chave"); comentário de `tabelas-preco` corrigido
+  (item que deixou de vir só sai com `delete: true`). **Não reproduzi:** `vendedorChave = "01-"`
+  em cliente (o resolvedor devolve nulo, não 404). **Fora desta leva:** paginação das filas
+  (seguro se o ERP sempre lê a página 1 — documentar no README), limite de 60 req/min por IP
+  e chave sem escopo (decisões de projeto, não correções).
+- **K.3:** ligar/desligar endpoint grava `updatedBy`; chave de API não nasce nem é editada
+  com expiração no passado.
+- Testes: `integracao/integracao-gravacao.spec.ts` (9). Suíte da integração: 153 testes.
+- **Ainda esperam decisão:** 3 (`arquivo/exportar`), 6 (conta bancária no título) e 9
+  (cliente por `PUT`/carga).
 - **Falta decidir (4.3):** `arquivo/exportar` — exportar a fila `cliente_envios_erp` ou
   retirar o endpoint; depende de o ERP usar ou não o TXT.
 
@@ -56,16 +82,16 @@ dependem de decisão ou são menores.
 - [x] 4. **K.1** carga em andamento não confere se a chave foi revogada/expirou/excluída
 - [x] 5. **K.2** `PATCH endpoints/:endpointKey` com DTO Zod (`ativo` obrigatório e booleano)
 - [ ] 6. **4.5** `resolverContaBancaria`: 404 em vez de criar conta
-- [ ] 7. **4.6** `resolverProduto`: sem busca por substring em `estoque` e `tabelas-preco`
-- [ ] 8. **4.7** `upsert` de orçamento: recusar `aprovado` e `origem=erp` (e conferir no `remove`)
+- [x] 7. **4.6** `resolverProduto`: sem busca por substring em `estoque` e `tabelas-preco`
+- [x] 8. **4.7** `upsert` de orçamento: recusar `aprovado` e `origem=erp` (e conferir no `remove`)
 - [ ] 9. **4.4** cliente por `PUT`/carga (depende da decisão acima)
-- [ ] 10. **4.8** itens de nota: recalcular `clienteId`/`vendedorId`/`dtEmissao`/`ano`/`mes` quando só o
+- [x] 10. **4.8** itens de nota: recalcular `clienteId`/`vendedorId`/`dtEmissao`/`ano`/`mes` quando só o
       cabeçalho muda
-- [ ] 11. **4.9** `estoque`: achar a linha por um critério só (e tratar a colisão de `chave`)
-- [ ] 12. **4.10** demais: contagem de `pedidos` no lote, comentário de `tabelas-preco`,
+- [x] 11. **4.9** `estoque`: achar a linha por um critério só (e tratar a colisão de `chave`)
+- [x] 12. **4.10** demais: contagem de `pedidos` no lote, comentário de `tabelas-preco`,
       `vendedorChave = "01-"` em cliente, paginação das filas, trava do `vincular`
-- [ ] 13. **K.3** auditoria de quem ligou/desligou um endpoint (`updatedBy`) e de `expiraEm` no passado
-- [ ] 14. Testes: `ApiKeyGuard`, `arquivo/importar|exportar`, filas de envio, `pedidos`, `estoque`
+- [x] 13. **K.3** auditoria de quem ligou/desligou um endpoint (`updatedBy`) e de `expiraEm` no passado
+- [x] 14. Testes: `ApiKeyGuard`, `arquivo/importar|exportar`, filas de envio, `pedidos`, `estoque`
 - [ ] 15. `tsc` e suíte da API; validar em dev (recriar o container da API, conforme o runbook)
 
 ## Observações

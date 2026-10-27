@@ -190,8 +190,10 @@ export class IntegracaoTabelasPrecoService {
         };
 
         if (decisao !== 'criar') {
-          // O ERP manda a tabela inteira: linha que não veio mais não existe
-          // mais, e a que veio é casada pela chave.
+          // Os itens que vieram são casados pela chave. Item que **deixou de
+          // vir não é removido**: só sai com `delete: true` no próprio item
+          // (`sincronizarFilhos`). Retirar um produto da tabela no ERP exige
+          // mandá-lo com essa marca, senão ele fica aqui com o preço antigo.
           const atualizadoUpsert = await tx.tabelaPreco.update({
             where: { id: existente!.id },
             data: {

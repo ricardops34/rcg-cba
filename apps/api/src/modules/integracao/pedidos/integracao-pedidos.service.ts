@@ -39,8 +39,10 @@ export class IntegracaoPedidosService {
 
   /**
    * Aplica um lote. `excluido: true` é o pedido excluído no ERP e vira
-   * Cancelado; os demais atualizam situação, quebra e notas. Nada é criado,
-   * então o relatório só tem `atualizados` e `excluidos`.
+   * Cancelado; os demais atualizam situação, quebra e notas. Pedido digitado
+   * direto no ERP, que ainda não existia aqui, entra como histórico e conta como
+   * **criado** — antes tudo contava como atualizado, e o relatório do lote não
+   * mostrava quantos pedidos novos chegaram.
    */
   upsertLote(
     empresaId: string,
@@ -52,8 +54,12 @@ export class IntegracaoPedidosService {
         await this.cancelar(empresaId, apiKeyId, item.chave);
         return 'excluido';
       }
-      await this.atualizar(empresaId, apiKeyId, item as IntegracaoPedidoCreate);
-      return 'atualizado';
+      const { criado } = await this.aplicar(
+        empresaId,
+        apiKeyId,
+        item as IntegracaoPedidoCreate,
+      );
+      return criado ? 'criado' : 'atualizado';
     });
   }
 
@@ -98,6 +104,15 @@ export class IntegracaoPedidosService {
     apiKeyId: string,
     pedido: IntegracaoPedidoCreate,
   ): Promise<IntegracaoPedido> {
+    return (await this.aplicar(empresaId, apiKeyId, pedido)).registro;
+  }
+
+  /** O mesmo que `atualizar`, dizendo também se o pedido entrou como registro novo. */
+  private async aplicar(
+    empresaId: string,
+    apiKeyId: string,
+    pedido: IntegracaoPedidoCreate,
+  ): Promise<{ registro: IntegracaoPedido; criado: boolean }> {
     const autor = autorIntegracao(apiKeyId);
     return this.prisma.withTenant(empresaId, async (tx) => {
       // Sem filtrar os excluídos: a chave é única mesmo entre eles, e criar
@@ -123,13 +138,14 @@ export class IntegracaoPedidosService {
         );
       }
       if (!orcamento || orcamento.origem === 'erp') {
-        return this.gravarHistorico(
+        const registro = await this.gravarHistorico(
           tx,
           empresaId,
           autor,
           pedido,
           orcamento?.id,
         );
+        return { registro, criado: !orcamento };
       }
       const itensOrcamento = await tx.orcamentoItem.findMany({
         where: { orcamentoId: orcamento.id },
@@ -147,7 +163,10 @@ export class IntegracaoPedidosService {
           updatedBy: autor,
         },
       });
-      return this.paraLeitura(pedido.chave, atualizado);
+      return {
+        registro: this.paraLeitura(pedido.chave, atualizado),
+        criado: false,
+      };
     });
   }
 

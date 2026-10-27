@@ -550,6 +550,26 @@ export class IntegracaoNotasEntradaService {
         },
         include: INCLUDE,
       });
+      // Mesma razão da nota de saída: os itens espelham fornecedor, cliente e
+      // emissão do cabeçalho, e o PATCH sem itens não os atualizava.
+      if (
+        !input.itens &&
+        (input.fornecedorChave !== undefined ||
+          input.clienteChave !== undefined ||
+          input.tipo !== undefined ||
+          dtEmissao !== undefined)
+      ) {
+        await tx.notaEntradaItem.updateMany({
+          where: { notaEntradaId: existente.id },
+          data: {
+            fornecedorId: atualizada.fornecedorId,
+            clienteId: atualizada.clienteId,
+            dtEmissao: atualizada.dtEmissao,
+            ano: atualizada.ano,
+            mes: atualizada.mes,
+          },
+        });
+      }
       if (input.itens) return this.comComodatoRecalculado(tx, atualizada);
       return this.paraLeitura(atualizada);
     });

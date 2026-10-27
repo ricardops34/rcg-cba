@@ -216,14 +216,11 @@ export class IntegracaoOrcamentosService {
         );
       }
 
-      for (const item of dto.itens) {
-        await tx.orcamentoItem.update({
-          where: { id: item.id },
-          data: { chave: item.chave },
-        });
-      }
-      const atualizado = await tx.orcamento.update({
-        where: { id },
+      // A trava: só quem muda a linha de "sem chave" para "com chave" vincula.
+      // As conferências acima leem e decidem sem lock; dois vínculos ao mesmo
+      // tempo, com chaves diferentes, passavam os dois e o segundo vencia.
+      const { count } = await tx.orcamento.updateMany({
+        where: { id, empresaId, chave: null, status: 'aprovado', deletedAt: null },
         data: {
           chave: dto.chave,
           codigoErp: dto.codigoErp ?? null,
@@ -232,6 +229,18 @@ export class IntegracaoOrcamentosService {
           erroIntegracaoEm: null,
           updatedBy: autor,
         },
+      });
+      if (count === 0) {
+        throw new ConflictException('Orçamento já está vinculado a um pedido');
+      }
+      for (const item of dto.itens) {
+        await tx.orcamentoItem.update({
+          where: { id: item.id },
+          data: { chave: item.chave },
+        });
+      }
+      const atualizado = await tx.orcamento.findUniqueOrThrow({
+        where: { id },
         include: INCLUDE,
       });
       return this.paraLeitura(atualizado);
@@ -399,6 +408,7 @@ export class IntegracaoOrcamentosService {
         where: { empresaId, chave: input.chave },
       });
       const decisao = decidirUpsert(existente);
+      this.garantirNaoEhDaPlataforma(existente);
 
       const clienteId = await this.resolverCliente(
         tx,
@@ -462,6 +472,9 @@ export class IntegracaoOrcamentosService {
               ...dados,
               empresaId,
               numero: await proximoNumeroOrcamento(tx, empresaId),
+              // O que nasce por esta rota é do ERP: sem isto entrava com a
+              // origem padrão (`vendedor`) e parecia ter sido feito na tela.
+              origem: 'erp',
               createdBy: autor,
               itens: { create: criarFilhos(itensData) },
             } as never,
@@ -607,6 +620,42 @@ export class IntegracaoOrcamentosService {
     });
   }
 
+  /**
+   * Orçamento **aprovado na plataforma** é o que o ERP está transformando em
+   * pedido: reescrevê-lo (itens, status, valores) ou excluí-lo por esta rota
+   * desfaria o que o vendedor aprovou e o ERP já recebeu. O que o próprio ERP
+   * criou segue livre — ali ele é a fonte.
+   *
+   * "Da plataforma" = criado por um usuário (`createdBy` é um id de usuário) e
+   * sem `origem = erp`: os importados antes de a origem ser gravada ficaram com
+   * a origem padrão, e bloquear só pela origem faria o ERP levar 409 ao reenviar
+   * o próprio histórico.
+   */
+  private garantirNaoEhDaPlataforma(
+    existente: {
+      status: string;
+      origem: string;
+      createdBy: string | null;
+      deletedAt: Date | null;
+    } | null,
+  ) {
+    // Só é "da plataforma" o que foi criado por um usuário: `createdBy` vazio
+    // é carga antiga (importação), que o ERP continua podendo reescrever.
+    const criadoPorUsuario =
+      !!existente?.createdBy && !existente.createdBy.startsWith('integracao:');
+    if (
+      existente &&
+      !existente.deletedAt &&
+      existente.status === 'aprovado' &&
+      existente.origem !== 'erp' &&
+      criadoPorUsuario
+    ) {
+      throw new ConflictException(
+        'Orçamento aprovado na plataforma não pode ser alterado nem excluído pelo ERP',
+      );
+    }
+  }
+
   async remove(
     empresaId: string,
     apiKeyId: string,
@@ -618,6 +667,7 @@ export class IntegracaoOrcamentosService {
         where: { empresaId, chave, deletedAt: null },
       });
       if (!existente) return;
+      this.garantirNaoEhDaPlataforma(existente);
       await tx.orcamento.update({
         where: { id: existente.id },
         data: { deletedAt: new Date(), deletedBy: autor, ativo: false },
