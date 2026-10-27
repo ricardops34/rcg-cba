@@ -647,7 +647,7 @@ export class WhatsappAcoesService {
         ativo: true,
         itens: input.itens,
       } as never,
-      { ignorarEscopo },
+      { ignorarEscopo, conversaId },
     )) as { id: string; numero: number };
 
     if (!input.enviar) return { orcamento, enviado: false as const };

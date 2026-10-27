@@ -548,7 +548,11 @@ export class OrcamentosService {
     empresaId: string,
     user: AuthenticatedUser,
     input: OrcamentoCreate,
-    opcoes: { ignorarEscopo?: boolean } = {},
+    opcoes: {
+      ignorarEscopo?: boolean;
+      /** Conversa de WhatsApp em que o orçamento está sendo montado: grava a origem. */
+      conversaId?: string;
+    } = {},
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       // `ignorarEscopo`: só o atendimento de WhatsApp fora da carteira usa
@@ -590,6 +594,9 @@ export class OrcamentosService {
         ...(clienteId ? SEM_PROSPECT : {}),
         vendedorId,
         origem,
+        ...(opcoes.conversaId
+          ? { canalOrigem: 'whatsapp', conversaId: opcoes.conversaId }
+          : {}),
       };
       header.dataValidade = await ajustarValidadeOrcamento(tx, empresaId, header.dataValidade);
       if (header.dataRetorno) {

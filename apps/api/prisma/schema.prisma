@@ -4085,6 +4085,14 @@ model Orcamento {
   // Quem originou — ver `OrigemVenda`. O histórico anterior a 2026-09-02 fica
   // como `vendedor`: não há como saber, depois, quem digitou o que.
   origem              OrigemVenda     @default(vendedor)
+  /// Onde o orçamento nasceu: `whatsapp` (montado dentro da conversa); nulo = tela.
+  canalOrigem         String?
+  /// Conversa de WhatsApp de onde nasceu (`canalOrigem = whatsapp`). Sem relação: é rastro, sobrevive à conversa.
+  conversaId          String?
+  /// Primeiro envio ao cliente (proposta pelo WhatsApp ou link gerado); base do tempo envio → decisão.
+  enviadoEm           DateTime?
+  /// `whatsapp` ou `link`.
+  canalEnvio          String?
   dataValidade        DateTime? @db.Date
   // Data de retorno/follow-up: ao ser definida (na criação ou numa edição
   // que muda o valor), o backend gera automaticamente uma Atividade de
@@ -4176,6 +4184,7 @@ model Orcamento {
   @@index([empresaId, status])
   @@index([empresaId, tabelaPrecoId])
   @@index([empresaId, clienteDecididoPorContatoId])
+  @@index([empresaId, enviadoEm])
   @@map("orcamentos")
 }
 

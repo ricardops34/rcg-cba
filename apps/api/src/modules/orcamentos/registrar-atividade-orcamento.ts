@@ -85,6 +85,26 @@ export async function registrarAtividadeOrcamento(
     vendedorDestino = vendedor?.superiorId ?? orcamento.vendedorId;
   }
 
+  // O primeiro envio ao cliente fica marcado no orçamento: é a base do tempo
+  // entre envio e decisão. Aqui porque é o funil dos dois caminhos (WhatsApp e
+  // link). Enviar pelo WhatsApp tira o orçamento de rascunho — antes só o link
+  // fazia isso, e o "finalizado × não finalizado" ficava errado.
+  if (evento === 'envio_whatsapp' || evento === 'link_gerado') {
+    await tx.orcamento.updateMany({
+      where: { id: orcamento.id, empresaId, enviadoEm: null },
+      data: {
+        enviadoEm: agora,
+        canalEnvio: evento === 'envio_whatsapp' ? 'whatsapp' : 'link',
+      },
+    });
+    if (evento === 'envio_whatsapp') {
+      await tx.orcamento.updateMany({
+        where: { id: orcamento.id, empresaId, status: 'rascunho' },
+        data: { status: 'enviado' },
+      });
+    }
+  }
+
   await tx.atividade.create({
     data: {
       empresaId,
