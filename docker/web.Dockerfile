@@ -2,10 +2,17 @@
 # (next.config.ts: output "standalone"), que embute só o necessário no runtime.
 #
 # Contexto de build: a RAIZ do repositório.
-#   docker build -f docker/web.Dockerfile -t rcgcba-web \
-#     --build-arg NEXT_PUBLIC_API_URL=https://api.rcgdist.com.br/api/v1 .
+#   docker build -f docker/web.Dockerfile -t rcgcba-web .
 #
-# ATENÇÃO: NEXT_PUBLIC_* é inlined no BUILD (não adianta mudar em runtime).
+# IMAGEM ÚNICA, para todos os clientes: a API é chamada pelo MESMO endereço em
+# que o usuário abriu o sistema (`/api/v1`, relativo). Quem decide para onde
+# `/api` e `/uploads` vão é a stack (roteador do Traefik por domínio) — ver
+# docs/runbook-operacao.md, "Imagem única e um domínio por cliente". Cliente
+# novo é configuração, não build.
+#
+# ATENÇÃO: NEXT_PUBLIC_* é inlined no BUILD (não adianta mudar em runtime). Por
+# isso o padrão é o relativo: um endereço absoluto aqui amarraria a imagem a um
+# cliente e faria o cookie de sessão virar "de terceiros" nos demais domínios.
 
 FROM node:20-alpine AS base
 RUN --mount=type=secret,id=npm_ca,required=false \
@@ -17,7 +24,7 @@ COPY packages/contracts/package.json packages/contracts/
 COPY apps/web/package.json apps/web/
 
 FROM base AS build
-ARG NEXT_PUBLIC_API_URL=https://api.rcgdist.com.br/api/v1
+ARG NEXT_PUBLIC_API_URL=/api/v1
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 ARG NEXT_PUBLIC_APP_VERSION=1.0
 ENV NEXT_PUBLIC_APP_VERSION=$NEXT_PUBLIC_APP_VERSION

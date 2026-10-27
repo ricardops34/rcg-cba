@@ -144,7 +144,8 @@ try {
             -Image "bjsoftware/rcgcba-web:latest" `
             -ExtraBuildArgs @(
                 "--build-arg",
-                "NEXT_PUBLIC_API_URL=https://api.rcgdist.com.br/api/v1",
+                # Relativo, para a imagem servir a qualquer cliente (ver web.Dockerfile).
+                "NEXT_PUBLIC_API_URL=/api/v1",
                 "--build-arg",
                 "NEXT_PUBLIC_APP_VERSION=1.0"
             )

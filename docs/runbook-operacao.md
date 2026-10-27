@@ -797,6 +797,67 @@ dentro da imagem, e `pnpm` não está no PATH do host.
 
 ---
 
+## Imagem única e um domínio por cliente **[escrito em 2026-10-27, não rodado na VPS]**
+
+A plataforma atende vários clientes (RCG e CBA são os primeiros). **Há uma imagem
+de web e uma de API para todos**; o que muda por cliente fica na stack.
+
+**Como funciona.** O web é compilado com `NEXT_PUBLIC_API_URL=/api/v1`
+(relativo): o navegador chama a API **no mesmo endereço em que abriu o sistema**
+(`crm.<cliente>/api/v1/...`). O Traefik manda `/api` e `/uploads` de cada domínio
+de cliente para o serviço da API, e o resto para o web. Consequências:
+
+- Imagem sem nada de cliente dentro: **cliente novo é configuração, não build**.
+- O cookie de sessão é "da casa" em todos os domínios (necessário para tirar o
+  refresh token do `localStorage`, achado SEC-11 da auditoria de 27/10/2026).
+  Com a API em outro site (`api.rcgdist.com.br` para quem entra por
+  `crm.cbadist.com.br`), o navegador trata o cookie como de terceiros e o
+  bloqueia (Safari, Firefox).
+- `api.rcgdist.com.br` **continua existindo**: webhooks (Evolution GO) e quem
+  integra por ele (ERP).
+
+**Cliente novo — o que fazer** (nada de build novo):
+
+1. DNS: `crm.<cliente>` apontando para a VPS.
+2. Na stack (`docker/stack.rcgcba.prod.yml`), copiar os três blocos de um cliente
+   existente com o domínio novo: o roteador do **web**, o roteador da **API**
+   (`...-crm-api`, com `PathPrefix(/api/)` e `/uploads/`, `priority=100`) e, se
+   usar o redirecionamento da raiz para o login da empresa, a regex do
+   middleware `plataforma-rcg-web-login`.
+3. Cadastrar a empresa na plataforma com o `alias` usado no `?empresa=`.
+4. Colar a stack inteira no Portainer (ver "o YML do Portainer diverge do repo").
+
+**Ordem de implantação — cada passo se desfaz sozinho:**
+
+1. **Só a stack** (roteadores `...-crm-api` novos), com o **web antigo** ainda no
+   ar. É aditivo: nada muda para o usuário. Conferir:
+   ```bash
+   for d in crm.rcgdist.com.br crm.cbadist.com.br; do
+     echo "$d $(curl -s -o /dev/null -w '%{http_code}' https://$d/api/v1/health/ready)"
+   done
+   ```
+   Esperado: `200` nos dois (a API respondendo **no domínio do web**), e a raiz
+   `https://crm.<cliente>/` seguindo a abrir o login.
+2. **Publicar o web novo** (`.\publish.ps1 -Target web`, que já compila com
+   `/api/v1`) e redeploy. Conferir login, uma tela com dados e uma imagem de
+   `/uploads` **nos dois domínios**.
+3. Volta atrás: voltar a imagem do web para a anterior; os roteadores novos
+   podem ficar.
+
+**Atenções.**
+
+- O `crm.*/api/docs` (Swagger) passa a responder também no domínio do cliente.
+  Segue protegido por login (ou usuário/senha do Swagger) em produção.
+- `CORS_ORIGIN` deixa de importar para o navegador (mesma origem), mas continua
+  valendo para qualquer cliente que ainda chame por `api.rcgdist.com.br`.
+- O repasse `/api/v1` do próprio Next (`next.config.ts`) fica como reserva e como
+  o caminho do **dev**, que já funciona assim (`NEXT_PUBLIC_API_URL: /api/v1` no
+  compose de dev). O Traefik pega o `/api` antes dele em produção.
+- Não há como testar o Traefik no dev (o compose de dev não tem Traefik): o
+  passo 1 acima é o teste.
+
+---
+
 ## WhatsApp em produção com Gateway Evolution GO **[a confirmar na VPS]**
 
 A plataforma padronizou a integração no **Gateway Evolution GO** como transporte único (suportando os modos Não Oficial via QR Code e Oficial via Cloud API da Meta). O `whatsapp-worker` interno e as chamadas diretas à Meta Graph API foram descontinuados.

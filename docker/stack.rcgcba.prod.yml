@@ -66,6 +66,27 @@ services:
         - "traefik.http.routers.plataforma-rcg-api.tls.certresolver=letsencryptresolver"
         - "traefik.http.routers.plataforma-rcg-api.service=plataforma-rcg-api"
         - "traefik.http.services.plataforma-rcg-api.loadbalancer.server.port=3001"
+        # A API também responde no domínio de cada cliente, só em /api e /uploads:
+        # o front chama `/api/v1` no mesmo endereço em que o usuário abriu o
+        # sistema (imagem única, sem endereço de API gravado no build), e o
+        # cookie de sessão fica "da casa" em todos os domínios. Um roteador por
+        # domínio, pelo mesmo motivo dos do web: um certificado por roteador.
+        # `priority` explícita: o web responde ao mesmo Host, e a regra com
+        # caminho precisa ganhar dele. CLIENTE NOVO = repetir este bloco com o
+        # domínio dele (mais o do web, abaixo). O `api.rcgdist.com.br` acima
+        # continua valendo: webhooks (Evolution GO) e quem integra por ele.
+        - "traefik.http.routers.plataforma-rcg-crm-api.rule=Host(`crm.rcgdist.com.br`) && (PathPrefix(`/api/`) || PathPrefix(`/uploads/`))"
+        - "traefik.http.routers.plataforma-rcg-crm-api.priority=100"
+        - "traefik.http.routers.plataforma-rcg-crm-api.entrypoints=websecure"
+        - "traefik.http.routers.plataforma-rcg-crm-api.tls=true"
+        - "traefik.http.routers.plataforma-rcg-crm-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.plataforma-rcg-crm-api.service=plataforma-rcg-api"
+        - "traefik.http.routers.plataforma-cba-crm-api.rule=Host(`crm.cbadist.com.br`) && (PathPrefix(`/api/`) || PathPrefix(`/uploads/`))"
+        - "traefik.http.routers.plataforma-cba-crm-api.priority=100"
+        - "traefik.http.routers.plataforma-cba-crm-api.entrypoints=websecure"
+        - "traefik.http.routers.plataforma-cba-crm-api.tls=true"
+        - "traefik.http.routers.plataforma-cba-crm-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.plataforma-cba-crm-api.service=plataforma-rcg-api"
 
 
   web:
