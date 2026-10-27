@@ -21,7 +21,7 @@
  * Precisa da role dona (`plataforma`) — ver docs/runbook-operacao.md.
  *
  * Uso:
- *   ts-node prisma/enrich-cnae.ts [--empresa=rcg] [--todos] [--refazer]
+ *   ts-node prisma/enrich-cnae.ts --empresa=<alias> [--todos] [--refazer]
  *                                 [--limite=N] [--intervalo=1000]
  *
  *   --todos      inclui clientes inativos (padrão: só ativos)
@@ -43,7 +43,14 @@ const arg = (nome: string): string | undefined => {
 };
 const flag = (nome: string) => process.argv.includes(`--${nome}`);
 
-const ALIAS_EMPRESA = arg('empresa') ?? 'rcg';
+const ALIAS_EMPRESA = arg('empresa');
+if (!ALIAS_EMPRESA) {
+  // Sem empresa padrão: a plataforma atende vários clientes, e rodar a rotina
+  // na empresa errada gastaria consulta externa e gravaria o CNAE de quem não
+  // foi pedido.
+  console.error('Informe a empresa: --empresa=<alias>');
+  process.exit(1);
+}
 const INCLUIR_INATIVOS = flag('todos');
 const REFAZER = flag('refazer');
 const LIMITE = Number(arg('limite')) || undefined;

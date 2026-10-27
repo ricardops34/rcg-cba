@@ -42,7 +42,7 @@ export interface ConfigS3 {
   /** Endereço usado pela API (rede interna: `http://minio:9000`). */
   endpoint: string;
   /**
-   * Endereço que o **navegador** alcança (`https://s3.rcgdist.com.br`). O link
+   * Endereço que o **navegador** alcança (`https://s3.exemplo.com.br`). O link
    * temporário é assinado com ele — a assinatura cobre o host, então assinar
    * com o interno daria um link que o navegador não abre.
    */

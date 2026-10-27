@@ -34,7 +34,7 @@ export type EnvioSmsResultado = z.infer<typeof envioSmsResultadoSchema>;
 
 export const ENVIO_SMS_RESULTADO_EXAMPLE: EnvioSmsResultado = {
   celular: "5567999990000",
-  mensagem: "RCG DISTRIBUIDORA: boleto do titulo 117009 venc 08/10/2026 R$ 210,00.",
+  mensagem: "EMPRESA EXEMPLO: boleto do titulo 117009 venc 08/10/2026 R$ 210,00.",
 };
 
 export const smsMotivoSchema = z.enum([

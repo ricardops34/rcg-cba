@@ -123,7 +123,7 @@ export const EMAIL_TAGS_CATALOGO: Record<EmailModeloTipo, EmailTagDef[]> = {
   cobranca: [
     { tag: "{{cliente.nome}}", rotulo: "Nome do Cliente", descricao: "Razão social ou nome do cliente", exemplo: "MERCADO CENTRAL LTDA", categoria: "cliente" },
     { tag: "{{cliente.cnpj}}", rotulo: "CNPJ/CPF", descricao: "CNPJ ou CPF formatado", exemplo: "03.715.067/0001-09", categoria: "cliente" },
-    { tag: "{{empresa.nomeFantasia}}", rotulo: "Empresa", descricao: "Nome fantasia da empresa emissora", exemplo: "RCG DISTRIBUIDORA", categoria: "empresa" },
+    { tag: "{{empresa.nomeFantasia}}", rotulo: "Empresa", descricao: "Nome fantasia da empresa emissora", exemplo: "EMPRESA EXEMPLO", categoria: "empresa" },
     { tag: "{{empresa.telefone}}", rotulo: "Telefone Empresa", descricao: "Telefone de contato da empresa", exemplo: "(67) 3382-7328", categoria: "empresa" },
     { tag: "{{cobranca.quantidade}}", rotulo: "Qtd. Títulos", descricao: "Total de títulos vencidos", exemplo: "3", categoria: "documento" },
     { tag: "{{cobranca.total}}", rotulo: "Valor Total", descricao: "Valor total em atraso", exemplo: "R$ 1.890,50", categoria: "documento" },
@@ -134,7 +134,7 @@ export const EMAIL_TAGS_CATALOGO: Record<EmailModeloTipo, EmailTagDef[]> = {
   nota: [
     { tag: "{{cliente.nome}}", rotulo: "Nome do Cliente", descricao: "Razão social ou nome do cliente", exemplo: "MERCADO CENTRAL LTDA", categoria: "cliente" },
     { tag: "{{cliente.cnpj}}", rotulo: "CNPJ/CPF", descricao: "CNPJ ou CPF formatado", exemplo: "03.715.067/0001-09", categoria: "cliente" },
-    { tag: "{{empresa.nomeFantasia}}", rotulo: "Empresa", descricao: "Nome fantasia da empresa", exemplo: "RCG DISTRIBUIDORA", categoria: "empresa" },
+    { tag: "{{empresa.nomeFantasia}}", rotulo: "Empresa", descricao: "Nome fantasia da empresa", exemplo: "EMPRESA EXEMPLO", categoria: "empresa" },
     { tag: "{{nota.numero}}", rotulo: "Número da NF", descricao: "Número da nota fiscal", exemplo: "117179", categoria: "documento" },
     { tag: "{{nota.chave}}", rotulo: "Chave de Acesso", descricao: "Chave formatada da NFe", exemplo: "5026 0903 7150...", categoria: "documento" },
     { tag: "{{colaborador.nome}}", rotulo: "Colaborador", descricao: "Nome do operador emissor", exemplo: "Ricardo Patay", categoria: "colaborador" },
@@ -142,7 +142,7 @@ export const EMAIL_TAGS_CATALOGO: Record<EmailModeloTipo, EmailTagDef[]> = {
   ],
   boleto: [
     { tag: "{{cliente.nome}}", rotulo: "Nome do Cliente", descricao: "Razão social ou nome do cliente", exemplo: "MERCADO CENTRAL LTDA", categoria: "cliente" },
-    { tag: "{{empresa.nomeFantasia}}", rotulo: "Empresa", descricao: "Nome fantasia da empresa", exemplo: "RCG DISTRIBUIDORA", categoria: "empresa" },
+    { tag: "{{empresa.nomeFantasia}}", rotulo: "Empresa", descricao: "Nome fantasia da empresa", exemplo: "EMPRESA EXEMPLO", categoria: "empresa" },
     { tag: "{{boleto.numero}}", rotulo: "Número do Título", descricao: "Número do título/boleto", exemplo: "000117179", categoria: "documento" },
     { tag: "{{boleto.valor}}", rotulo: "Valor", descricao: "Valor nominal ou atualizado", exemplo: "R$ 450,00", categoria: "documento" },
     { tag: "{{boleto.vencimento}}", rotulo: "Vencimento", descricao: "Data de vencimento do título", exemplo: "15/10/2026", categoria: "documento" },

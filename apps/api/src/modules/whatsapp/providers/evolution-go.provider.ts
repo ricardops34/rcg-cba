@@ -40,7 +40,7 @@ export function baseDaApiParaOGateway(): string {
   if (!/^https?:\/\/[^/\s]+/i.test(base) || !URL.canParse(base)) {
     throw new BadGatewayException(
       'WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL inválida na API: informe o endereço ' +
-        'completo, com http:// ou https:// e sem aspas (ex.: https://api.rcgdist.com.br).',
+        'completo, com http:// ou https:// e sem aspas (ex.: https://api.suaempresa.com.br).',
     );
   }
   return base;
@@ -96,7 +96,7 @@ export class EvolutionGoProvider implements WhatsappProvider {
 
   /**
    * Nome técnico da instância: `<empresa>-<código do vendedor>-<nome>-<id>`,
-   * por exemplo `rcg-distribuidora-000123-marcos-276fc417`. Na sessão da
+   * por exemplo `empresa-exemplo-000123-marcos-276fc417`. Na sessão da
    * empresa, `<empresa>-institucional-<id>`.
    *
    * Legível de propósito: o gateway tem painel próprio, e ali só o id não diz
@@ -110,7 +110,7 @@ export class EvolutionGoProvider implements WhatsappProvider {
    * `instanciaExterna` e é o que esta função devolve. Renomear a pessoa depois
    * não renomeia a instância — o nome é um rótulo do momento da criação, não
    * uma referência viva ao cadastro. Pelo mesmo motivo, instâncias criadas no
-   * formato antigo (`rcg-<vendedor>-<sessaoId>`) mantêm o nome antigo.
+   * formato antigo (`<prefixo>-<vendedor>-<sessaoId>`) mantêm o nome antigo.
    *
    * O risco que isso abre, e que foi aceito em 2026-09-21: se a linha local
    * perder o nome gravado **e** o vendedor tiver sido renomeado no intervalo,
@@ -146,7 +146,7 @@ export class EvolutionGoProvider implements WhatsappProvider {
         // invisíveis no fonte e ninguém consegue revisar depois.
         .replace(/\p{Diacritic}/gu, '')
         // Minúsculo antes de filtrar: os cadastros vêm do ERP em CAIXA ALTA, e
-        // sem isto o nome inteiro virava traço (era o `rcg-vendedor-…`).
+        // sem isto o nome inteiro virava traço (era o `prefixo-vendedor-…`).
         .toLowerCase()
         .replace(/[^a-z0-9]+/g, '-')
         .replace(/^-+|-+$/g, '')

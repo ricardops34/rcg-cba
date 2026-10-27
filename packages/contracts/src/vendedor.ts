@@ -105,7 +105,7 @@ export const VENDEDOR_EXAMPLE: Vendedor = {
   nome: "FABIANO OLIVEIRA",
   nomeReduzido: "FABIANO",
   telefone: "(67) 3354-9465",
-  email: "fabiano@rcg.com.br",
+  email: "vendedor@empresa.com.br",
   dataNascimento: null,
   usuarioId: null,
   tipo: "vendedor",

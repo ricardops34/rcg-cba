@@ -627,7 +627,7 @@ export class IntegracaoTitulosReceberService {
    * prefere o valor do ERP ao próprio cálculo, então um código inválido
    * silenciaria o cálculo correto e imprimiria lixo. Por isso o inválido vira
    * "nada" e o título entra: recusar o título inteiro por um E1_CODBAR fora do
-   * padrão (25 dígitos na base da RCG) travava a carga (decisão do usuário,
+   * padrão (25 dígitos numa das bases) travava a carga (decisão do usuário,
    * 28/09/2026 — o mesmo critério do armazém inválido da nota de entrada).
    */
   private validarCodigoBarras(valor: string | null | undefined) {

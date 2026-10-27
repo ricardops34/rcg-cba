@@ -1082,7 +1082,7 @@ function PreviewEmailCard({
   modelos: EmailModelosConfiguracao;
   empresaAtiva: EmpresaVisualEmail | null;
 }) {
-  const nomeEmpresa = empresaAtiva?.nomeFantasia || "RCG DISTRIBUIDORA";
+  const nomeEmpresa = empresaAtiva?.nomeFantasia || "Sua Empresa";
   const corTopo = modelos.corCabecalho || empresaAtiva?.bannerCor || "#0f172a";
 
   // Substitui tags com dados de simulação
@@ -1115,7 +1115,7 @@ function PreviewEmailCard({
         <div className="truncate font-semibold text-slate-900 text-xs">
           {assuntoRenderizado || "(Sem assunto definido)"}
         </div>
-        <span className="text-[10px] text-slate-500 font-mono">naoresponda@rcgdist.com.br</span>
+        <span className="text-[10px] text-slate-500 font-mono">naoresponda@suaempresa.com.br</span>
       </div>
 
       {/* Header Corporativo com Cor e Logo */}
@@ -1255,7 +1255,7 @@ function PreviewEmailCard({
                       <span>&bull;</span>
                     )}
                     {modelos.incluirEmailUsuario && (
-                      <span>ricardo@rcgdist.com.br</span>
+                      <span>contato@suaempresa.com.br</span>
                     )}
                   </div>
                 )}
@@ -1275,7 +1275,7 @@ function PreviewEmailCard({
         <div>
           {[
             empresaAtiva?.telefone ? `Tel.: ${empresaAtiva.telefone}` : "Tel.: (67) 3382-7328",
-            empresaAtiva?.email || "pedidos@rcgdist.com.br",
+            empresaAtiva?.email || "pedidos@suaempresa.com.br",
             empresaAtiva?.site || null,
           ]
             .filter(Boolean)

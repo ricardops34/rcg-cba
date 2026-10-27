@@ -18,7 +18,7 @@ export type { EmpresaDoEmail } from './email-layout';
 /**
  * Endereço do sistema para quem recebe o e-mail: `WEB_URL`, ou o primeiro
  * `CORS_ORIGIN` — que já é o endereço da tela (em produção,
- * https://plataforma.rcgdist.com.br), então não exige configuração nova.
+ * https://plataforma.exemplo.com.br), então não exige configuração nova.
  */
 export function urlDoSistema(): string | null {
   const url =

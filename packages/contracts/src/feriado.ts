@@ -2,7 +2,7 @@ import { z } from "zod";
 
 /**
  * Feriado da empresa. É por empresa, e não da plataforma, porque os
- * municipais mudam de uma cidade para outra (RCG e Cuiabá, por exemplo).
+ * municipais mudam de uma cidade para outra (Campo Grande e Cuiabá, por exemplo).
  *
  * Quem usa: a trava de horário de trabalho — no feriado, o usuário com
  * "restringir horário" no cadastro não acessa o sistema.

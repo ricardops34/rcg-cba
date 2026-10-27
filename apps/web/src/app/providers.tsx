@@ -14,7 +14,7 @@ import { instalarCapturaDeErros } from "@/lib/erro-report";
 // cliente (`router.replace`), e sem isto a consulta antiga de QUALQUER tela
 // (não só WhatsApp) ficava em cache e aparecia, por alguns segundos, para o
 // próximo usuário logado — de empresa diferente, inclusive (visto em
-// 2026-10-14: instância de WhatsApp da BJSoftware na tela da RCG).
+// 2026-10-14: instância de WhatsApp de uma empresa na tela de outra).
 export const queryClient = new QueryClient({
   defaultOptions: {
     queries: { staleTime: 30_000, retry: 1 },

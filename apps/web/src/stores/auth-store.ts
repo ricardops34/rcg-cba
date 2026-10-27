@@ -54,7 +54,7 @@ export const useAuthStore = create<AuthState>()(
         // sobrevive ao logout — a navegação pro /login é do lado do
         // cliente, não recarrega a página — e aparece, por alguns segundos,
         // pro próximo usuário logado neste navegador. Visto em 2026-10-14:
-        // instância de WhatsApp da BJSoftware na tela da RCG, depois de
+        // instância de WhatsApp de uma empresa na tela de outra, depois de
         // trocar de login sem fechar o navegador.
         queryClient.clear();
         set({ accessToken: null, refreshToken: null, user: null });

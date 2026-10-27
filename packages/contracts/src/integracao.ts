@@ -441,7 +441,7 @@ export const INTEGRACAO_VENDEDOR_CREATE_EXAMPLE: IntegracaoVendedorCreate = {
   nome: "FABIANO OLIVEIRA",
   nomeReduzido: "FABIANO",
   telefone: "(67) 3354-9465",
-  email: "fabiano@rcg.com.br",
+  email: "vendedor@empresa.com.br",
   dataNascimento: null,
   vendedor: true,
   supervisorChave: null,
@@ -1876,7 +1876,7 @@ export const INTEGRACAO_TITULO_RECEBER_CREATE_EXAMPLE: IntegracaoTituloReceberCr
     agenciaDv: "6",
     conta: "0630524",
     contaDv: "5",
-    beneficiarioNome: "RCG COMERCIO LTDA - 01",
+    beneficiarioNome: "EMPRESA EXEMPLO LTDA - 01",
     beneficiarioDocumento: "19.654.062/0001-45",
     beneficiarioEndereco:
       "Rua Capital, 1256 - Centro - Chapadao do Sul/MS - CEP 79560-000",

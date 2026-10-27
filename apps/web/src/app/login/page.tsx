@@ -184,7 +184,7 @@ function LoginForm() {
   // usuário vai entrar. Quem a desenha é o shell, em app/(app)/layout.tsx.
   return (
       <div className="grid h-svh overflow-hidden lg:grid-cols-[1.1fr_1fr]">
-      {/* Painel de marca — imagem de fundo RCG em azul-marinho */}
+      {/* Painel de marca — imagem de fundo em azul-marinho */}
       <div className="relative hidden flex-col justify-center gap-10 overflow-hidden bg-sidebar p-10 text-sidebar-foreground lg:flex">
         <Image
           src="/fundo_login.png"

@@ -261,7 +261,7 @@ export const whatsappConfigUpdateSchema = z.object({
   evolutionUrl: z
     .string()
     .trim()
-    .url("Informe uma URL válida (ex.: http://rcgcba-evolution-go:8080)")
+    .url("Informe uma URL válida (ex.: http://evolution-go:8080)")
     .nullable()
     .optional(),
   /**

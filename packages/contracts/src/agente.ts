@@ -282,7 +282,7 @@ export const AGENTE_CONFIG_EXAMPLE: AgenteConfig = {
   apiKeyUltimos4: "9f2c",
   apiKeyPreenchida: true,
   systemPrompt:
-    "Você é o assistente da RCG Distribuidora. Responda em pt-BR, de forma curta e direta.",
+    "Você é o assistente da empresa. Responda em pt-BR, de forma curta e direta.",
   temperatura: 0.3,
   maxTokens: 2048,
   maxIteracoesFerramentas: 5,

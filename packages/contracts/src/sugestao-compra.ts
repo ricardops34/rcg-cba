@@ -32,7 +32,7 @@ export type BaseSemelhanca = z.infer<typeof baseSemelhancaSchema>;
  *
  * A diferença não é acadêmica. `5611201` (restaurantes) e `5611203`
  * (lanchonetes) são o mesmo comprador e, na regra exata, contavam como zero
- * afinidade. Medido na base da RCG: 68.876 pares de clientes compartilham
+ * afinidade. Medido numa base real: 68.876 pares de clientes compartilham
  * subclasse, mas 159.357 compartilham classe — 90 mil pares de mesmo ramo que
  * o motor simplesmente não enxergava.
  */

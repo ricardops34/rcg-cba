@@ -26,7 +26,7 @@ import { Prisma } from '@prisma/client';
  *   anterior com uma nota excluída e reemitida).
  *
  *   Até então o critério era `condicaoPagamentoId IS NOT NULL`, e ele não
- *   separa: a nota de comodato da RCG tem condição de pagamento. Continua
+ *   separa: a nota de comodato de uma das empresas tem condição de pagamento. Continua
  *   valendo **só** para a nota com `geraDuplicata` nulo — a que chegou por uma
  *   integração que ainda não mandava o F2_DUPL.
  * - `serie IN (...)` — só as séries do parâmetro `VENDAS_SERIES_NOTA`, quando
@@ -133,7 +133,7 @@ const CONDICOES_DO_ITEM_WHERE = {
  * Parâmetro da empresa com as séries de nota de saída que contam como venda,
  * separadas por vírgula (ex.: `1` ou `1,3`). Vazio = todas.
  *
- * A série diz qual documento o ERP emitiu: na RCG a série 1 é a NF-e de
+ * A série diz qual documento o ERP emitiu: numa das empresas a série 1 é a NF-e de
  * mercadoria (SPED) e a série 3 é o RPS de serviço. A integração traz as duas
  * (`F2_SERIE IN ('1','3')` no BJPLA003), porque a nota de serviço precisa
  * estar na base para a Posição do Cliente. O RPS gera duplicata, então a

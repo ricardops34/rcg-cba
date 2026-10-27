@@ -224,7 +224,7 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
               <Input
                 id="evolutionUrl"
                 value={form.evolutionUrl}
-                placeholder="http://rcgcba-evolution-go:8080"
+                placeholder="http://evolution-go:8080"
                 onChange={(event) =>
                   setForm((f) => ({ ...f, evolutionUrl: event.target.value }))
                 }

@@ -12,8 +12,7 @@ import type { TenantTx } from '../prisma/prisma.service';
  * - **interior** (qualquer outro município) → a "TABELA PADRAO INTERIOR" ativa.
  *
  * A capital sai do cadastro da própria empresa (Administração > Empresas), não
- * de uma lista fixa no código: cada empresa é de uma praça (RCG em Campo
- * Grande/MS, CBA em Cuiabá/MT) e uma empresa nova só precisa do cadastro
+ * de uma lista fixa no código: cada empresa é de uma praça (uma em Campo Grande/MS, outra em Cuiabá/MT) e uma empresa nova só precisa do cadastro
  * preenchido. Sem município na empresa não há como classificar, e a resolução
  * devolve o que estiver no cliente — nunca chuta uma tabela.
  *
@@ -61,7 +60,7 @@ export async function resolverTabelaPrecoPorPraca(
 ): Promise<string | null> {
   const vinculada = cliente.tabelaPrecoId ?? null;
 
-  // Poucas tabelas ativas por empresa (2 na RCG hoje): uma consulta só resolve
+  // Poucas tabelas ativas por empresa (poucas hoje): uma consulta só resolve
   // tanto a validação da tabela do cliente quanto a escolha do padrão.
   const ativas = await tx.tabelaPreco.findMany({
     where: { empresaId, ativo: true, deletedAt: null },

@@ -1410,7 +1410,7 @@ export class WhatsappConversasService {
 
       // Vendedores do escopo (ativos e inativos) que têm ou tiveram instância
       // de WhatsApp. Sem esse corte, o seletor de um gerente listava a equipe
-      // inteira (~70 na RCG), quase toda sem WhatsApp — escolher um deles só
+      // inteira (dezenas), quase toda sem WhatsApp — escolher um deles só
       // devolvia lista vazia.
       const vendedoresDb = await tx.vendedor.findMany({
         where: {

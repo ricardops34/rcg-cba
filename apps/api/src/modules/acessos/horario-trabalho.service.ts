@@ -82,7 +82,7 @@ export class HorarioTrabalhoService {
 
   /**
    * Feriado de hoje na empresa (descrição) ou null. Os feriados são por
-   * empresa — RCG e Cuiabá têm os municipais diferentes. Cache por empresa e
+   * empresa — cada cidade tem os municipais diferentes. Cache por empresa e
    * dia: a tabela muda pouco e o guard pergunta a cada requisição.
    */
   private readonly feriadoCache = new Map<string, { descricao: string | null; expiraEm: number }>();

@@ -47,7 +47,7 @@ export function periodo(inicio: string, fim: string) {
  * O que é **compra** (decisão do usuário, 2026-10-14): NF de entrada do tipo
  * normal, de mercadoria. Fora: CT-e/CTR (frete), NFS/RPS/NFPS (serviço),
  * energia (NF3E, NFCEE), telecom (NTST, NFSC, NTSC), cupom (NFCE), fatura
- * (NFFA) e devolução de cliente (tipo D). Espécies vistas na base da RCG.
+ * (NFFA) e devolução de cliente (tipo D). Espécies vistas em bases reais.
  */
 export const ESPECIES_DE_COMPRA = ['SPED', 'NFE', 'NF', 'NFA'];
 /**
@@ -172,7 +172,7 @@ export class RelatoriosService {
   /**
    * Leitura no contexto da empresa com mais tempo que o padrão do Prisma
    * (5 s): relatório de período longo numa base grande passa disso, e a
-   * transação expirava no meio (visto em dev, vendas da RCG em 9 meses).
+   * transação expirava no meio (visto em dev, vendas de 9 meses numa base real).
    */
   private ler<T>(
     empresaId: string,

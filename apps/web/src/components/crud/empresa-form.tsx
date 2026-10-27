@@ -370,7 +370,7 @@ export function EmpresaForm({
                       <FieldLabel htmlFor="alias">Alias (URL de login)</FieldLabel>
                       <Input
                         id="alias"
-                        placeholder="ex.: rcg"
+                        placeholder="ex.: minhaempresa"
                         maxLength={40}
                         {...form.register("alias", {
                           setValueAs: (v) => (v?.trim() ? v.trim().toLowerCase() : null),
