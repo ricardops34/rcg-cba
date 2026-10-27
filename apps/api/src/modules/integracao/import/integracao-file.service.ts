@@ -14,6 +14,9 @@ import { IntegracaoNotasEntradaService } from '../notas-entrada/integracao-notas
 import { IntegracaoTitulosReceberService } from '../titulos-receber/integracao-titulos-receber.service';
 import { IntegracaoObjetivosService } from '../objetivos/integracao-objetivos.service';
 import { IntegracaoOrcamentosService } from '../orcamentos/integracao-orcamentos.service';
+import { IntegracaoCargasService } from '../cargas/integracao-cargas.service';
+import { EntidadesCarga } from '../cargas/entidades-carga';
+import { INTEGRACAO_CARGA_ENTIDADES, type IntegracaoCargaEntidade } from '@plataforma/contracts';
 
 export interface ItemArquivoImportacao {
   lote?: string;
@@ -51,6 +54,8 @@ export class IntegracaoFileService {
     private readonly titulosReceberService: IntegracaoTitulosReceberService,
     private readonly objetivosService: IntegracaoObjetivosService,
     private readonly orcamentosService: IntegracaoOrcamentosService,
+    private readonly cargas: IntegracaoCargasService,
+    private readonly entidades: EntidadesCarga,
   ) {}
 
   /**
@@ -65,47 +70,59 @@ export class IntegracaoFileService {
       throw new BadRequestException('Conteúdo do arquivo não fornecido ou inválido.');
     }
 
-    const linhas = conteudo.split(/\r?\n/).filter((l) => l.trim().length > 0);
-    const itens: ItemArquivoImportacao[] = [];
+    // Linha que não é JSON, ou sem `entidade`, **vira erro** do resultado: antes
+    // era descartada em silêncio, e o ERP achava que a linha tinha entrado.
+    const errosDeLeitura: { linha: number; mensagem: string }[] = [];
+    const itens: { posicao: number; item: ItemArquivoImportacao }[] = [];
+    const aceitar = (posicao: number, valor: unknown) => {
+      const item = valor as ItemArquivoImportacao | null;
+      if (!item || typeof item !== 'object' || typeof item.entidade !== 'string' || !item.entidade) {
+        errosDeLeitura.push({ linha: posicao, mensagem: 'Item sem "entidade".' });
+        return;
+      }
+      itens.push({ posicao, item });
+    };
 
-    let parsedAsArray = false;
+    let comoArray: unknown[] | null = null;
     try {
-      const parsed = JSON.parse(conteudo);
-      if (Array.isArray(parsed)) {
-        parsedAsArray = true;
-        for (const item of parsed) {
-          if (item && typeof item === 'object' && item.entidade) {
-            itens.push(item);
-          }
-        }
-      }
+      const lido: unknown = JSON.parse(conteudo);
+      if (Array.isArray(lido)) comoArray = lido;
     } catch {
-      // Se não for um Array JSON único, faz o parse por linhas
+      // Não é um array JSON único: lê linha a linha (JSON Lines).
+    }
+    if (comoArray) {
+      comoArray.forEach((v, i) => aceitar(i + 1, v));
+    } else {
+      conteudo
+        .split(/\r?\n/)
+        .map((texto, i) => ({ texto, linha: i + 1 }))
+        .filter((l) => l.texto.trim().length > 0)
+        .forEach(({ texto, linha }) => {
+          try {
+            aceitar(linha, JSON.parse(texto));
+          } catch {
+            errosDeLeitura.push({ linha, mensagem: 'Linha não é um JSON válido.' });
+          }
+        });
     }
 
-    if (!parsedAsArray) {
-      for (const linha of linhas) {
-        try {
-          const item = JSON.parse(linha);
-          if (item && typeof item === 'object' && item.entidade) {
-            itens.push(item);
-          }
-        } catch {
-          // Linha ignorada se não for JSON válido
-        }
-      }
-    }
+    // Endpoint desligado no monitor vale para o arquivo também (a mesma regra
+    // do `PUT` e da carga): recusa o arquivo inteiro, sem aplicar nada.
+    await this.cargas.conferirEndpointsAtivos(
+      empresaId,
+      [...new Set(itens.map((i) => this.nomeDaEntidade(i.item.entidade)))],
+    );
 
     const resultado: ResultadoImportacaoArquivo = {
-      total: itens.length,
+      total: itens.length + errosDeLeitura.length,
       processados: 0,
       criados: 0,
       atualizados: 0,
       excluidos: 0,
-      erros: [],
+      erros: [...errosDeLeitura],
     };
 
-    for (const [indice, item] of itens.entries()) {
+    for (const { posicao, item } of itens) {
       try {
         const acao = await this.processarItem(empresaId, apiKeyId, item);
         resultado.processados++;
@@ -114,12 +131,13 @@ export class IntegracaoFileService {
         else if (acao === 'excluido') resultado.excluidos++;
       } catch (erro) {
         resultado.erros.push({
-          linha: indice + 1,
+          linha: posicao,
           chave: item.chave || undefined,
           mensagem: erro instanceof Error ? erro.message : String(erro),
         });
       }
     }
+    resultado.erros.sort((x, y) => x.linha - y.linha);
 
     return resultado;
   }
@@ -168,6 +186,12 @@ export class IntegracaoFileService {
     return linhas.join('\n');
   }
 
+  /** O nome da entidade como o monitor de endpoints a conhece. */
+  private nomeDaEntidade(entidade: string): string {
+    const nome = entidade.toLowerCase();
+    return nome === 'condicoes-pagto' ? 'condicoes-pagamento' : nome;
+  }
+
   private async processarItem(
     empresaId: string,
     apiKeyId: string,
@@ -178,7 +202,23 @@ export class IntegracaoFileService {
     const isDelete = verbo === 'DELETE';
 
     const execUpsert = async (service: any, payload: any) => {
-      const { decisao } = await service.upsert(empresaId, apiKeyId, payload);
+      // O mesmo schema do `PUT` e da carga por arquivo: o payload deste
+      // arquivo não passa por pipe de validação nenhum, e sem isto entrava
+      // como veio.
+      const nome = this.nomeDaEntidade(item.entidade) as IntegracaoCargaEntidade;
+      if (!(INTEGRACAO_CARGA_ENTIDADES as readonly string[]).includes(nome)) {
+        throw new BadRequestException(`Entidade '${item.entidade}' não é suportada para importação.`);
+      }
+      const conferido = this.entidades.de(nome).schema.safeParse(payload);
+      if (!conferido.success) {
+        throw new BadRequestException(
+          conferido.error.issues
+            .map((i) => (i.path.length ? `${i.path.join('.')}: ${i.message}` : i.message))
+            .join('; ')
+            .slice(0, 500),
+        );
+      }
+      const { decisao } = await service.upsert(empresaId, apiKeyId, conferido.data);
       return decisao === 'criar' ? 'criado' : 'atualizado';
     };
 

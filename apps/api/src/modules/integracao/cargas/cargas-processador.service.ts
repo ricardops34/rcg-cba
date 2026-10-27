@@ -175,6 +175,10 @@ export class CargasProcessador implements OnModuleInit, OnModuleDestroy {
         INTEGRACAO_LOTE_MAX,
       )) {
         try {
+          // A chave pode ter sido revogada, expirada ou excluída depois de a
+          // carga entrar na fila: sem esta conferência ela seguia gravando em
+          // nome de uma credencial que já não vale.
+          await this.cargas.conferirChave(empresaId, carga.apiKeyId);
           await this.cargas.conferirEndpointsAtivos(empresaId, [
             bloco.entidade,
           ]);

@@ -1,5 +1,6 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  integracaoEndpointToggleSchema,
   integracaoApiKeyCreateSchema,
   integracaoApiKeyQuerySchema,
   integracaoApiKeyUpdateSchema,
@@ -10,6 +11,9 @@ export class IntegracaoApiKeyCreateDto extends createZodDto(
 ) {}
 export class IntegracaoApiKeyUpdateDto extends createZodDto(
   integracaoApiKeyUpdateSchema,
+) {}
+export class IntegracaoEndpointToggleDto extends createZodDto(
+  integracaoEndpointToggleSchema,
 ) {}
 export class IntegracaoApiKeyQueryDto extends createZodDto(
   integracaoApiKeyQuerySchema,

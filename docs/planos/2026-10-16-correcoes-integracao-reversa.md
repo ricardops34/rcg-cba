@@ -22,17 +22,39 @@ Nada foi corrigido ainda, e **nenhum achado foi reproduzido** — vieram da leit
 - **4.5 — conta bancária inexistente no título:** voltar ao 404 do comentário ou manter a criação
   automática (e então corrigir o comentário)?
 
+## Feito em 27/10/2026 (etapas 1, 2, 4 e 5) **[reproduzido e verificado em dev]**
+
+Foco definido pelo usuário: integração com o ERP, ferramentas e relatórios (o Portal fica para depois).
+
+- **4.1 confirmado e corrigido.** Com o papel real da API (`plataforma_app`) e sem
+  contexto de empresa, `conferirEndpointsAtivos` voltava vazio (a tabela tem RLS)
+  e o endpoint desligado passava como ligado. Agora lê dentro de `withTenant`.
+  Antes: "não barrou"; depois: `ForbiddenException`.
+- **K.1 corrigido.** O processador confere a chave (revogada, expirada, excluída) a
+  cada bloco, antes de gravar; falha encerra a carga com erro e a mensagem.
+- **K.2 corrigido.** `PATCH endpoints/:endpointKey` valida o corpo (`ativo`
+  obrigatório e booleano). Antes `Boolean(body.ativo)` tratava a ausência como
+  "desligar" e a string `"false"` como "ligar".
+- **4.2 corrigido sem depender da decisão 4.2/4.3** (o arquivo TXT continua existindo):
+  confere os endpoints desligados e recusa o arquivo todo; linha que não é JSON e
+  item sem `entidade` viram erro no resultado (antes sumiam); o payload passa pelo
+  mesmo schema do `PUT`. `orcamentos`/`pedidos` seguem com recusa explícita
+  ("entidade não suportada").
+- Testes: `integracao/integracao-controles.spec.ts` (7).
+- **Falta decidir (4.3):** `arquivo/exportar` — exportar a fila `cliente_envios_erp` ou
+  retirar o endpoint; depende de o ERP usar ou não o TXT.
+
 ## Etapas, na ordem recomendada
 
 Primeiro as falhas de controle, depois as que gravam dado errado em silêncio, por último as que
 dependem de decisão ou são menores.
 
-- [ ] 1. **4.1** `conferirEndpointsAtivos` dentro de `withTenant` (recebimento e a cada bloco)
-- [ ] 2. **4.2** `arquivo/importar`: schema Zod por item, `conferirEndpointsAtivos`, linha inválida em
+- [x] 1. **4.1** `conferirEndpointsAtivos` dentro de `withTenant` (recebimento e a cada bloco)
+- [x] 2. **4.2** `arquivo/importar`: schema Zod por item, `conferirEndpointsAtivos`, linha inválida em
       `erros`, `case` de `orcamentos`/`pedidos` ou recusa explícita
 - [ ] 3. **4.3** `arquivo/exportar`: exportar a fila `cliente_envios_erp` (ou retirar o endpoint)
-- [ ] 4. **K.1** carga em andamento não confere se a chave foi revogada/expirou/excluída
-- [ ] 5. **K.2** `PATCH endpoints/:endpointKey` com DTO Zod (`ativo` obrigatório e booleano)
+- [x] 4. **K.1** carga em andamento não confere se a chave foi revogada/expirou/excluída
+- [x] 5. **K.2** `PATCH endpoints/:endpointKey` com DTO Zod (`ativo` obrigatório e booleano)
 - [ ] 6. **4.5** `resolverContaBancaria`: 404 em vez de criar conta
 - [ ] 7. **4.6** `resolverProduto`: sem busca por substring em `estoque` e `tabelas-preco`
 - [ ] 8. **4.7** `upsert` de orçamento: recusar `aprovado` e `origem=erp` (e conferir no `remove`)

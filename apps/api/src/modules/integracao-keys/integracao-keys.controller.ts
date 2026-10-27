@@ -26,6 +26,7 @@ import {
   IntegracaoApiKeyCreateDto,
   IntegracaoApiKeyQueryDto,
   IntegracaoApiKeyUpdateDto,
+  IntegracaoEndpointToggleDto,
 } from './dto/integracao-api-key.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -67,13 +68,15 @@ export class IntegracaoKeysController {
   @Patch('endpoints/:endpointKey')
   alternarEndpointStatus(
     @Param('endpointKey') endpointKey: string,
-    @Body('ativo') ativo: boolean,
+    // `ativo` é obrigatório e booleano: antes, `Boolean(body.ativo)` tratava a
+    // ausência como "desligar" e a string "false" como "ligar".
+    @Body() dto: IntegracaoEndpointToggleDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.endpointsService.alternarStatus(
       user.empresaAtivaId,
       endpointKey,
-      Boolean(ativo),
+      dto.ativo,
     );
   }
 

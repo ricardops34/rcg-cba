@@ -201,10 +201,16 @@ export class IntegracaoCargasService {
    * entrar por aqui. Conferido de novo a cada bloco, no processamento.
    */
   async conferirEndpointsAtivos(empresaId: string, entidades: string[]) {
-    const desligados = await this.prisma.integracaoEndpointConfig.findMany({
-      where: { empresaId, endpointKey: { in: entidades }, ativo: false },
-      select: { endpointKey: true },
-    });
+    // `integracao_endpoint_configs` tem RLS. Fora de uma requisição autenticada
+    // (o processador de cargas roda num temporizador) não há empresa no
+    // contexto, e a consulta avulsa voltava vazia: o endpoint desligado passava
+    // como ligado, sem erro nenhum. Com `withTenant` a empresa vai junto.
+    const desligados = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.integracaoEndpointConfig.findMany({
+        where: { empresaId, endpointKey: { in: entidades }, ativo: false },
+        select: { endpointKey: true },
+      }),
+    );
     if (desligados.length > 0) {
       throw new ForbiddenException(
         `Endpoint desativado para esta empresa: ${desligados
