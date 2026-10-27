@@ -84,7 +84,7 @@ type Praca = { municipio?: string | null; uf?: string | null };
 
 const MSG_SEM_CLIENTE_NAO_EFETIVA =
   'Orçamento de quem ainda não é cliente não pode ser aprovado — ' +
-  'cadastre o cliente e faça o orçamento para ele';
+  'desmarque "Não é cliente (orçamento avulso)" e selecione o cliente no cadastro';
 
 /** Os dados do interessado só existem sem cliente; com cliente, vão a nulo. */
 const SEM_PROSPECT = {
