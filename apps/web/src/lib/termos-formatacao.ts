@@ -1,3 +1,5 @@
+import DOMPurify from "dompurify";
+
 /**
  * Utilitários para formatação, conversão e sanitização de documentos ricos de Termos de Uso.
  */
@@ -113,29 +115,50 @@ export function markdownParaHtml(markdown: string): string {
 }
 
 /**
- * Sanitiza HTML para permitir apenas marcações de texto e estrutura seguras,
- * removendo scripts, iframes e atributos perigosos (XSS protection).
+ * Tags e atributos que um termo de uso precisa — e só eles.
+ *
+ * Lista de **permissão**, aplicada pelo DOMPurify. A versão anterior era uma
+ * lista de bloqueio por regex (tirava `<script>`, ` on…=`, `javascript:`) e
+ * deixava passar `<svg/onload=…>`, manipulador de evento sem espaço antes, e
+ * `href` com entidade HTML — XSS armazenado, já que o texto é gravado como veio
+ * e exibido com `dangerouslySetInnerHTML`.
  */
+const TAGS_PERMITIDAS = [
+  "h1", "h2", "h3", "h4", "h5", "h6", "p", "br", "hr", "div", "span",
+  "ul", "ol", "li", "blockquote", "pre", "code",
+  "strong", "b", "em", "i", "u", "s", "sub", "sup",
+  "a", "table", "thead", "tbody", "tr", "th", "td",
+];
+const ATRIBUTOS_PERMITIDOS = ["href", "target", "rel", "colspan", "rowspan"];
+/** Só estes esquemas em link: nada de `javascript:`, `data:` ou `vbscript:`, com ou sem entidade. */
+const ESQUEMAS_PERMITIDOS = /^(?:https?:|mailto:|tel:|#)/i;
+
+let ganchoDeLinks = false;
+
 export function sanitizarHtml(html: string): string {
   if (!html) return "";
-
-  // Remove tags perigosas
-  let limpo = html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
-    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, "")
-    .replace(/<embed\b[^<]*(?:(?!<\/embed>)<[^<]*)*<\/embed>/gi, "")
-    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "");
-
-  // Remove manipuladores de evento perigosos (ex: onclick, onload, onerror)
-  limpo = limpo.replace(/\son\w+="[^"]*"/gi, "");
-  limpo = limpo.replace(/\son\w+='[^']*'/gi, "");
-  limpo = limpo.replace(/\son\w+=\S+/gi, "");
-
-  // Remove esquemas javascript: em links
-  limpo = limpo.replace(/href=["']?javascript:[^"'>]+["']?/gi, 'href="#"');
-
-  return limpo;
+  // Sem DOM (render no servidor) o DOMPurify não consegue limpar e devolveria o
+  // texto como veio: nesse caso escapa tudo, que é seguro, em vez de arriscar.
+  if (typeof window === "undefined" || !DOMPurify.isSupported) {
+    return html.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+  if (!ganchoDeLinks) {
+    // Link que abre em outra aba não deixa a página de origem à mercê dela.
+    DOMPurify.addHook("afterSanitizeAttributes", (no) => {
+      if (no.tagName === "A") {
+        if (no.getAttribute("target")) no.setAttribute("rel", "noopener noreferrer");
+        else no.removeAttribute("rel");
+      }
+    });
+    ganchoDeLinks = true;
+  }
+  return DOMPurify.sanitize(html, {
+    ALLOWED_TAGS: TAGS_PERMITIDAS,
+    ALLOWED_ATTR: ATRIBUTOS_PERMITIDOS,
+    ALLOWED_URI_REGEXP: ESQUEMAS_PERMITIDOS,
+    ALLOW_DATA_ATTR: false,
+    ALLOW_ARIA_ATTR: false,
+  });
 }
 
 /** Extrai texto plano sem tags para contagem de palavras e caracteres. */
