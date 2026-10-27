@@ -53,6 +53,13 @@ export class UsuariosService {
       deletedAt: null,
       usuarioEmpresas: { some: { empresaId, ativo: true } },
       ...(query.perfilId ? { perfilId: query.perfilId } : {}),
+      ...(query.perfilNome
+        ? {
+            perfil: {
+              nome: { equals: query.perfilNome, mode: 'insensitive' as const },
+            },
+          }
+        : {}),
       ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
       ...(query.search
         ? {

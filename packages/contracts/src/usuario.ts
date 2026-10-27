@@ -103,6 +103,8 @@ export type UsuarioEmpresaCreate = z.infer<typeof usuarioEmpresaCreateSchema>;
 export const usuarioQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
   perfilId: z.string().uuid().optional(),
+  /** Por nome: o mesmo perfil existe como modelo da plataforma e como cópia do grupo, com ids diferentes. */
+  perfilNome: z.string().trim().min(1).max(100).optional(),
 });
 export type UsuarioQuery = z.infer<typeof usuarioQuerySchema>;
 

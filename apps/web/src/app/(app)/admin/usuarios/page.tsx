@@ -56,7 +56,7 @@ export default function UsuariosPage() {
   const [sortBy, setSortBy] = useState("nome");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
-  const [perfilId, setPerfilId] = useState<string | undefined>(undefined);
+  const [perfilNome, setPerfilNome] = useState<string | undefined>(undefined);
 
   const perfisQuery = useQuery({
     queryKey: ["perfis", "select"],
@@ -72,7 +72,7 @@ export default function UsuariosPage() {
       sortBy,
       sortOrder,
       ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-      ...(perfilId ? { perfilId } : {}),
+      ...(perfilNome ? { perfilNome } : {}),
     });
 
   const { remove } = useResourceMutations("usuarios");
@@ -92,9 +92,9 @@ export default function UsuariosPage() {
     }
   };
 
-  const filtrosAtivos = !!perfilId;
+  const filtrosAtivos = !!perfilNome;
   const limparFiltros = () => {
-    setPerfilId(undefined);
+    setPerfilNome(undefined);
     setPage(1);
   };
 
@@ -298,9 +298,9 @@ export default function UsuariosPage() {
             <div className="space-y-2">
               <FieldLabel>Perfil de acesso</FieldLabel>
               <Select
-                value={perfilId ?? "none"}
+                value={perfilNome ?? "none"}
                 onValueChange={(v) => {
-                  setPerfilId(v === "none" ? undefined : v);
+                  setPerfilNome(v === "none" ? undefined : v);
                   setPage(1);
                 }}
               >
@@ -309,9 +309,10 @@ export default function UsuariosPage() {
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Qualquer perfil</SelectItem>
-                  {(perfisQuery.data?.data ?? []).map((p) => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.nome}
+                  {/* Por nome: o modelo da plataforma e a cópia do grupo têm o mesmo nome e ids distintos. */}
+                  {[...new Set((perfisQuery.data?.data ?? []).map((p) => p.nome))].map((nome) => (
+                    <SelectItem key={nome} value={nome}>
+                      {nome}
                     </SelectItem>
                   ))}
                 </SelectContent>
