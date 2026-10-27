@@ -115,8 +115,13 @@ function SheetContent({
           if (naJanelaFlutuante(e)) e.preventDefault()
           onInteractOutside?.(e)
         }}
+        // Foco que sai da cortina não é "clicar fora": só o clique fecha. Sem
+        // isto, abrir a cortina por um item de menu ("…" da linha) a fechava
+        // na hora — o menu devolve o foco ao botão dele ao fechar, e esse
+        // botão está fora da cortina. (O modo modal já ignora o foco; o não
+        // modal, com a janela da Bia/WhatsApp aberta, não ignorava.)
         onFocusOutside={(e) => {
-          if (naJanelaFlutuante(e)) e.preventDefault()
+          e.preventDefault()
           onFocusOutside?.(e)
         }}
         {...props}

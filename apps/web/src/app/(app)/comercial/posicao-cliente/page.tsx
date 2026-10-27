@@ -303,6 +303,10 @@ export default function PosicaoClientePage() {
       <DropdownMenuContent
         align="end"
         onClick={(ev) => ev.stopPropagation()}
+        // Todas as opções abrem cortina ou janela: devolver o foco ao botão
+        // "…" na hora em que o menu fecha disputa o foco com o que acabou de
+        // abrir e a fecha.
+        onCloseAutoFocus={(ev) => ev.preventDefault()}
       >
         <DropdownMenuItem
           onClick={() => setClienteSheet({ id: c.id, modo: "visualizar" })}
