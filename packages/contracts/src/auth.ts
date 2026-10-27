@@ -72,7 +72,10 @@ export type LoginResult = z.infer<typeof loginResultSchema>;
 export const refreshInputSchema = z.object({
   refreshToken: z
     .string()
-    .describe("Refresh token obtido no login ou no refresh anterior"),
+    .optional()
+    .describe(
+      "Refresh token obtido no login ou no refresh anterior. Opcional: o navegador o envia no cookie HttpOnly `rt`",
+    ),
 });
 export type RefreshInput = z.infer<typeof refreshInputSchema>;
 

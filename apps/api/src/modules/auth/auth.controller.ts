@@ -10,6 +10,8 @@ import {
   UploadedFile,
   UseGuards,
   UseInterceptors,
+  Res,
+  UnauthorizedException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { memoryStorage } from 'multer';
@@ -20,7 +22,7 @@ import {
   ApiResponse,
   ApiTags,
 } from '@nestjs/swagger';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import {
   AUTH_TOKENS_EXAMPLE,
   CURRENT_USER_EXAMPLE,
@@ -46,6 +48,12 @@ import {
   type AuthenticatedUser,
 } from '../../common/decorators/current-user.decorator';
 import { PermitirTermoPendente } from '../../common/decorators/permitir-termo-pendente.decorator';
+import {
+  COOKIE_REFRESH,
+  gravarCookieRefresh,
+  lerCookie,
+  limparCookieRefresh,
+} from '../../common/auth/cookie-refresh';
 
 const REFRESH_EXAMPLE = { refreshToken: AUTH_TOKENS_EXAMPLE.refreshToken };
 
@@ -56,6 +64,16 @@ export class AuthController {
 
   private meta(req: Request) {
     return { ip: req.ip, userAgent: req.headers['user-agent'] };
+  }
+
+  /**
+   * Grava o refresh token no cookie `HttpOnly` (SEC-11). Por ora a resposta
+   * ainda traz o token no corpo, para o front anterior seguir funcionando; o
+   * passo seguinte o tira daqui.
+   */
+  private comCookie<T extends { refreshToken?: string }>(res: Response, resultado: T): T {
+    if (resultado.refreshToken) gravarCookieRefresh(res, resultado.refreshToken);
+    return resultado;
   }
 
   @ApiOperation({
@@ -77,8 +95,12 @@ export class AuthController {
   // espalhado por muitas contas a partir do mesmo IP.
   @Throttle({ default: { limit: 10, ttl: 60_000 } })
   @Post('login')
-  login(@Body() dto: LoginDto, @Req() req: Request) {
-    return this.authService.login(dto, this.meta(req));
+  async login(
+    @Body() dto: LoginDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    return this.comCookie(res, await this.authService.login(dto, this.meta(req)));
   }
 
   @ApiOperation({
@@ -109,8 +131,24 @@ export class AuthController {
   })
   @ApiResponse({ status: 401, description: 'Refresh token inválido, expirado ou já revogado' })
   @Post('refresh')
-  refresh(@Body() dto: RefreshDto, @Req() req: Request) {
-    return this.authService.refresh(dto, this.meta(req));
+  async refresh(
+    @Body() dto: RefreshDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = dto.refreshToken ?? lerCookie(req, COOKIE_REFRESH);
+    if (!refreshToken) throw new UnauthorizedException('Refresh token ausente');
+    try {
+      return this.comCookie(
+        res,
+        await this.authService.refresh({ refreshToken }, this.meta(req)),
+      );
+    } catch (erro) {
+      // Token inválido, vencido ou de sessão encerrada: o cookie não serve
+      // mais, e deixá-lo faria o navegador repetir a tentativa à toa.
+      if (erro instanceof UnauthorizedException) limparCookieRefresh(res);
+      throw erro;
+    }
   }
 
   @ApiOperation({
@@ -120,8 +158,15 @@ export class AuthController {
   @ApiBodyExample(REFRESH_EXAMPLE)
   @ApiResponse({ status: 201, schema: { example: { success: true } } })
   @Post('logout')
-  logout(@Body() dto: RefreshDto) {
-    return this.authService.logout(dto);
+  async logout(
+    @Body() dto: RefreshDto,
+    @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const refreshToken = dto.refreshToken ?? lerCookie(req, COOKIE_REFRESH);
+    limparCookieRefresh(res);
+    if (!refreshToken) return { success: true };
+    return this.authService.logout({ refreshToken });
   }
 
   @ApiOperation({
@@ -152,12 +197,16 @@ export class AuthController {
   @UseGuards(JwtAuthGuard)
   @PermitirTermoPendente()
   @Post('switch-empresa')
-  switchEmpresa(
+  async switchEmpresa(
     @Body() dto: SwitchEmpresaDto,
     @CurrentUser() user: AuthenticatedUser,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.authService.switchEmpresa(user.id, dto.empresaId, this.meta(req), user.sessaoId);
+    return this.comCookie(
+      res,
+      await this.authService.switchEmpresa(user.id, dto.empresaId, this.meta(req), user.sessaoId),
+    );
   }
 
   @ApiOperation({
@@ -172,16 +221,20 @@ export class AuthController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard, PlatformAdminGuard)
   @Post('suporte/:empresaId')
-  entrarComoSuporte(
+  async entrarComoSuporte(
     @Param('empresaId') empresaId: string,
     @CurrentUser() user: AuthenticatedUser,
     @Req() req: Request,
+    @Res({ passthrough: true }) res: Response,
   ) {
-    return this.authService.entrarComoSuporte(
-      user.id,
-      empresaId,
-      this.meta(req),
-      user.sessaoId,
+    return this.comCookie(
+      res,
+      await this.authService.entrarComoSuporte(
+        user.id,
+        empresaId,
+        this.meta(req),
+        user.sessaoId,
+      ),
     );
   }
 

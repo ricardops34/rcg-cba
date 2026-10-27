@@ -686,7 +686,7 @@ export class AuthService {
     return token;
   }
 
-  async refresh(input: RefreshInput, meta: RequestMeta) {
+  async refresh(input: { refreshToken: string }, meta: RequestMeta) {
     const tokenHash = this.hashToken(input.refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
@@ -812,7 +812,7 @@ export class AuthService {
     });
   }
 
-  async logout(input: RefreshInput) {
+  async logout(input: { refreshToken: string }) {
     const tokenHash = this.hashToken(input.refreshToken);
     const stored = await this.prisma.refreshToken.findUnique({
       where: { tokenHash },
