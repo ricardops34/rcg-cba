@@ -39,6 +39,7 @@ export * from "./feriado";
 export * from "./objetivo";
 export * from "./objetivo-dashboard";
 export * from "./dashboard-gerencial";
+export * from "./acompanhamento";
 export * from "./oportunidade";
 export * from "./atividade";
 export * from "./meus-atendimentos";

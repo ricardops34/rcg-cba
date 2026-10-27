@@ -45,7 +45,20 @@ três perfis uma tela para acompanhar.
    e clientes com comodato **sem compra dos produtos aplicáveis** a ele (mesma
    regra e janela de 30 dias de `clientes/comodato-sql.ts`).
 
-## Situação
+## Situação (27/10/2026) **[verificado em dev: consultas rodam contra a base; conferência visual da tela pendente]**
 
-- Etapa 1 (rastro do orçamento): em andamento.
-- Etapas 2 (API) e 3 (tela): a fazer.
+- Etapa 1 (rastro do orçamento): feita, commit cd9ecf56. Migration
+  `20261027130000_orcamento_origem_envio`.
+- Etapa 2 (API): `/acompanhamento/{atendimento,nao-vinculados,carteira,cadastro,mix,descontos,orcamentos,comodato}`.
+  As oito consultas foram executadas contra a base de dev (cópia da produção
+  de 30/09, por isso muitos números ficam zerados ou extremos).
+- Etapa 3 (tela): Gerencial > Acompanhamento da Equipe
+  (`/gerencial/acompanhamento`). Migration `20261027140000_acompanhamento_equipe`
+  cria menu e rotina e concede `visualizar` a Supervisor, Gerente e Diretor.
+- Decisões de leitura: "à mão" no cadastro = `updatedBy` que não é da
+  integração (`integracao:...`); a primeira resposta só conta mensagem de
+  pessoa (`enviadaPor`); orçamento do ERP fica fora da aba Orçamentos.
+- Pendente: conferir a tela; tempo médio de primeira resposta usa média (uma
+  conversa respondida semanas depois puxa o número — avaliar mediana);
+  exportar PDF/Excel; origem do orçamento criado fora do WhatsApp continua
+  desconhecida.

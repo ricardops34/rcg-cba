@@ -657,6 +657,17 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'dashboard-gerencial',
     moduloId: MODULO.gerencial,
   },
+  // Acompanhamento da equipe: tempos de atendimento, cobertura, cadastro, mix,
+  // descontos, orçamentos e comodato por vendedor (docs/planos/2026-10-27-acompanhamento-equipe.md).
+  // Supervisor, Gerente e Diretor; o alcance vem da hierarquia do cadastro de Vendedores.
+  {
+    id: 'seed-menu-acompanhamento-equipe',
+    nome: 'Acompanhamento da Equipe',
+    rota: '/gerencial/acompanhamento',
+    icone: 'activity',
+    codigo: 'acompanhamento-equipe',
+    moduloId: MODULO.gerencial,
+  },
   {
     id: 'seed-menu-consulta-evolucao',
     nome: 'Evolução Mensal',
@@ -848,6 +859,9 @@ export const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
   'whatsapp-equipe': ['visualizar'],
   'whatsapp-recados': ['visualizar', 'cadastrar'],
   'whatsapp-historico': ['visualizar'],
+  // Acompanhamento da equipe (Supervisor e Gerente; o Diretor recebe por não
+  // ser Administração). Espelha a migration 20261027140000_acompanhamento_equipe.
+  'acompanhamento-equipe': ['visualizar'],
   // Distribuir, descartar e anotar o lead.
   leads: ['visualizar', 'editar'],
   // Cadastro de equipamentos de comodato (decisão do usuário, 2026-10-07):
