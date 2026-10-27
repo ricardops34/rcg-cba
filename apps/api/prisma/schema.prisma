@@ -3899,6 +3899,7 @@ enum TipoAtividade {
   email
   visita
   tarefa
+  retorno_whatsapp
 }
 
 model Oportunidade {
@@ -3954,6 +3955,9 @@ model Atividade {
   automatica     Boolean       @default(false)
   /// Marcado pelo vendedor como importante: ganha destaque na agenda e nas listas.
   importante     Boolean       @default(false)
+  /// Atendimento agendado que não aconteceu (vendedor fora do sistema na hora marcada); o motivo fica em `motivoNaoRealizacao`.
+  naoRealizada   Boolean       @default(false)
+  motivoNaoRealizacao String?
   /// Item de roteiro semanal que esta atividade representa na agenda.
   roteiroItemId  String?
   tipo           TipoAtividade @default(tarefa)
@@ -5336,6 +5340,8 @@ enum NotificacaoTipo {
   clientes_receita_atualizados
   /// Chegou a hora de um atendimento agendado por WhatsApp.
   atendimento_agendado
+  /// A hora de um atendimento agendado passou sem o vendedor estar no sistema.
+  atendimento_nao_realizado
   /// Antes de iniciar os atendimentos do roteiro do dia, o vendedor confirma.
   roteiro_confirmar
   /// A conversa do roteiro foi iniciada (saudação enviada).

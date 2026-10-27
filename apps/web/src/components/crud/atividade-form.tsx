@@ -37,6 +37,7 @@ const TIPOS: { value: TipoAtividade; label: string }[] = [
   { value: "email", label: "E-mail" },
   { value: "visita", label: "Visita" },
   { value: "tarefa", label: "Tarefa" },
+  { value: "retorno_whatsapp", label: "Retorno WhatsApp" },
 ];
 
 const dateToInput = (v: unknown) => {

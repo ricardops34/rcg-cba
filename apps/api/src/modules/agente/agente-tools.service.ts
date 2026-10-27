@@ -249,6 +249,7 @@ const TIPOS_ATIVIDADE = new Set([
   'email',
   'visita',
   'tarefa',
+  'retorno_whatsapp',
 ]);
 const ESTAGIOS = new Set([
   'prospeccao',

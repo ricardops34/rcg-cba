@@ -404,7 +404,7 @@ function AgendarDialog({
       apiFetch(`/whatsapp/conversas/${conversaId}/acoes/agendar`, {
         method: "POST",
         body: {
-          tipo: "visita",
+          tipo: "retorno_whatsapp",
           titulo,
           descricao: descricao || undefined,
           dataVencimento: quando ? new Date(quando).toISOString() : null,

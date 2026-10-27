@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import {
@@ -34,6 +34,9 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { cn } from "@/lib/utils";
 
+const JANELA_ABRIR_MS = 10 * 60_000;
+const CHAVE_ABERTOS = "sino-atendimentos-abertos";
+
 const ICONE: Record<NotificacaoTipo, typeof Bell> = {
   whatsapp_mensagem: MessageCircle,
   whatsapp_agendamento_erro: AlarmClockOff,
@@ -53,6 +56,7 @@ const ICONE: Record<NotificacaoTipo, typeof Bell> = {
   sugestao_compra_calculada: Lightbulb,
   clientes_receita_atualizados: Building2,
   atendimento_agendado: CalendarClock,
+  atendimento_nao_realizado: AlarmClockOff,
   roteiro_confirmar: CalendarClock,
   roteiro_iniciado: MessageCircle,
   roteiro_cancelado: CircleX,
@@ -79,6 +83,7 @@ const URGENTE: Record<NotificacaoTipo, boolean> = {
   sugestao_compra_calculada: false,
   clientes_receita_atualizados: false,
   atendimento_agendado: false,
+  atendimento_nao_realizado: true,
   roteiro_confirmar: false,
   roteiro_iniciado: false,
   roteiro_cancelado: true,
@@ -115,6 +120,34 @@ export function NotificacoesSino() {
   });
 
   const total = data?.total ?? 0;
+
+  // Hora de um atendimento agendado: abre a conversa na tela, sem esperar o
+  // clique. Só o que venceu há pouco — o aviso antigo que sobrou de ontem não
+  // pode tirar a pessoa do que está fazendo — e uma vez por aviso por aba.
+  useEffect(() => {
+    const item = data?.itens.find(
+      (i) =>
+        i.tipo === "atendimento_agendado" &&
+        i.rota &&
+        Date.now() - new Date(i.data).getTime() < JANELA_ABRIR_MS,
+    );
+    if (!item?.rota) return;
+    try {
+      const ja = new Set<string>(
+        JSON.parse(sessionStorage.getItem(CHAVE_ABERTOS) ?? "[]"),
+      );
+      if (ja.has(item.id)) return;
+      ja.add(item.id);
+      sessionStorage.setItem(CHAVE_ABERTOS, JSON.stringify([...ja].slice(-50)));
+    } catch {
+      // Sem sessionStorage não há como lembrar: melhor não abrir do que abrir a cada 60 s.
+      return;
+    }
+    void apiFetch(`/notificacoes/${item.id}/lida`, { method: "POST" })
+      .then(() => queryClient.invalidateQueries({ queryKey: ["notificacoes"] }))
+      .catch(() => undefined);
+    router.push(item.rota);
+  }, [data, router, queryClient]);
 
   const abrir = (item: NotificacaoItem) => {
     setAberto(false);

@@ -184,7 +184,9 @@ describe('WhatsappAgendamentoService — agenda', () => {
       titulo: 'Retorno sobre a proposta',
       conversaId: 'c1',
       dataVencimento: new Date('2030-03-12T11:00:00.000Z'),
+      createdBy: 'u-agendou',
       vendedor: { usuarioId: 'u-vend' },
+      vendedorAtendimento: null,
       cliente: { razaoSocial: 'Açougue X' },
     });
 
@@ -200,6 +202,10 @@ describe('WhatsappAgendamentoService — agenda', () => {
         notificacao: {
           findMany: jest.fn().mockResolvedValue([{ referenciaId: 'a2' }]),
         },
+        // Quem agendou está no sistema.
+        sessao: {
+          findMany: jest.fn().mockResolvedValue([{ usuarioId: 'u-agendou' }]),
+        },
         $executeRaw: executeRaw,
       };
       const { servico } = montar(tx);
@@ -209,11 +215,38 @@ describe('WhatsappAgendamentoService — agenda', () => {
       // Um INSERT só: o da a1.
       expect(executeRaw).toHaveBeenCalledTimes(1);
       const valores = (executeRaw.mock.calls as unknown[][])[0].slice(1);
-      expect(valores).toContain('u-vend');
+      expect(valores).toContain('u-agendou');
       expect(valores).toContain('atendimento_agendado');
       expect(valores).toContain('Hora de atender Açougue X');
       expect(valores).toContain('/comercial/atendimento?conversa=c1');
       expect(valores).toContain('a1');
+    });
+
+    it('quem agendou fora do sistema: marca como não realizado, com o motivo', async () => {
+      const executeRaw = jest.fn().mockResolvedValue(1);
+      const tx = {
+        atividade: {
+          findMany: jest.fn().mockResolvedValue([atividade('a1')]),
+          update: jest.fn().mockResolvedValue({}),
+        },
+        notificacao: { findMany: jest.fn().mockResolvedValue([]) },
+        sessao: { findMany: jest.fn().mockResolvedValue([]) },
+        $executeRaw: executeRaw,
+      };
+      const { servico } = montar(tx);
+
+      await avisar(servico);
+
+      expect(chamada(tx.atividade.update)).toMatchObject({
+        where: { id: 'a1' },
+        data: {
+          naoRealizada: true,
+          motivoNaoRealizacao: expect.stringContaining('não estava no sistema'),
+        },
+      });
+      const valores = (executeRaw.mock.calls as unknown[][])[0].slice(1);
+      expect(valores).toContain('atendimento_nao_realizado');
+      expect(valores).not.toContain('atendimento_agendado');
     });
 
     it('só considera atendimento marcado para iniciar conversa, ainda aberto', async () => {
@@ -258,7 +291,7 @@ describe('WhatsappAgendamentoService — agenda', () => {
         concluida: false,
       });
       expect(chamada(tx.notificacao.deleteMany).where).toMatchObject({
-        tipo: 'atendimento_agendado',
+        tipo: { in: ['atendimento_agendado', 'atendimento_nao_realizado'] },
         referenciaId: 'a1',
       });
     });

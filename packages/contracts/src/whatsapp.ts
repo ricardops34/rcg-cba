@@ -1139,11 +1139,13 @@ export type WhatsappMensagemAgendada = z.infer<
 export const whatsappAtendimentoAgendadoSchema = z.object({
   id: z.string().uuid(),
   conversaId: z.string().uuid(),
-  tipo: z.enum(["visita", "ligacao", "reuniao", "tarefa", "email"]),
+  tipo: z.enum(["retorno_whatsapp", "visita", "ligacao", "reuniao", "tarefa", "email"]),
   titulo: z.string(),
   descricao: z.string().nullable(),
   dataVencimento: z.string().datetime(),
   importante: z.boolean().optional(),
+  naoRealizada: z.boolean().optional(),
+  motivoNaoRealizacao: z.string().nullable().optional(),
 });
 export type WhatsappAtendimentoAgendado = z.infer<
   typeof whatsappAtendimentoAgendadoSchema
@@ -1251,8 +1253,8 @@ export const WHATSAPP_ARQUIVO_MAX_BYTES = 16 * 1024 * 1024;
  */
 export const whatsappAgendarVisitaSchema = z.object({
   tipo: z
-    .enum(["visita", "ligacao", "reuniao", "tarefa", "email"])
-    .default("visita"),
+    .enum(["retorno_whatsapp", "visita", "ligacao", "reuniao", "tarefa", "email"])
+    .default("retorno_whatsapp"),
   titulo: z.string().trim().min(1, "Informe o que será feito").max(150),
   descricao: z.string().trim().max(1000).optional(),
   dataVencimento: z.coerce.date().nullable().optional(),

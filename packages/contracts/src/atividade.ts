@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
 
-export const tipoAtividadeSchema = z.enum(["ligacao", "reuniao", "email", "visita", "tarefa"]);
+export const tipoAtividadeSchema = z.enum(["ligacao", "reuniao", "email", "visita", "tarefa", "retorno_whatsapp"]);
 export type TipoAtividade = z.infer<typeof tipoAtividadeSchema>;
 
 export const atividadeCreateSchema = z.object({
@@ -37,6 +37,9 @@ export const atividadeSchema = z.object({
   /** Mensagem agendada: o sistema envia sozinho, não é tarefa do vendedor. */
   automatica: z.boolean().optional(),
   importante: z.boolean().optional(),
+  /** Atendimento agendado que não aconteceu (ex.: vendedor fora do sistema na hora). */
+  naoRealizada: z.boolean().optional(),
+  motivoNaoRealizacao: z.string().nullable().optional(),
   /** Atendimento do roteiro semanal que esta atividade representa. */
   roteiroItemId: z.string().nullable().optional(),
   vendedorId: z.string().uuid(),

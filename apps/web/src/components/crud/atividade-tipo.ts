@@ -6,6 +6,7 @@ export const TIPOS: { value: TipoAtividade; label: string }[] = [
   { value: "email", label: "E-mail" },
   { value: "visita", label: "Visita" },
   { value: "tarefa", label: "Tarefa" },
+  { value: "retorno_whatsapp", label: "Retorno WhatsApp" },
 ];
 
 export const TIPO_LABEL = Object.fromEntries(TIPOS.map((t) => [t.value, t.label])) as Record<
@@ -20,4 +21,5 @@ export const TIPO_COR: Record<TipoAtividade, string> = {
   email: "bg-amber-500",
   visita: "bg-emerald-500",
   tarefa: "bg-slate-500",
+  retorno_whatsapp: "bg-green-500",
 };

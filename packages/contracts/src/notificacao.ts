@@ -28,6 +28,8 @@ export const NOTIFICACAO_TIPOS = [
   "clientes_receita_atualizados",
   /** Chegou a hora de um atendimento agendado por WhatsApp. */
   "atendimento_agendado",
+  /** A hora de um atendimento agendado passou sem o vendedor estar no sistema. */
+  "atendimento_nao_realizado",
   /** Antes de iniciar os atendimentos do roteiro do dia, o vendedor confirma. */
   "roteiro_confirmar",
   /** A conversa do roteiro foi iniciada. */

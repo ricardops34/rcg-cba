@@ -26,6 +26,7 @@ export const CATEGORIAS_EVENTO: { value: CategoriaEvento; label: string }[] = [
   { value: "ligacao", label: "Ligações" },
   { value: "email", label: "E-mails" },
   { value: "tarefa", label: "Tarefas" },
+  { value: "retorno_whatsapp", label: "Retornos de WhatsApp" },
 ];
 
 export const ROTULO_EVENTO = Object.fromEntries(
@@ -44,6 +45,7 @@ export const ROTULO_EVENTO_UNITARIO: Record<CategoriaEvento, string> = {
   ligacao: "Ligação",
   email: "E-mail",
   tarefa: "Tarefa",
+  retorno_whatsapp: "Retorno de WhatsApp",
 };
 
 export type EventoDaAgenda =

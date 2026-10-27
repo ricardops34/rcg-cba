@@ -317,7 +317,11 @@ export function AtendimentosAgendadosLista({
           <Linha
             key={a.id}
             titulo={a.titulo}
-            detalhe={a.descricao}
+            detalhe={
+              a.naoRealizada
+                ? `Não realizado — ${a.motivoNaoRealizacao ?? "sem motivo registrado"}`
+                : a.descricao
+            }
             quando={a.dataVencimento}
             importante={a.importante}
             onImportante={() => marcar.mutate({ id: a.id, importante: !a.importante })}

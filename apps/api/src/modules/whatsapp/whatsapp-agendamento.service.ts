@@ -36,6 +36,8 @@ function tituloDaAtividade(texto: string) {
 
 /** De quanto em quanto tempo a rotina procura mensagem vencida. */
 const INTERVALO_MS = 60_000;
+/** Sessão sem renovar de token por mais que isto: o usuário saiu sem fazer logout. */
+const MINUTOS_SESSAO_VIVA = 40;
 
 /**
  * Mensagens escritas para sair depois.
@@ -325,6 +327,8 @@ export class WhatsappAgendamentoService
           descricao: true,
           dataVencimento: true,
           importante: true,
+          naoRealizada: true,
+          motivoNaoRealizacao: true,
         },
       });
       return linhas;
@@ -351,6 +355,8 @@ export class WhatsappAgendamentoService
         descricao?: string | null;
         dataVencimento?: Date;
         importante?: boolean;
+        naoRealizada?: boolean;
+        motivoNaoRealizacao?: string | null;
       } = {};
       if (input.importante !== undefined) dados.importante = input.importante;
       if (input.titulo !== undefined) dados.titulo = input.titulo;
@@ -362,6 +368,9 @@ export class WhatsappAgendamentoService
           calendario,
           await carregarExpedienteUsuario(tx, user.id),
         );
+        // Reagendar dá uma nova chance ao atendimento que não aconteceu.
+        dados.naoRealizada = false;
+        dados.motivoNaoRealizacao = null;
       }
 
       const { count } = await tx.atividade.updateMany({
@@ -384,7 +393,7 @@ export class WhatsappAgendamentoService
         await tx.notificacao.deleteMany({
           where: {
             empresaId,
-            tipo: 'atendimento_agendado',
+            tipo: { in: ['atendimento_agendado', 'atendimento_nao_realizado'] },
             referenciaId: atividadeId,
           },
         });
@@ -455,13 +464,22 @@ export class WhatsappAgendamentoService
   }
 
   /**
-   * Chegou a hora de um atendimento agendado: avisa o vendedor no sino, com o
-   * link que abre a conversa. **Não envia nada ao cliente** — quem decide o que
-   * dizer é o vendedor.
+   * Chegou a hora de um atendimento agendado. **Não envia nada ao cliente** —
+   * quem decide o que dizer é o vendedor.
    *
-   * Um aviso por atividade, para sempre: a conferência é na própria tabela de
-   * notificações (qualquer estado), então reiniciar a API ou ler o aviso não o
-   * recria. Vendedor sem login não tem a quem avisar e fica de fora no filtro.
+   * - Quem agendou **está no sistema** (sessão aberta e ativa há pouco): avisa
+   *   no sino, e o sino abre a conversa na tela dele.
+   * - **Não está**: o atendimento fica marcado como não realizado, com o
+   *   motivo, e o aviso espera no sino para quando ele entrar.
+   *
+   * Um desfecho por atividade, para sempre: o aviso é conferido na própria
+   * tabela de notificações (qualquer estado) e o "não realizado" sai da
+   * varredura, então reiniciar a API ou ler o aviso não repete nada.
+   *
+   * O responsável é quem agendou; sem ele, o vendedor que atende e, por
+   * último, o dono da carteira. Não exigir usuário no vendedor da carteira: o
+   * agendamento vale para quem o fez, e filtrar por ele deixava o atendimento
+   * sem aviso algum.
    */
   private async avisarAtendimentosAgendados(empresaId: string) {
     await this.prisma.withTenant(empresaId, async (tx) => {
@@ -471,17 +489,19 @@ export class WhatsappAgendamentoService
           deletedAt: null,
           ativo: true,
           concluida: false,
+          naoRealizada: false,
           iniciarConversa: true,
           conversaId: { not: null },
           dataVencimento: { not: null, lte: new Date() },
-          vendedor: { usuarioId: { not: null } },
         },
         select: {
           id: true,
           titulo: true,
           conversaId: true,
           dataVencimento: true,
+          createdBy: true,
           vendedor: { select: { usuarioId: true } },
+          vendedorAtendimento: { select: { usuarioId: true } },
           cliente: { select: { razaoSocial: true } },
         },
         orderBy: { dataVencimento: 'asc' },
@@ -494,7 +514,7 @@ export class WhatsappAgendamentoService
           await tx.notificacao.findMany({
             where: {
               empresaId,
-              tipo: 'atendimento_agendado',
+              tipo: { in: ['atendimento_agendado', 'atendimento_nao_realizado'] },
               referenciaId: { in: atividades.map((a) => a.id) },
             },
             select: { referenciaId: true },
@@ -502,20 +522,77 @@ export class WhatsappAgendamentoService
         ).map((n) => n.referenciaId),
       );
 
+      const responsavelDe = (a: (typeof atividades)[number]) =>
+        a.createdBy ??
+        a.vendedorAtendimento?.usuarioId ??
+        a.vendedor.usuarioId ??
+        null;
+      const responsaveis = [
+        ...new Set(atividades.map(responsavelDe).filter((u): u is string => !!u)),
+      ];
+      // `sessoes` não tem RLS (escrita no login, antes de haver empresa ativa):
+      // o corte por empresa vem do `where`. A atividade da sessão avança a cada
+      // renovação de token, daí a janela de tolerância.
+      const presentes = new Set(
+        (
+          await tx.sessao.findMany({
+            where: {
+              usuarioId: { in: responsaveis },
+              empresaId,
+              encerradaEm: null,
+              ultimaAtividadeEm: {
+                gte: new Date(Date.now() - MINUTOS_SESSAO_VIVA * 60_000),
+              },
+            },
+            select: { usuarioId: true },
+          })
+        ).map((s) => s.usuarioId),
+      );
+
       for (const atividade of atividades) {
         if (jaAvisadas.has(atividade.id)) continue;
-        await registrarNotificacao(tx, {
-          empresaId,
-          usuarioId: atividade.vendedor.usuarioId!,
-          tipo: 'atendimento_agendado',
-          titulo: atividade.cliente?.razaoSocial
-            ? `Hora de atender ${atividade.cliente.razaoSocial}`
-            : 'Hora de um atendimento agendado',
-          descricao: atividade.titulo,
-          rota: `/comercial/atendimento?conversa=${atividade.conversaId}`,
-          referenciaId: atividade.id,
-          ocorridaEm: atividade.dataVencimento ?? new Date(),
+        const usuarioId = responsavelDe(atividade);
+        const cliente = atividade.cliente?.razaoSocial;
+        const ocorridaEm = atividade.dataVencimento ?? new Date();
+        const rota = `/comercial/atendimento?conversa=${atividade.conversaId}`;
+
+        if (usuarioId && presentes.has(usuarioId)) {
+          await registrarNotificacao(tx, {
+            empresaId,
+            usuarioId,
+            tipo: 'atendimento_agendado',
+            titulo: cliente
+              ? `Hora de atender ${cliente}`
+              : 'Hora de um atendimento agendado',
+            descricao: atividade.titulo,
+            rota,
+            referenciaId: atividade.id,
+            ocorridaEm,
+          });
+          continue;
+        }
+
+        const motivo = usuarioId
+          ? 'O responsável não estava no sistema na hora marcada.'
+          : 'O agendamento não tem usuário responsável para ser avisado.';
+        await tx.atividade.update({
+          where: { id: atividade.id },
+          data: { naoRealizada: true, motivoNaoRealizacao: motivo },
         });
+        if (usuarioId) {
+          await registrarNotificacao(tx, {
+            empresaId,
+            usuarioId,
+            tipo: 'atendimento_nao_realizado',
+            titulo: cliente
+              ? `Atendimento não realizado: ${cliente}`
+              : 'Atendimento agendado não realizado',
+            descricao: `${atividade.titulo} — ${motivo}`,
+            rota,
+            referenciaId: atividade.id,
+            ocorridaEm,
+          });
+        }
       }
     });
   }
