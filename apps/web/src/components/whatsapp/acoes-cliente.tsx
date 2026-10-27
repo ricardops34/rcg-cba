@@ -415,7 +415,7 @@ function AgendarDialog({
     onSuccess: () => {
       toast.success(
         avisar && quando
-          ? "Atendimento agendado: você será avisado na hora"
+          ? "Atendimento agendado: a conversa será iniciada na hora"
           : "Agendado na sua agenda de atividades",
       );
       void queryClient.invalidateQueries({
@@ -442,8 +442,9 @@ function AgendarDialog({
         <DialogHeader>
           <DialogTitle>Agendar atendimento</DialogTitle>
           <DialogDescription>
-            Fica na sua agenda, ligado a este cliente. O cliente não recebe
-            mensagem por isso: na hora marcada é você quem é avisado.
+            Fica na sua agenda, ligado a este cliente. Na hora marcada, com
+            você no sistema, a conversa abre e o cliente recebe a saudação
+            (ex.: "Bom dia, tudo bem?"); sem você, fica como não realizado.
           </DialogDescription>
         </DialogHeader>
         <div className="space-y-3">
@@ -472,9 +473,9 @@ function AgendarDialog({
               onCheckedChange={(v) => setAvisar(v === true)}
             />
             <span>
-              Avisar no sino e abrir esta conversa na hora marcada
+              Avisar no sino e iniciar esta conversa na hora marcada
               <span className="block text-xs text-muted-foreground">
-                Nada é enviado ao cliente. Precisa de data e hora.
+                Envia a saudação ao cliente. Precisa de data e hora.
               </span>
             </span>
           </label>

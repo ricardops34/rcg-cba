@@ -16,6 +16,10 @@ import { WhatsappConfigService } from './whatsapp-config.service';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { assinaturaDoUsuario, mensagemComAutor } from './mensagem-com-autor';
 import { registrarAtendimentoWhatsapp } from '../../common/atividades/registrar-atendimento-whatsapp';
+import {
+  atrasoDeDigitacaoMs,
+  saudacaoDoModelo,
+} from './roteiro/roteiro-saudacao';
 import { WhatsappConversasService } from './whatsapp-conversas.service';
 import {
   registrarNotificacao,
@@ -36,6 +40,8 @@ function tituloDaAtividade(texto: string) {
 
 /** De quanto em quanto tempo a rotina procura mensagem vencida. */
 const INTERVALO_MS = 60_000;
+const dormir = (ms: number) =>
+  new Promise((resolve) => setTimeout(resolve, ms));
 /** Sessão sem renovar de token por mais que isto: o usuário saiu sem fazer logout. */
 const MINUTOS_SESSAO_VIVA = 40;
 
@@ -468,9 +474,14 @@ export class WhatsappAgendamentoService
    * quem decide o que dizer é o vendedor.
    *
    * - Quem agendou **está no sistema** (sessão aberta e ativa há pouco): avisa
-   *   no sino, e o sino abre a conversa na tela dele.
+   *   no sino, o sino abre a conversa na tela dele e o sistema manda ao
+   *   cliente a saudação configurada ("Bom dia, tudo bem?").
    * - **Não está**: o atendimento fica marcado como não realizado, com o
    *   motivo, e o aviso espera no sino para quando ele entrar.
+   *
+   * O envio da saudação fica **fora** da transação (leva segundos, com o
+   * "digitando…") e é reservado por `conversaIniciadaEm`, para que só uma
+   * réplica da API o faça.
    *
    * Um desfecho por atividade, para sempre: o aviso é conferido na própria
    * tabela de notificações (qualquer estado) e o "não realizado" sai da
@@ -482,6 +493,7 @@ export class WhatsappAgendamentoService
    * sem aviso algum.
    */
   private async avisarAtendimentosAgendados(empresaId: string) {
+    const iniciar: { id: string; usuarioId: string }[] = [];
     await this.prisma.withTenant(empresaId, async (tx) => {
       const atividades = await tx.atividade.findMany({
         where: {
@@ -569,6 +581,7 @@ export class WhatsappAgendamentoService
             referenciaId: atividade.id,
             ocorridaEm,
           });
+          iniciar.push({ id: atividade.id, usuarioId });
           continue;
         }
 
@@ -595,6 +608,142 @@ export class WhatsappAgendamentoService
         }
       }
     });
+
+    for (const { id, usuarioId } of iniciar) {
+      await this.iniciarConversaAgendada(empresaId, id, usuarioId);
+    }
+  }
+
+  /**
+   * Manda a saudação ao cliente, pelo WhatsApp de quem agendou, com o
+   * "digitando…" e a pausa de sempre. Falha vira atendimento **não realizado**,
+   * com o motivo — e o aviso no sino —, em vez de sumir em silêncio.
+   */
+  private async iniciarConversaAgendada(
+    empresaId: string,
+    atividadeId: string,
+    usuarioId: string,
+  ) {
+    const reservada = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.atividade.updateMany({
+        where: { id: atividadeId, conversaIniciadaEm: null, naoRealizada: false },
+        data: { conversaIniciadaEm: new Date() },
+      }),
+    );
+    if (reservada.count === 0) return;
+
+    try {
+      const config = await this.config.obter(empresaId);
+      const dados = await this.prisma.withTenant(empresaId, async (tx) => {
+        const atividade = await tx.atividade.findFirstOrThrow({
+          where: { id: atividadeId },
+          select: { conversaId: true, clienteId: true, vendedorId: true },
+        });
+        const conversa = await tx.whatsappConversa.findFirstOrThrow({
+          where: { id: atividade.conversaId! },
+          include: {
+            contato: { select: { jid: true } },
+            sessao: { select: { id: true, status: true, usuarioId: true } },
+          },
+        });
+        const autor = await tx.usuario.findFirst({
+          where: { id: usuarioId },
+          select: { nome: true, nomeWhatsapp: true, usarNomeWhatsapp: true },
+        });
+        return { atividade, conversa, autor };
+      });
+      const { atividade, conversa, autor } = dados;
+
+      if (!config.evolutionUrl) {
+        throw new Error('A Evolution GO não está configurada.');
+      }
+      if (conversa.sessao.status !== 'conectada') {
+        throw new Error('O WhatsApp do vendedor não estava conectado na hora.');
+      }
+      // Mesma regra das mensagens agendadas: o aparelho precisa continuar sendo
+      // de quem agendou (empresa + usuário + vendedor).
+      if (conversa.sessao.usuarioId !== usuarioId) {
+        throw new Error('A instância do WhatsApp passou a ser de outro usuário.');
+      }
+
+      await this.provedores
+        .presenca(empresaId, conversa.sessao.id, {
+          jid: conversa.contato.jid,
+          estado: 'digitando',
+        })
+        .catch(() => undefined);
+      await dormir(atrasoDeDigitacaoMs());
+
+      const texto = saudacaoDoModelo(
+        config.saudacaoAtendimentoAgendado,
+        new Date(),
+      );
+      const enviada = await this.provedores.enviarTexto(
+        empresaId,
+        conversa.sessao.id,
+        {
+          jid: conversa.contato.jid,
+          texto: mensagemComAutor(assinaturaDoUsuario(autor), texto),
+          respondeuA: null,
+        },
+      );
+
+      await this.prisma.withTenant(empresaId, async (tx) => {
+        const mensagem = await tx.whatsappMensagem.create({
+          data: {
+            empresaId,
+            conversaId: conversa.id,
+            externoId: enviada.externoId,
+            direcao: 'saida',
+            tipo: 'texto',
+            conteudo: texto,
+            enviadaPor: usuarioId,
+            statusEntrega: 'enviada',
+          },
+        });
+        await tx.whatsappConversa.update({
+          where: { id: conversa.id },
+          data: { ultimaMensagemEm: mensagem.criadaEm },
+        });
+        // O sistema fez a parte dele: a conversa está aberta e é do vendedor.
+        await tx.atividade.update({
+          where: { id: atividadeId },
+          data: { concluida: true, dataConclusao: new Date() },
+        });
+        await registrarAtendimentoWhatsapp(tx, {
+          empresaId,
+          autor: usuarioId,
+          clienteId: atividade.clienteId,
+          vendedorId: atividade.vendedorId,
+          quando: mensagem.criadaEm,
+        });
+      });
+    } catch (erro) {
+      const motivo = erro instanceof Error ? erro.message : String(erro);
+      this.logger.error(
+        `Atendimento agendado ${atividadeId} não iniciou: ${motivo}`,
+      );
+      await this.prisma.withTenant(empresaId, async (tx) => {
+        const atividade = await tx.atividade.update({
+          where: { id: atividadeId },
+          data: {
+            naoRealizada: true,
+            motivoNaoRealizacao: `Não consegui iniciar a conversa: ${motivo}`.slice(0, 500),
+          },
+          select: { titulo: true, conversaId: true, dataVencimento: true },
+        });
+        await registrarNotificacao(tx, {
+          empresaId,
+          usuarioId,
+          tipo: 'atendimento_nao_realizado',
+          titulo: 'Atendimento agendado não realizado',
+          descricao: `${atividade.titulo} — ${motivo}`.slice(0, 300),
+          rota: `/comercial/atendimento?conversa=${atividade.conversaId}`,
+          referenciaId: atividadeId,
+          ocorridaEm: atividade.dataVencimento ?? new Date(),
+        });
+      });
+    }
   }
 
   private async processarEmpresa(empresaId: string) {

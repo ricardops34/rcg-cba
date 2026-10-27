@@ -1,6 +1,12 @@
 import { NotFoundException } from '@nestjs/common';
 import { WhatsappAgendamentoService } from './whatsapp-agendamento.service';
 
+// Sem a pausa de 2 a 6 s do "digitando…": o teste não precisa esperar.
+jest.mock('./roteiro/roteiro-saudacao', () => ({
+  ...jest.requireActual('./roteiro/roteiro-saudacao'),
+  atrasoDeDigitacaoMs: () => 0,
+}));
+
 /**
  * Agendamentos de WhatsApp na Agenda (docs/planos/2026-10-16-agendamentos-whatsapp.md):
  * alterar, cancelar e o aviso na hora de um atendimento agendado.
@@ -15,7 +21,10 @@ describe('WhatsappAgendamentoService — agenda', () => {
   /** Argumento da primeira chamada de um mock do Prisma. */
   const chamada = (fn: jest.Mock): Args => (fn.mock.calls as [Args][])[0][0];
 
-  const montar = (tx: Record<string, unknown>) => {
+  const montar = (
+    tx: Record<string, unknown>,
+    extras: { config?: unknown; provedores?: unknown } = {},
+  ) => {
     const prisma = {
       withTenant: (_e: string, fn: (t: unknown) => unknown) => fn(tx),
     };
@@ -28,8 +37,8 @@ describe('WhatsappAgendamentoService — agenda', () => {
     };
     const servico = new WhatsappAgendamentoService(
       prisma as never,
-      {} as never,
-      {} as never,
+      (extras.config ?? {}) as never,
+      (extras.provedores ?? {}) as never,
       conversas as never,
     );
     return { servico, conversas };
@@ -197,6 +206,8 @@ describe('WhatsappAgendamentoService — agenda', () => {
           findMany: jest
             .fn()
             .mockResolvedValue([atividade('a1'), atividade('a2')]),
+          // Outra réplica já reservou o envio da saudação.
+          updateMany: jest.fn().mockResolvedValue({ count: 0 }),
         },
         // a2 já foi avisada antes (mesmo lida, não se recria).
         notificacao: {
@@ -220,6 +231,103 @@ describe('WhatsappAgendamentoService — agenda', () => {
       expect(valores).toContain('Hora de atender Açougue X');
       expect(valores).toContain('/comercial/atendimento?conversa=c1');
       expect(valores).toContain('a1');
+    });
+
+    describe('saudação ao cliente', () => {
+      const montarEnvio = (modelo: string | null, status = 'conectada') => {
+        const atividadeTx = {
+          findMany: jest.fn().mockResolvedValue([atividade('a1')]),
+          updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+          findFirstOrThrow: jest.fn().mockResolvedValue({
+            conversaId: 'c1',
+            clienteId: 'cli1',
+            vendedorId: 'v1',
+          }),
+          update: jest.fn().mockResolvedValue({
+            titulo: 'Retorno',
+            conversaId: 'c1',
+            dataVencimento: new Date(),
+          }),
+        };
+        const tx = {
+          atividade: atividadeTx,
+          notificacao: { findMany: jest.fn().mockResolvedValue([]) },
+          sessao: {
+            findMany: jest.fn().mockResolvedValue([{ usuarioId: 'u-agendou' }]),
+          },
+          whatsappConversa: {
+            findFirstOrThrow: jest.fn().mockResolvedValue({
+              id: 'c1',
+              contato: { jid: '5567@s.whatsapp.net' },
+              sessao: { id: 'sess1', status, usuarioId: 'u-agendou' },
+            }),
+            update: jest.fn().mockResolvedValue({}),
+          },
+          whatsappMensagem: {
+            create: jest
+              .fn()
+              .mockResolvedValue({ id: 'm1', criadaEm: new Date() }),
+          },
+          usuario: { findFirst: jest.fn().mockResolvedValue(null) },
+          $executeRaw: jest.fn().mockResolvedValue(1),
+        };
+        const provedores = {
+          presenca: jest.fn().mockResolvedValue(undefined),
+          enviarTexto: jest.fn().mockResolvedValue({ externoId: 'x1' }),
+        };
+        const config = {
+          obter: jest.fn().mockResolvedValue({
+            evolutionUrl: 'http://evo',
+            saudacaoAtendimentoAgendado: modelo,
+          }),
+        };
+        return { tx, provedores, ...montar(tx, { config, provedores }) };
+      };
+
+      it('manda ao cliente o modelo configurado, com o período do dia', async () => {
+        const { servico, provedores, tx } = montarEnvio(
+          '{saudacao}, tudo bem? Aqui é a BJ.',
+        );
+
+        await avisar(servico);
+
+        const enviado = (
+          provedores.enviarTexto.mock.calls as [string, string, { texto: string }][]
+        )[0][2].texto;
+        expect(enviado).toMatch(/^(Bom dia|Boa tarde|Boa noite), tudo bem\? Aqui é a BJ\.$/);
+        expect(tx.whatsappMensagem.create).toHaveBeenCalled();
+        // O sistema fez a parte dele: a atividade não fica pendente.
+        expect(tx.atividade.update).toHaveBeenCalledWith(
+          expect.objectContaining({ data: expect.objectContaining({ concluida: true }) }),
+        );
+      });
+
+      it('sem modelo configurado usa a saudação padrão', async () => {
+        const { servico, provedores } = montarEnvio(null);
+
+        await avisar(servico);
+
+        const enviado = (
+          provedores.enviarTexto.mock.calls as [string, string, { texto: string }][]
+        )[0][2].texto;
+        expect(enviado).toMatch(/(Bom dia|Boa tarde|Boa noite).*tudo bem\?/i);
+      });
+
+      it('WhatsApp desconectado: não envia e marca como não realizado, com o motivo', async () => {
+        const { servico, provedores, tx } = montarEnvio(null, 'desconectada');
+
+        await avisar(servico);
+
+        expect(provedores.enviarTexto).not.toHaveBeenCalled();
+        expect(tx.atividade.update).toHaveBeenCalledWith(
+          expect.objectContaining({
+            data: expect.objectContaining({
+              naoRealizada: true,
+              motivoNaoRealizacao: expect.stringContaining('não estava conectado'),
+            }),
+          }),
+        );
+      });
     });
 
     it('quem agendou fora do sistema: marca como não realizado, com o motivo', async () => {

@@ -68,7 +68,10 @@ export default function WhatsappConfigPage() {
           <TabsTrigger value="institucional">Institucional</TabsTrigger>
         </TabsList>
         <TabsContent value="evolution-go" className="pt-4"><EvolutionConfig config={config} /></TabsContent>
-        <TabsContent value="instancias" className="pt-4"><Instancias config={config} /></TabsContent>
+        <TabsContent value="instancias" className="space-y-6 pt-4">
+          <Instancias config={config} />
+          <SaudacaoAgendadaConfig config={config} />
+        </TabsContent>
         <TabsContent value="atendimento" className="pt-4"><AtendimentoIaConfig config={config} /></TabsContent>
         <TabsContent value="institucional" className="pt-4"><InstitucionalConfig /></TabsContent>
       </Tabs>
@@ -423,6 +426,63 @@ function EvolutionConfig({ config }: { config: WhatsappConfig }) {
         </Button>
         <Button onClick={() => salvar.mutate({})} disabled={salvar.isPending}>
           {salvar.isPending ? "Salvando..." : "Salvar configuração"}
+        </Button>
+      </CardFooter>
+    </Card>
+  );
+}
+
+/**
+ * A frase que abre a conversa na hora de um atendimento agendado. Vazio usa as
+ * saudações padrão ("Bom dia, tudo bem?" e variações).
+ */
+function SaudacaoAgendadaConfig({ config }: { config: WhatsappConfig }) {
+  const queryClient = useQueryClient();
+  const [texto, setTexto] = useState(config.saudacaoAtendimentoAgendado ?? "");
+
+  const salvar = useMutation({
+    mutationFn: () =>
+      apiFetch("/whatsapp/config", {
+        method: "PUT",
+        body: { saudacaoAtendimentoAgendado: texto.trim() || null },
+      }),
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: ["whatsapp-config"] });
+      toast.success("Saudação do atendimento agendado atualizada.");
+    },
+    onError: (error) => toast.error(mensagemErro(error, "Erro ao salvar")),
+  });
+
+  return (
+    <Card>
+      <CardHeader className="border-b">
+        <CardTitle>Saudação do atendimento agendado</CardTitle>
+        <p className="mt-1 text-sm text-muted-foreground">
+          Na hora marcada, se quem agendou está no sistema, a conversa é aberta
+          com esta mensagem, enviada pelo WhatsApp dele.
+        </p>
+      </CardHeader>
+      <CardContent className="pt-6">
+        <Field>
+          <FieldLabel htmlFor="saudacaoAtendimentoAgendado">Mensagem</FieldLabel>
+          <Textarea
+            id="saudacaoAtendimentoAgendado"
+            rows={2}
+            maxLength={300}
+            placeholder="{saudacao}, tudo bem?"
+            value={texto}
+            onChange={(event) => setTexto(event.target.value)}
+          />
+          <FieldDescription>
+            Use <code>{"{saudacao}"}</code> para entrar Bom dia, Boa tarde ou Boa
+            noite conforme a hora. Em branco, o sistema usa "Bom dia, tudo
+            bem?" com pequenas variações, para não sair sempre igual.
+          </FieldDescription>
+        </Field>
+      </CardContent>
+      <CardFooter className="justify-end border-t">
+        <Button onClick={() => salvar.mutate()} disabled={salvar.isPending}>
+          {salvar.isPending ? "Salvando..." : "Salvar saudação"}
         </Button>
       </CardFooter>
     </Card>

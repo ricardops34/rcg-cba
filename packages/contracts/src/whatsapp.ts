@@ -225,6 +225,12 @@ export const whatsappConfigSchema = z.object({
     .describe(
       "Primeira fala do atendimento, escrita pela empresa. Não vai ao modelo — é texto literal",
     ),
+  saudacaoAtendimentoAgendado: z
+    .string()
+    .nullable()
+    .describe(
+      "Saudação enviada ao cliente na hora de um atendimento agendado. {saudacao} vira Bom dia/Boa tarde/Boa noite; vazio usa as saudações padrão",
+    ),
   atendimentoInformacoes: z
     .string()
     .nullable()
@@ -326,6 +332,13 @@ export const whatsappConfigUpdateSchema = z.object({
     .string()
     .trim()
     .max(500)
+    .nullable()
+    .optional()
+    .transform((v) => (v === "" ? null : v)),
+  saudacaoAtendimentoAgendado: z
+    .string()
+    .trim()
+    .max(300)
     .nullable()
     .optional()
     .transform((v) => (v === "" ? null : v)),

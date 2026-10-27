@@ -3957,6 +3957,8 @@ model Atividade {
   importante     Boolean       @default(false)
   /// Atendimento agendado que não aconteceu (vendedor fora do sistema na hora marcada); o motivo fica em `motivoNaoRealizacao`.
   naoRealizada   Boolean       @default(false)
+  /// Quando o sistema abriu a conversa na hora marcada; trava para uma única réplica enviar a saudação.
+  conversaIniciadaEm DateTime?
   motivoNaoRealizacao String?
   /// Item de roteiro semanal que esta atividade representa na agenda.
   roteiroItemId  String?
@@ -5161,6 +5163,9 @@ model WhatsappConfig {
   /// o texto que a empresa quer que o cliente leia, e deixar o modelo compor a
   /// saudação faz a mesma empresa soar diferente a cada conversa.
   atendimentoSaudacao String? @db.Text
+
+  /// Abertura do atendimento agendado: modelo da saudação enviada ao cliente na hora marcada. `{saudacao}` vira Bom dia/Boa tarde/Boa noite. Vazio usa as saudações padrão.
+  saudacaoAtendimentoAgendado String? @db.Text
 
   /// O que a IA pode responder sobre a empresa — horário, endereço, formas de
   /// pagamento, prazos. Vai no prompt como contexto.
