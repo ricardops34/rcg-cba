@@ -62,6 +62,8 @@ describe('AuthService — sessão de suporte', () => {
         findUnique: jest
           .fn()
           .mockResolvedValue({ email: 'admin@plataforma.com' }),
+        // O refresh confere que a conta segue ativa (SEC-03).
+        findFirst: jest.fn().mockResolvedValue({ id: 'admin' }),
       },
       refreshToken: {
         create: jest.fn().mockResolvedValue({}),
@@ -74,6 +76,7 @@ describe('AuthService — sessão de suporte', () => {
           expiresAt: new Date(Date.now() + 60_000),
         }),
         update: jest.fn().mockResolvedValue({}),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       },
     };
     const jwt = {

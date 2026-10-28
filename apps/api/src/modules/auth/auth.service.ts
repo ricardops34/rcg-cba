@@ -14,6 +14,7 @@ import {
   HttpException,
   HttpStatus,
   Injectable,
+  Logger,
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
@@ -45,6 +46,11 @@ interface RequestMeta {
 
 const SALT_ROUNDS = 12;
 const REFRESH_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+/**
+ * Quanto tempo depois de usado um refresh token ainda é aceito uma vez mais: cobre
+ * duas abas que renovam ao mesmo tempo com o mesmo cookie. Passou disso, é reuso.
+ */
+const REFRESH_REUSO_TOLERANCIA_MS = 10_000;
 const MODULO_ADMINISTRACAO_ID = 'seed-modulo-administracao';
 
 type DadosPrimeiroAcesso = {
@@ -129,6 +135,8 @@ function rotinaNoAr(rotina: RotinaComArvore, daEmpresa: DesativadosDaEmpresa) {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
@@ -706,18 +714,46 @@ export class AuthService {
       }
     }
 
-    if (
-      !stored ||
-      stored.revokedAt ||
-      stored.expiresAt.getTime() < Date.now()
-    ) {
+    if (!stored || stored.expiresAt.getTime() < Date.now()) {
       throw new UnauthorizedException('Refresh token inválido ou expirado');
     }
 
-    await this.prisma.refreshToken.update({
-      where: { id: stored.id },
-      data: { revokedAt: new Date() },
-    });
+    // Quem muda o token de "valendo" para "usado" é quem renova (SEC-07). Antes
+    // era ler e depois gravar, sem condição: duas renovações simultâneas com o
+    // mesmo token passavam as duas, e o reuso de um token roubado nunca era
+    // percebido.
+    //
+    // Token já usado há pouco (duas abas renovando ao mesmo tempo com o mesmo
+    // cookie) é o caso legítimo: segue. Já usado há mais que a tolerância é
+    // reuso — alguém tem uma cópia do token —, e derruba a sessão inteira.
+    const reivindicado = stored.revokedAt
+      ? { count: 0 }
+      : await this.prisma.refreshToken.updateMany({
+          where: { id: stored.id, revokedAt: null },
+          data: { revokedAt: new Date() },
+        });
+    if (reivindicado.count === 0) {
+      const usadoHa = stored.revokedAt
+        ? Date.now() - stored.revokedAt.getTime()
+        : 0; // perdeu a corrida agora há pouco: dentro da tolerância
+      if (usadoHa > REFRESH_REUSO_TOLERANCIA_MS) {
+        this.logger.warn(
+          `Refresh token reutilizado (usuário ${stored.usuarioId}): sessão encerrada.`,
+        );
+        if (stored.sessaoId) {
+          await this.acessos.encerrarSessoes(
+            { usuarioId: stored.usuarioId, sessaoId: stored.sessaoId },
+            'token_reutilizado',
+          );
+        } else {
+          await this.prisma.refreshToken.updateMany({
+            where: { usuarioId: stored.usuarioId, revokedAt: null },
+            data: { revokedAt: new Date() },
+          });
+        }
+        throw new UnauthorizedException('Refresh token inválido ou expirado');
+      }
+    }
 
     // A conta pode ter sido inativada ou excluída depois do login: o refresh só
     // olhava o vínculo, e quem perdeu a conta seguia se renovando (SEC-03).

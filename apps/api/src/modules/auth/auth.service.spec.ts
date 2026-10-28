@@ -371,17 +371,64 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
-    it('rejeita token revogado', async () => {
+    it('reuso de token já gasto: derruba a sessão inteira (SEC-07)', async () => {
       prisma.refreshToken.findUnique.mockResolvedValue({
         id: 'rt-1',
         usuarioId: 'usuario-1',
         empresaId: 'empresa-1',
-        revokedAt: new Date(),
+        sessaoId: 'sessao-1',
+        // Usado há um minuto: fora da tolerância das duas abas.
+        revokedAt: new Date(Date.now() - 60_000),
         expiresAt: new Date(Date.now() + 100000),
       });
       await expect(
         service.refresh({ refreshToken: 'abc' }, {}),
       ).rejects.toThrow(UnauthorizedException);
+      expect(acessosMock.encerrarSessoes).toHaveBeenCalledWith(
+        { usuarioId: 'usuario-1', sessaoId: 'sessao-1' },
+        'token_reutilizado',
+      );
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+    });
+
+    it('duas abas renovando juntas: o token usado há instantes ainda renova', async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        usuarioId: 'usuario-1',
+        empresaId: 'empresa-1',
+        sessaoId: 'sessao-1',
+        revokedAt: new Date(Date.now() - 2_000),
+        expiresAt: new Date(Date.now() + 100000),
+      });
+      prisma.usuario.findFirst.mockResolvedValue({ id: 'usuario-1' });
+      prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(vinculoCompleto);
+      prisma.refreshToken.create.mockResolvedValue({});
+
+      const result = await service.refresh({ refreshToken: 'abc' }, {});
+
+      expect(typeof result.refreshToken).toBe('string');
+      expect(acessosMock.encerrarSessoes).not.toHaveBeenCalled();
+    });
+
+    it('perdeu a corrida da reivindicação agora há pouco: renova, sem derrubar a sessão', async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        usuarioId: 'usuario-1',
+        empresaId: 'empresa-1',
+        sessaoId: 'sessao-1',
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 100000),
+      });
+      // Outra requisição já mudou a linha entre a leitura e a gravação.
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 0 });
+      prisma.usuario.findFirst.mockResolvedValue({ id: 'usuario-1' });
+      prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(vinculoCompleto);
+      prisma.refreshToken.create.mockResolvedValue({});
+
+      await expect(service.refresh({ refreshToken: 'abc' }, {})).resolves.toBeDefined();
+      expect(acessosMock.encerrarSessoes).not.toHaveBeenCalled();
     });
 
     it('conta inativada ou excluída não renova: revoga tudo e fecha as sessões (SEC-03)', async () => {
@@ -392,7 +439,7 @@ describe('AuthService', () => {
         revokedAt: null,
         expiresAt: new Date(Date.now() + 100000),
       });
-      prisma.refreshToken.update.mockResolvedValue({});
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
       // Não achou usuário ativo e não excluído.
       prisma.usuario.findFirst.mockResolvedValue(null);
 
@@ -437,7 +484,7 @@ describe('AuthService', () => {
         revokedAt: null,
         expiresAt: new Date(Date.now() + 100000),
       });
-      prisma.refreshToken.update.mockResolvedValue({});
+      prisma.refreshToken.updateMany.mockResolvedValue({ count: 1 });
       prisma.usuario.findFirst.mockResolvedValue({ id: 'usuario-1' });
       prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
       prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(
@@ -447,8 +494,9 @@ describe('AuthService', () => {
 
       const result = await service.refresh({ refreshToken: 'abc' }, {});
 
-      expect(prisma.refreshToken.update).toHaveBeenCalledWith({
-        where: { id: 'rt-1' },
+      // A troca é atômica: só quem muda o token de "valendo" para "usado" renova.
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith({
+        where: { id: 'rt-1', revokedAt: null },
         data: { revokedAt: expect.any(Date) },
       });
       expect(prisma.usuarioEmpresa.findFirst).toHaveBeenCalledWith(
