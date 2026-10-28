@@ -816,16 +816,24 @@ de cliente para o serviço da API, e o resto para o web. Consequências:
 - `api.rcgdist.com.br` **continua existindo**: webhooks (Evolution GO) e quem
   integra por ele (ERP).
 
-**Cliente novo — o que fazer** (nada de build novo):
+**Cliente novo — o que fazer** (nada de build novo, nada para editar no `.yml`):
 
-1. DNS: `crm.<cliente>` apontando para a VPS.
-2. Na stack (`docker/stack.rcgcba.prod.yml`), copiar os três blocos de um cliente
-   existente com o domínio novo: o roteador do **web**, o roteador da **API**
-   (`...-crm-api`, com `PathPrefix(/api/)` e `/uploads/`, `priority=100`) e, se
-   usar o redirecionamento da raiz para o login da empresa, a regex do
-   middleware `plataforma-rcg-web-login`.
-3. Cadastrar a empresa na plataforma com o `alias` usado no `?empresa=`.
-4. Colar a stack inteira no Portainer (ver "o YML do Portainer diverge do repo").
+A stack (`docker/stack.rcgcba.prod.yml`) **não tem domínio, marca nem alias
+escritos**: tudo vem de variáveis do stack no Portainer. Um cliente novo é um
+**stack novo, criado com o mesmo `.yml`** e variáveis próprias:
+
+1. DNS: `crm.<cliente>` e `api.<cliente>` apontando para a VPS.
+2. Portainer → Add stack, colando o `.yml` inteiro, com as variáveis:
+   `WEB_HOST`, `API_HOST`, `EMPRESA_ALIAS` (e `CORS_ORIGIN`, `WEB_URL`), mais as de
+   sempre (`DATABASE_URL`, `JWT_*`, `*_CRYPTO_KEY`…). `DATABASE_URL` pode apontar
+   para o **mesmo banco** (a empresa nova é uma empresa a mais, isolada por RLS) ou
+   para outro.
+3. Se houver mais de um stack na `RCGNet`, definir `API_ALIAS` e `WEB_ALIAS`
+   próprios em cada um: o padrão (`rcgcba-api`/`rcgcba-web`) é o de hoje, e dois
+   serviços com o mesmo alias dividem as chamadas entre si. Os nomes de roteador do
+   Traefik já levam o `EMPRESA_ALIAS`, então não colidem.
+4. Cadastrar a empresa na plataforma com o mesmo `alias` do `EMPRESA_ALIAS`.
+5. Colar a stack inteira no Portainer (ver "o YML do Portainer diverge do repo").
 
 **Ordem de implantação — cada passo se desfaz sozinho:**
 

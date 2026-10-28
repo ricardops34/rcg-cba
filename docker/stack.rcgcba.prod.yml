@@ -1,9 +1,26 @@
-# Stack de produção/teste na VPS — imagens buildadas e publicadas manualmente
-# no Docker Hub via publish.ps1 (raiz do repo). Sem bind mount: o código está
-# dentro da imagem; deploy = rodar publish.ps1 + redeploy no Portainer.
+# Stack de produção na VPS — imagens buildadas e publicadas manualmente no Docker
+# Hub via publish.ps1 (raiz do repo). Sem bind mount: o código está dentro da
+# imagem; deploy = rodar publish.ps1 + redeploy no Portainer.
 #
-# Os valores de DATABASE_URL/JWT_*/etc. NÃO ficam neste arquivo: são definidos
-# como variáveis de ambiente do stack no Portainer (Stacks → rcgcba → Env).
+# UMA STACK PARA QUALQUER CLIENTE: nada de domínio, marca ou alias está escrito
+# aqui. O que muda de um cliente para outro são as variáveis do stack no
+# Portainer (Stacks → <stack> → Environment variables):
+#
+#   WEB_HOST       domínio do sistema            ex.: crm.suaempresa.com.br
+#   API_HOST       domínio da API (webhooks e    ex.: api.suaempresa.com.br
+#                  integração do ERP)
+#   EMPRESA_ALIAS  alias da empresa no login     ex.: suaempresa
+#   WEB_URL        endereço do sistema nos e-mails (opcional; sem ele vale o
+#                  primeiro CORS_ORIGIN)         ex.: https://crm.suaempresa.com.br
+#   CORS_ORIGIN    https://<WEB_HOST>
+#   API_ALIAS      (opcional) nome da API na rede interna; padrão rcgcba-api. Com mais de
+#                  um stack na mesma rede, cada um precisa do seu (ex.: api-suaempresa).
+#   WEB_ALIAS      (opcional) idem para o web; padrão rcgcba-web
+#
+# Os nomes dos roteadores/serviços do Traefik levam o EMPRESA_ALIAS: nomes iguais
+# em dois stacks colidem (são globais no Traefik).
+#
+# Os valores de DATABASE_URL/JWT_*/etc. também NÃO ficam neste arquivo.
 version: "3.8"
 
 services:
@@ -23,9 +40,12 @@ services:
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN}
       PORT: "3001"
       CORS_ORIGIN: ${CORS_ORIGIN}
+      # Endereço do sistema nos links dos e-mails (senha provisória, redefinir
+      # senha, link do orçamento). Sem ele, vale o primeiro valor do CORS_ORIGIN.
+      WEB_URL: ${WEB_URL:-}
       # Opcional. O cookie de sessão (refresh token) sai `Secure` em produção sozinho
       # (NODE_ENV=production da imagem); só defina `false` para testar em HTTP fora
-      # do localhost. Vazio = padrão. Ver runbook, "Imagem única e um domínio por cliente".
+      # do localhost. Vazio = padrão.
       COOKIE_SECURE: ${COOKIE_SECURE:-}
       AGENTE_IA_CRYPTO_KEY: ${AGENTE_IA_CRYPTO_KEY}
       # Cifra os segredos do WhatsApp gravados no banco: a chave da Evolution
@@ -38,9 +58,9 @@ services:
       # recusado; trocá-la exige regravar os dois pelas telas.
       PARAMETROS_CRYPTO_KEY: ${PARAMETROS_CRYPTO_KEY}
       # Endereço com que a Evolution GO chama a API de volta.
-      # Se a Evolution GO estiver externa (outra VPS / nuvem): https://api.rcgdist.com.br
-      # Se estiver na mesma VPS/rede Docker: http://rcgcba-api:3001
-      WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL: ${WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL:-https://api.rcgdist.com.br}
+      # Padrão: o domínio da API deste stack (https://<API_HOST>).
+      # Se a Evolution GO estiver na mesma VPS/rede Docker: http://rcgcba-api:3001
+      WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL: ${WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL:-https://${API_HOST}}
       # Armazenamento de arquivos no MinIO (docs/planos/2026-10-13-armazenamento-arquivos-minio.md).
       # Vazias = tudo em disco, no volume uploads, como antes. As pastas listadas em
       # ARMAZENAMENTO_S3_PASTAS (ex.: whatsapp) passam a gravar no bucket; o que ainda
@@ -58,39 +78,29 @@ services:
     networks:
       RCGNet:
         aliases:
-          - rcgcba-api
+          - ${API_ALIAS:-rcgcba-api}
     deploy:
       replicas: 1
       labels:
         - "traefik.enable=true"
         - "traefik.swarm.network=RCGNet"
-        - "traefik.http.routers.plataforma-rcg-api.rule=Host(`api.rcgdist.com.br`)"
-        - "traefik.http.routers.plataforma-rcg-api.entrypoints=websecure"
-        - "traefik.http.routers.plataforma-rcg-api.tls=true"
-        - "traefik.http.routers.plataforma-rcg-api.tls.certresolver=letsencryptresolver"
-        - "traefik.http.routers.plataforma-rcg-api.service=plataforma-rcg-api"
-        - "traefik.http.services.plataforma-rcg-api.loadbalancer.server.port=3001"
-        # A API também responde no domínio de cada cliente, só em /api e /uploads:
-        # o front chama `/api/v1` no mesmo endereço em que o usuário abriu o
-        # sistema (imagem única, sem endereço de API gravado no build), e o
-        # cookie de sessão fica "da casa" em todos os domínios. Um roteador por
-        # domínio, pelo mesmo motivo dos do web: um certificado por roteador.
-        # `priority` explícita: o web responde ao mesmo Host, e a regra com
-        # caminho precisa ganhar dele. CLIENTE NOVO = repetir este bloco com o
-        # domínio dele (mais o do web, abaixo). O `api.rcgdist.com.br` acima
-        # continua valendo: webhooks (Evolution GO) e quem integra por ele.
-        - "traefik.http.routers.plataforma-rcg-crm-api.rule=Host(`crm.rcgdist.com.br`) && (PathPrefix(`/api/`) || PathPrefix(`/uploads/`))"
-        - "traefik.http.routers.plataforma-rcg-crm-api.priority=100"
-        - "traefik.http.routers.plataforma-rcg-crm-api.entrypoints=websecure"
-        - "traefik.http.routers.plataforma-rcg-crm-api.tls=true"
-        - "traefik.http.routers.plataforma-rcg-crm-api.tls.certresolver=letsencryptresolver"
-        - "traefik.http.routers.plataforma-rcg-crm-api.service=plataforma-rcg-api"
-        - "traefik.http.routers.plataforma-cba-crm-api.rule=Host(`crm.cbadist.com.br`) && (PathPrefix(`/api/`) || PathPrefix(`/uploads/`))"
-        - "traefik.http.routers.plataforma-cba-crm-api.priority=100"
-        - "traefik.http.routers.plataforma-cba-crm-api.entrypoints=websecure"
-        - "traefik.http.routers.plataforma-cba-crm-api.tls=true"
-        - "traefik.http.routers.plataforma-cba-crm-api.tls.certresolver=letsencryptresolver"
-        - "traefik.http.routers.plataforma-cba-crm-api.service=plataforma-rcg-api"
+        # API no domínio próprio: webhooks (Evolution GO) e quem integra por ele.
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-api.rule=Host(`${API_HOST}`)"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-api.entrypoints=websecure"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-api.tls=true"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-api.service=plataforma-${EMPRESA_ALIAS}-api"
+        - "traefik.http.services.plataforma-${EMPRESA_ALIAS}-api.loadbalancer.server.port=3001"
+        # A API também responde no domínio do front, só em /api e /uploads: o front
+        # chama `/api/v1` no mesmo endereço em que o usuário abriu o sistema, e o
+        # cookie de sessão fica "da casa". `priority` explícita: o web responde ao
+        # mesmo Host, e a regra com caminho precisa ganhar dele.
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web-api.rule=Host(`${WEB_HOST}`) && (PathPrefix(`/api/`) || PathPrefix(`/uploads/`))"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web-api.priority=100"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web-api.entrypoints=websecure"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web-api.tls=true"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web-api.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web-api.service=plataforma-${EMPRESA_ALIAS}-api"
 
 
   web:
@@ -98,38 +108,29 @@ services:
     networks:
       RCGNet:
         aliases:
-          - rcgcba-web
+          - ${WEB_ALIAS:-rcgcba-web}
     deploy:
       replicas: 1
       labels:
         - "traefik.enable=true"
         - "traefik.swarm.network=RCGNet"
-        # Um só serviço atende as duas marcas; a empresa vem do domínio.
-        # Um roteador por domínio, e não `Host(a) || Host(b)` num só: o
-        # Traefik pede um certificado por roteador com todos os hosts da
-        # regra, e se o DNS de um deles ainda não aponta para a VPS o Let's
-        # Encrypt recusa o pedido inteiro — os dois domínios ficavam com o
-        # certificado padrão do Traefik ("Não seguro").
-        - "traefik.http.routers.plataforma-rcg-web.rule=Host(`crm.rcgdist.com.br`)"
-        - "traefik.http.routers.plataforma-rcg-web.entrypoints=websecure"
-        - "traefik.http.routers.plataforma-rcg-web.tls=true"
-        - "traefik.http.routers.plataforma-rcg-web.tls.certresolver=letsencryptresolver"
-        - "traefik.http.routers.plataforma-rcg-web.service=plataforma-rcg-web"
-        - "traefik.http.routers.plataforma-rcg-web.middlewares=plataforma-rcg-web-login"
-        - "traefik.http.routers.plataforma-cba-web.rule=Host(`crm.cbadist.com.br`)"
-        - "traefik.http.routers.plataforma-cba-web.entrypoints=websecure"
-        - "traefik.http.routers.plataforma-cba-web.tls=true"
-        - "traefik.http.routers.plataforma-cba-web.tls.certresolver=letsencryptresolver"
-        - "traefik.http.routers.plataforma-cba-web.service=plataforma-rcg-web"
-        - "traefik.http.routers.plataforma-cba-web.middlewares=plataforma-rcg-web-login"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web.rule=Host(`${WEB_HOST}`)"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web.entrypoints=websecure"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web.tls=true"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web.tls.certresolver=letsencryptresolver"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web.service=plataforma-${EMPRESA_ALIAS}-web"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-web.middlewares=plataforma-${EMPRESA_ALIAS}-web-login"
         # Entrada pela raiz exata (sem caminho nem query) vai para o login da
-        # empresa do domínio: crm.rcgdist → ?empresa=rcg, crm.cbadist → ?empresa=cba.
+        # empresa: https://<WEB_HOST>/ → /login?empresa=<EMPRESA_ALIAS>. O alias
+        # diz à tela de login de qual empresa é o acesso (marca e empresa certas).
         # A navegação interna do Next (/?_rsc=...) não casa e passa direto.
-        # `$$` é o `$` literal, escapado da interpolação do compose.
-        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.regex=^https?://crm\\.(rcg|cba)dist\\.com\\.br/?$$"
-        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.replacement=https://crm.$${1}dist.com.br/login?empresa=$${1}"
-        - "traefik.http.middlewares.plataforma-rcg-web-login.redirectregex.permanent=false"
-        - "traefik.http.services.plataforma-rcg-web.loadbalancer.server.port=3000"
+        # No regex o `.` do domínio vale "qualquer caractere": inofensivo, porque só
+        # chega aqui quem já casou o Host acima. `$$` é o `$` literal, escapado da
+        # interpolação do compose.
+        - "traefik.http.middlewares.plataforma-${EMPRESA_ALIAS}-web-login.redirectregex.regex=^https?://${WEB_HOST}/?$$"
+        - "traefik.http.middlewares.plataforma-${EMPRESA_ALIAS}-web-login.redirectregex.replacement=https://${WEB_HOST}/login?empresa=${EMPRESA_ALIAS}"
+        - "traefik.http.middlewares.plataforma-${EMPRESA_ALIAS}-web-login.redirectregex.permanent=false"
+        - "traefik.http.services.plataforma-${EMPRESA_ALIAS}-web.loadbalancer.server.port=3000"
 
 volumes:
   uploads:
