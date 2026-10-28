@@ -23,6 +23,10 @@ services:
       JWT_REFRESH_EXPIRES_IN: ${JWT_REFRESH_EXPIRES_IN}
       PORT: "3001"
       CORS_ORIGIN: ${CORS_ORIGIN}
+      # Opcional. O cookie de sessão (refresh token) sai `Secure` em produção sozinho
+      # (NODE_ENV=production da imagem); só defina `false` para testar em HTTP fora
+      # do localhost. Vazio = padrão. Ver runbook, "Imagem única e um domínio por cliente".
+      COOKIE_SECURE: ${COOKIE_SECURE:-}
       AGENTE_IA_CRYPTO_KEY: ${AGENTE_IA_CRYPTO_KEY}
       # Cifra os segredos do WhatsApp gravados no banco: a chave da Evolution
       # GO, o token de cada instância e o segredo do webhook. Chave própria, e
