@@ -17,6 +17,7 @@ import {
   paginationToSkipTake,
 } from '../../common/pagination/paginate';
 import { HorarioTrabalhoService } from '../acessos/horario-trabalho.service';
+import { AcessosService } from '../acessos/acessos.service';
 import {
   garantirPerfilDoGrupo as garantirPerfilDoGrupoDaEmpresa,
   grupoDaEmpresa,
@@ -40,7 +41,22 @@ export class UsuariosService {
     private readonly politicaSenhaService: PoliticaSenhaService,
     private readonly horarioTrabalho: HorarioTrabalhoService,
     private readonly entregaSenha: EntregaSenhaService,
+    private readonly acessos: AcessosService,
   ) {}
+
+  /**
+   * Corta o acesso de quem teve a conta inativada, excluída ou a senha trocada
+   * por um administrador: revoga todos os refresh tokens e fecha as sessões.
+   * Sem isto a pessoa seguia se renovando com o token que já tinha (SEC-03); só
+   * o access token já emitido vale até os 15 minutos dele.
+   */
+  private async derrubarSessoes(usuarioId: string, motivo: string) {
+    await this.prisma.refreshToken.updateMany({
+      where: { usuarioId, revokedAt: null },
+      data: { revokedAt: new Date() },
+    });
+    await this.acessos.encerrarSessoesDoUsuario(usuarioId, motivo);
+  }
 
   /**
    * "usuario_empresas" e "perfis" têm RLS: o filtro por relação
@@ -356,6 +372,7 @@ export class UsuariosService {
         },
       });
     });
+    await this.derrubarSessoes(id, 'senha_redefinida');
 
     const entrega = await this.entregaSenha.entregar(empresaId, actorId, {
       nome: usuario.nome,
@@ -369,7 +386,7 @@ export class UsuariosService {
 
   async update(id: string, input: UsuarioUpdate, actorId: string) {
     await this.findOne(id);
-    return this.prisma.usuario.update({
+    const atualizado = await this.prisma.usuario.update({
       where: { id },
       data: { ...input, updatedBy: actorId },
       select: {
@@ -380,6 +397,8 @@ export class UsuariosService {
         updatedAt: true,
       },
     });
+    if (input.ativo === false) await this.derrubarSessoes(id, 'conta_inativada');
+    return atualizado;
   }
 
   /** Reset de senha por admin — não exige a senha atual do usuário-alvo. */
@@ -407,6 +426,7 @@ export class UsuariosService {
         },
       });
     });
+    await this.derrubarSessoes(id, 'senha_redefinida');
 
     return { success: true };
   }
@@ -417,6 +437,7 @@ export class UsuariosService {
       where: { id },
       data: { deletedAt: new Date(), deletedBy: actorId, ativo: false },
     });
+    await this.derrubarSessoes(id, 'conta_excluida');
     return { success: true };
   }
 

@@ -719,6 +719,23 @@ export class AuthService {
       data: { revokedAt: new Date() },
     });
 
+    // A conta pode ter sido inativada ou excluída depois do login: o refresh só
+    // olhava o vínculo, e quem perdeu a conta seguia se renovando (SEC-03).
+    const conta = await this.prisma.withUsuario(stored.usuarioId, (tx) =>
+      tx.usuario.findFirst({
+        where: { id: stored.usuarioId, ativo: true, deletedAt: null },
+        select: { id: true },
+      }),
+    );
+    if (!conta) {
+      await this.prisma.refreshToken.updateMany({
+        where: { usuarioId: stored.usuarioId, revokedAt: null },
+        data: { revokedAt: new Date() },
+      });
+      await this.acessos.encerrarSessoesDoUsuario(stored.usuarioId, 'conta_inativada');
+      throw new UnauthorizedException('Refresh token inválido ou expirado');
+    }
+
     // A renovação não passa pelo JwtAuthGuard (é rota pública, autenticada
     // pelo próprio refresh token), então a trava de expediente precisa ser
     // conferida aqui também — senão bastaria deixar a aba aberta para o

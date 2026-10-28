@@ -14,6 +14,7 @@ describe('AuthService', () => {
     usuario: {
       findUnique: jest.Mock;
       findUniqueOrThrow: jest.Mock;
+      findFirst: jest.Mock;
       update: jest.Mock;
     };
     empresa: { findFirst: jest.Mock };
@@ -98,6 +99,7 @@ describe('AuthService', () => {
       usuario: {
         findUnique: jest.fn(),
         findUniqueOrThrow: jest.fn(),
+        findFirst: jest.fn(),
         update: jest.fn(),
       },
       empresa: { findFirst: jest.fn() },
@@ -382,6 +384,38 @@ describe('AuthService', () => {
       ).rejects.toThrow(UnauthorizedException);
     });
 
+    it('conta inativada ou excluída não renova: revoga tudo e fecha as sessões (SEC-03)', async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        usuarioId: 'usuario-1',
+        empresaId: 'empresa-1',
+        revokedAt: null,
+        expiresAt: new Date(Date.now() + 100000),
+      });
+      prisma.refreshToken.update.mockResolvedValue({});
+      // Não achou usuário ativo e não excluído.
+      prisma.usuario.findFirst.mockResolvedValue(null);
+
+      await expect(
+        service.refresh({ refreshToken: 'abc' }, {}),
+      ).rejects.toThrow(UnauthorizedException);
+
+      expect(prisma.usuario.findFirst).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'usuario-1', ativo: true, deletedAt: null },
+        }),
+      );
+      expect(prisma.refreshToken.updateMany).toHaveBeenCalledWith(
+        expect.objectContaining({ where: { usuarioId: 'usuario-1', revokedAt: null } }),
+      );
+      expect(acessosMock.encerrarSessoesDoUsuario).toHaveBeenCalledWith(
+        'usuario-1',
+        'conta_inativada',
+      );
+      // E não emitiu token novo.
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+    });
+
     it('rejeita token expirado', async () => {
       prisma.refreshToken.findUnique.mockResolvedValue({
         id: 'rt-1',
@@ -404,6 +438,7 @@ describe('AuthService', () => {
         expiresAt: new Date(Date.now() + 100000),
       });
       prisma.refreshToken.update.mockResolvedValue({});
+      prisma.usuario.findFirst.mockResolvedValue({ id: 'usuario-1' });
       prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
       prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(
         vinculoCompleto,
