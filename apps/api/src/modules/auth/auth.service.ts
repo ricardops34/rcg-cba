@@ -519,7 +519,9 @@ export class AuthService {
       // vínculo dele — que está perfeito. O motivo certo vem de
       // `motivoBloqueio`, a mesma fonte que decide o acesso.
       const empresa = await this.prisma.empresa.findFirst({
-        where: { alias: input.empresaAlias, deletedAt: null },
+        // O alias é gravado sempre em minúsculas (contrato da empresa); quem digita
+        // ou configura `?empresa=RCG` não deve cair em "sem acesso" por causa disso.
+        where: { alias: input.empresaAlias.trim().toLowerCase(), deletedAt: null },
         select: { id: true, situacao: true, testeExpiraEm: true },
       });
       if (!empresa) {
