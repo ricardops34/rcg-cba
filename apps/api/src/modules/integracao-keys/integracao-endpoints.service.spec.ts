@@ -78,3 +78,57 @@ describe('IntegracaoEndpointsService', () => {
     expect(result.ativo).toBe(false);
   });
 });
+
+describe('IntegracaoKeysService — escopo da chave (SEC-12)', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { IntegracaoKeysService } = require('./integracao-keys.service');
+  const montar = () => {
+    const prisma = {
+      integracaoApiKey: {
+        create: jest.fn().mockResolvedValue({ id: 'k1' }),
+        findFirst: jest.fn().mockResolvedValue({ id: 'k1' }),
+        update: jest.fn().mockResolvedValue({ id: 'k1' }),
+      },
+    };
+    return { servico: new IntegracaoKeysService(prisma as never), prisma };
+  };
+
+  it('grava o escopo e os IPs (sem repetição) ao criar', async () => {
+    const { servico, prisma } = montar();
+    await servico.create('e1', 'u1', {
+      nome: 'ERP',
+      escopo: ['produtos', 'produtos', 'estoque'],
+      ipsPermitidos: ['10.0.0.1', '10.0.0.1'],
+    });
+    expect(prisma.integracaoApiKey.create.mock.calls[0][0].data).toMatchObject({
+      escopo: ['produtos', 'estoque'],
+      ipsPermitidos: ['10.0.0.1'],
+    });
+  });
+
+  it('entidade que não existe no catálogo é recusada (a chave nasceria bloqueada)', async () => {
+    const { servico } = montar();
+    await expect(
+      servico.create('e1', 'u1', { nome: 'ERP', escopo: ['produtos', 'produtoss'] }),
+    ).rejects.toThrow(/produtoss/);
+  });
+
+  it('sem informar, a chave nasce sem restrição', async () => {
+    const { servico, prisma } = montar();
+    await servico.create('e1', 'u1', { nome: 'ERP' });
+    expect(prisma.integracaoApiKey.create.mock.calls[0][0].data).toMatchObject({
+      escopo: [],
+      ipsPermitidos: [],
+    });
+  });
+
+  it('editar o escopo valida do mesmo jeito; esvaziar tira a restrição', async () => {
+    const { servico, prisma } = montar();
+    await expect(servico.update('e1', 'u1', 'k1', { escopo: ['nada'] })).rejects.toThrow(/nada/);
+    await servico.update('e1', 'u1', 'k1', { escopo: [], ipsPermitidos: [] });
+    expect(prisma.integracaoApiKey.update.mock.calls[0][0].data).toMatchObject({
+      escopo: [],
+      ipsPermitidos: [],
+    });
+  });
+});

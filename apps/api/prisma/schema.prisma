@@ -977,6 +977,10 @@ model IntegracaoApiKey {
   ultimoUso DateTime?
   ultimaColeta DateTime?
   ultimoEnvio  DateTime?
+  /// Entidades (`endpointKey`) que a chave pode usar. Vazio = todas (chaves anteriores ao escopo).
+  escopo        String[] @default([])
+  /// IPs e faixas (CIDR) de onde a chave pode ser usada. Vazio = qualquer origem.
+  ipsPermitidos String[] @default([])
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

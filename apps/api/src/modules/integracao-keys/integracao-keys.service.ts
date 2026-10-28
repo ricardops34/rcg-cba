@@ -1,5 +1,6 @@
 import { randomBytes, createHash } from 'node:crypto';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { BadRequestException, Injectable, NotFoundException } from '@nestjs/common';
+import { CATALOGO_ENDPOINTS_INTEGRACAO } from './integracao-endpoints.catalogo';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import {
   buildPaginatedResult,
@@ -10,6 +11,20 @@ import type {
   IntegracaoApiKeyQuery,
   IntegracaoApiKeyUpdate,
 } from '@plataforma/contracts';
+
+/** Entidade que não existe no catálogo é erro de digitação: a chave nasceria bloqueada sem ninguém saber por quê. */
+function escopoValido(escopo: string[] | undefined): string[] | undefined {
+  if (!escopo) return undefined;
+  const conhecidos = new Set(CATALOGO_ENDPOINTS_INTEGRACAO.map((e) => e.endpointKey));
+  const unicos = [...new Set(escopo)];
+  const desconhecidos = unicos.filter((e) => !conhecidos.has(e));
+  if (desconhecidos.length > 0) {
+    throw new BadRequestException(
+      `Entidade(s) desconhecida(s) no escopo: ${desconhecidos.join(', ')}.`,
+    );
+  }
+  return unicos;
+}
 
 const SORT_FIELDS = new Set(['nome', 'ativo', 'ultimoUso', 'createdAt']);
 
@@ -22,6 +37,8 @@ const SELECT_SEGURO = {
   prefixo: true,
   ativo: true,
   expiraEm: true,
+  escopo: true,
+  ipsPermitidos: true,
   ultimoUso: true,
   createdAt: true,
   updatedAt: true,
@@ -90,6 +107,8 @@ export class IntegracaoKeysService {
         chaveHash,
         prefixo,
         expiraEm: input.expiraEm ?? null,
+        escopo: escopoValido(input.escopo) ?? [],
+        ipsPermitidos: [...new Set(input.ipsPermitidos ?? [])],
         createdBy: userId,
         updatedBy: userId,
       },
@@ -110,7 +129,14 @@ export class IntegracaoKeysService {
     const existente = await this.findOne(empresaId, id);
     return this.prisma.integracaoApiKey.update({
       where: { id: existente.id },
-      data: { ...input, updatedBy: userId },
+      data: {
+        ...input,
+        ...(input.escopo !== undefined ? { escopo: escopoValido(input.escopo) } : {}),
+        ...(input.ipsPermitidos !== undefined
+          ? { ipsPermitidos: [...new Set(input.ipsPermitidos)] }
+          : {}),
+        updatedBy: userId,
+      },
       select: SELECT_SEGURO,
     });
   }

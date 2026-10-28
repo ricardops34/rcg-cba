@@ -10,6 +10,7 @@ import {
 import type { Request } from 'express';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import { CATALOGO_ENDPOINTS_INTEGRACAO } from '../../integracao-keys/integracao-endpoints.catalogo';
+import { ipPermitido } from '../../../common/rede/ip-permitido';
 
 export interface IntegracaoContext {
   empresaId: string;
@@ -55,6 +56,20 @@ export class ApiKeyGuard implements CanActivate {
       throw new UnauthorizedException('Chave de API expirada');
     }
 
+    // Origem: chave com lista de IPs só vale vindo deles (SEC-12). Atrás do Traefik
+    // o `request.ip` é o do cliente (trust proxy = 1 em produção).
+    if (
+      apiKey.ipsPermitidos.length > 0 &&
+      !ipPermitido(request.ip, apiKey.ipsPermitidos)
+    ) {
+      this.logger.warn(
+        `Chave ${apiKey.prefixo}… recusada: IP ${request.ip} fora da lista da chave.`,
+      );
+      throw new ForbiddenException(
+        'Esta chave de API não pode ser usada a partir deste endereço (IP).',
+      );
+    }
+
     request.integracao = { empresaId: apiKey.empresaId, apiKeyId: apiKey.id };
 
     const path = request.originalUrl || request.url;
@@ -69,6 +84,20 @@ export class ApiKeyGuard implements CanActivate {
     // `withTenant` a leitura volta vazia — desativar no monitor não bloqueava
     // nada — e a gravação do uso abaixo era recusada em silêncio, deixando o
     // contador em zero.
+    // Escopo: chave restrita só usa as entidades dela (SEC-12). `comunicacao` é o
+    // sinal de vida do ERP e fica de fora da conta — não grava dado de negócio, e
+    // a chave restrita que esquecesse dela deixaria o monitor dizendo "sem
+    // comunicação".
+    if (
+      apiKey.escopo.length > 0 &&
+      endpointKey !== 'comunicacao' &&
+      (!endpointKey || !apiKey.escopo.includes(endpointKey))
+    ) {
+      throw new ForbiddenException(
+        `Esta chave de API não tem acesso a '/integracao/${endpointKey ?? ''}'.`,
+      );
+    }
+
     if (endpointKey) {
       const endpointConfig = await this.prisma.withTenant(
         apiKey.empresaId,
