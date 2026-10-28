@@ -391,6 +391,24 @@ describe('AuthService', () => {
       expect(prisma.refreshToken.create).not.toHaveBeenCalled();
     });
 
+    it('sessão encerrada não renova, nem com o token revogado há instantes (tolerância das abas)', async () => {
+      prisma.refreshToken.findUnique.mockResolvedValue({
+        id: 'rt-1',
+        usuarioId: 'usuario-1',
+        empresaId: 'empresa-1',
+        sessaoId: 'sessao-1',
+        // Revogado agora: é o que o encerramento da sessão faz com os tokens dela.
+        revokedAt: new Date(Date.now() - 1_000),
+        expiresAt: new Date(Date.now() + 100000),
+      });
+      acessosMock.situacaoSessao.mockResolvedValue({ aberta: false, motivo: 'token_reutilizado' });
+
+      await expect(
+        service.refresh({ refreshToken: 'abc' }, {}),
+      ).rejects.toThrow(UnauthorizedException);
+      expect(prisma.refreshToken.create).not.toHaveBeenCalled();
+    });
+
     it('duas abas renovando juntas: o token usado há instantes ainda renova', async () => {
       prisma.refreshToken.findUnique.mockResolvedValue({
         id: 'rt-1',

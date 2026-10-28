@@ -712,6 +712,14 @@ export class AuthService {
       ) {
         throw new SessaoEncerradaException(sessao.motivo);
       }
+      // Sessão encerrada por qualquer motivo (logout, reuso detectado, conta
+      // inativada, fora do expediente) não renova — **nem dentro da tolerância
+      // das duas abas**: os tokens que o encerramento revogou têm `revokedAt`
+      // de "agora" e passariam por tokens "usados há instantes" (visto no teste
+      // integrado de 28/10/2026).
+      if (!sessao.aberta) {
+        throw new UnauthorizedException('Refresh token inválido ou expirado');
+      }
     }
 
     if (!stored || stored.expiresAt.getTime() < Date.now()) {
