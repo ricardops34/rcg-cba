@@ -1,6 +1,6 @@
 services:
   portal-cliente:
-    image: ${PORTAL_CLIENTE_IMAGE:-rcgcba-portal-cliente:latest}
+    image: ${PORTAL_CLIENTE_IMAGE:-bjsoftware/plataforma-portal-cliente:latest}
     environment:
       PORT: "3002"
     networks:

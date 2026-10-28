@@ -87,3 +87,10 @@ cadastrar o login do Docker Hub no Portainer antes de apontar a stack; (2) rodar
 `publish.ps1`; (3) trocar `API_IMAGE`/`WEB_IMAGE` para o nome novo e validar;
 (4) imagens `plataforma-scripts` e `plataforma-portal-cliente` (a stack do portal e o
 runbook ainda usam `rcgcba-*`); (5) aposentar o nome antigo.
+
+**Decisão (28/10/2026): repositórios públicos por enquanto.** Sem login na VPS; a
+privacidade (SEC-17) fica para quando houver plano pago ou outro registry (então:
+credencial no Portainer + `--with-registry-auth`, sem mudar código). Também feito:
+`publish.ps1 -Target scripts` (imagem `plataforma-scripts`), a stack do portal e o
+README dele com o nome `plataforma-portal-cliente`, e o runbook ("Publicar imagens").
+O portal não entra no `publish.ps1` (o build leva a URL da API dele como argumento).

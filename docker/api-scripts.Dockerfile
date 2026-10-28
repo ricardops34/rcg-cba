@@ -5,7 +5,8 @@
 # Swarm, onde não dá pra usar `build:`/bind-mount do repo.
 #
 # Contexto de build: a RAIZ do repositório.
-#   docker build -f docker/api-scripts.Dockerfile -t bjsoftware/rcgcba-scripts:latest .
+#   docker build -f docker/api-scripts.Dockerfile -t bjsoftware/plataforma-scripts:latest .
+# (`publish.ps1 -Target scripts` publica nos nomes novo e antigo, com tag de versão)
 #
 # Uso (Portainer Stack/serviço avulso) — comando do container. O WORKDIR é
 # /app/apps/api e os scripts compilados ficam em prisma/dist (outDir de

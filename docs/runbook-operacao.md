@@ -741,8 +741,12 @@ arquivos: não envia e não altera nada na base do Protheus. Instalação e uso 
 ## Publicar imagens
 
 `publish.ps1` (raiz) builda e **publica no Docker Hub** as **duas** imagens
-(`bjsoftware/rcgcba-api` e `-web`, tag `latest`), depois é
-preciso redeploy no Portainer.
+(`bjsoftware/plataforma-api` e `-web`) nos dois nomes, o novo e o antigo
+(`rcgcba-*`), cada um com a tag `latest` e uma tag de versão
+(`yyyy.MM.dd-HHmm`), depois é preciso redeploy no Portainer. `-Target scripts`
+publica a imagem de seed/migrations (`plataforma-scripts`). A stack lê `API_IMAGE` e
+`WEB_IMAGE`; sem elas usa o nome antigo `:latest`. Voltar versão = definir a variável
+com a tag anterior. Os repositórios são **públicos** (decisão de 28/10/2026).
 
 O script publica cada imagem **antes** de buildar a próxima — um erro no meio
 deixa o conjunto desalinhado em produção. Rode os builds antes para pegar erros:

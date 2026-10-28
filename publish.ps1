@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("all", "api", "web")]
+    [ValidateSet("all", "api", "web", "scripts")]
     [string]$Target = "all",
     [switch]$BuildOnly,
     [switch]$PreflightOnly,
@@ -163,6 +163,14 @@ try {
                 "--build-arg",
                 "NEXT_PUBLIC_APP_VERSION=1.0"
             )
+    }
+
+    # Seed e migrations (imagem enxuta); nao entra em "all" porque muda raramente.
+    if ($Target -eq "scripts") {
+        Invoke-ImageBuild `
+            -Label "Scripts" `
+            -Dockerfile "docker/api-scripts.Dockerfile" `
+            -Images (Get-ImageTags "scripts")
     }
 
     Write-Host "`n=========================================" -ForegroundColor Cyan

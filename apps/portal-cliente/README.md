@@ -20,7 +20,7 @@ da API quando necessário.
 ```bash
 docker build -f docker/portal-cliente.Dockerfile \
   --build-arg NEXT_PUBLIC_API_URL=https://api.exemplo.com/api/v1 \
-  -t rcgcba-portal-cliente:latest .
+  -t bjsoftware/plataforma-portal-cliente:latest .
 ```
 
 Para publicar no Swarm, informe `PORTAL_CLIENTE_HOST` e, opcionalmente,
