@@ -250,6 +250,7 @@ export class RecuperacaoSenhaService {
       evento: 'senha_redefinida',
       email: usuario.email,
       usuarioId: usuario.id,
+      empresaId: await this.empresaDoPedido(usuario.id),
       detalhe: 'Senha trocada pelo link de "Esqueci minha senha"',
       ...meta,
     });
