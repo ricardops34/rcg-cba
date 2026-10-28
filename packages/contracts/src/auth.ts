@@ -53,8 +53,9 @@ export const authTokensSchema = z.object({
     ),
   refreshToken: z
     .string()
+    .optional()
     .describe(
-      "Token opaco de longa duração (7 dias), rotativo a cada uso, usado só em /auth/refresh",
+      "Não vem mais no corpo: o refresh token (opaco, 7 dias, rotativo a cada uso) viaja no cookie HttpOnly `rt`, usado só em /auth/refresh",
     ),
   expiresIn: z.number().int().describe("Validade do accessToken em segundos"),
 });

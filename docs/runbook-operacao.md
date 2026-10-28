@@ -844,6 +844,14 @@ de cliente para o serviço da API, e o resto para o web. Consequências:
 3. Volta atrás: voltar a imagem do web para a anterior; os roteadores novos
    podem ficar.
 
+**Sessão em cookie (SEC-11).** O refresh token deixou o `localStorage`: a API o
+grava no cookie `rt` (`HttpOnly`, `Secure`, `SameSite=Strict`, `Path=/api/v1/auth`)
+e **não o devolve mais no corpo** do login. Por isso **API e web são publicados
+juntos** (`.publish.ps1`, alvo `all`): a API nova com o web antigo (que espera o
+token no corpo) deixa todo mundo sem renovar a sessão. Quem estava logado entra
+de novo **uma vez** na primeira visita (o formato guardado mudou). Variável
+opcional da API: `COOKIE_SECURE=false` só para testar em HTTP fora do localhost.
+
 **Atenções.**
 
 - O `crm.*/api/docs` (Swagger) passa a responder também no domínio do cliente.

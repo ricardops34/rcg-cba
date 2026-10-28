@@ -67,13 +67,17 @@ export class AuthController {
   }
 
   /**
-   * Grava o refresh token no cookie `HttpOnly` (SEC-11). Por ora a resposta
-   * ainda traz o token no corpo, para o front anterior seguir funcionando; o
-   * passo seguinte o tira daqui.
+   * Grava o refresh token no cookie `HttpOnly` e **o tira do corpo** (SEC-11):
+   * o que o JavaScript da página recebe não inclui o token que vale por dias.
+   * O front e a API publicam juntos — front anterior esperava o token no corpo.
    */
-  private comCookie<T extends { refreshToken?: string }>(res: Response, resultado: T): T {
-    if (resultado.refreshToken) gravarCookieRefresh(res, resultado.refreshToken);
-    return resultado;
+  private comCookie<T extends { refreshToken?: string }>(
+    res: Response,
+    resultado: T,
+  ): Omit<T, 'refreshToken'> {
+    const { refreshToken, ...resto } = resultado;
+    if (refreshToken) gravarCookieRefresh(res, refreshToken);
+    return resto;
   }
 
   @ApiOperation({

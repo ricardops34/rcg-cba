@@ -19,8 +19,11 @@ describe('AuthController — cookie do refresh token', () => {
     const { controller, res, resMock, req } = montar({
       login: jest.fn().mockResolvedValue({ accessToken: 'a', refreshToken: 'r1' }),
     });
-    await controller.login({ email: 'x', senha: 'y' } as never, req(), res);
+    const corpo = await controller.login({ email: 'x', senha: 'y' } as never, req(), res);
     expect(resMock.cookie).toHaveBeenCalledWith('rt', 'r1', expect.objectContaining({ httpOnly: true }));
+    // O token só vai no cookie: o corpo que o JavaScript recebe não o traz.
+    expect(corpo).toEqual({ accessToken: 'a' });
+    expect(JSON.stringify(corpo)).not.toContain('r1');
   });
 
   it('refresh sem corpo usa o cookie e grava o novo', async () => {
