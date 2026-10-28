@@ -1720,6 +1720,50 @@ curl -s https://api.comercial.rcgdist.com.br/api/v1/health/ready
 
 Esperado: 200/302/403 com `0`; `api.comercial` dá 404 na raiz (use `/health/ready`).
 
+### Armadilha: webhook da Evolution GO dá 404 em `api.<cliente>`, mas o resto funciona **[diagnosticado em 2026-10-28, correção pendente]**
+
+Sintoma: o container `evogo_evolution-go` loga `webhook failed - ... error:
+received non-2xx response: 404 Not Found` para toda tentativa de callback
+(`POST /api/v1/whatsapp/evolution/webhook/<empresaId>/<sessaoId>`), até esgotar
+as tentativas (`webhook failed after maximum retries`). Mensagem enviada e
+recebida continuam funcionando — só o retorno (recibo de entrega/leitura,
+mudança de estado da conexão) não chega, porque é a Evolution GO quem inicia
+essa chamada, de fora para dentro.
+
+Roteiro de diagnóstico (isolar antes de mexer em qualquer coisa):
+
+1. **Não teste essa URL de fora da VPS por `curl`/navegador comum** se a
+   máquina tiver antivírus com inspeção HTTPS (Kaspersky e afins): o
+   certificado interceptado mascara a resposta real do servidor com um 404 do
+   próprio antivírus — confunde com o sintoma real. Teste sempre **de dentro
+   da VPS**.
+2. No console do container da **API** (Portainer → Containers → o da API, não
+   o do `evogo`), confirme que a rota existe e funciona por dentro:
+   ```sh
+   node -e "require('http').request({host:'localhost',port:3001,path:'/api/v1/whatsapp/evolution/webhook/<empresaId>/<sessaoId>',method:'POST',headers:{'content-type':'application/json'}},r=>{console.log('status:',r.statusCode)}).end('{}')"
+   ```
+   `401` = rota existe, só falta a credencial (esperado, o teste não manda o
+   segredo certo). `404` aqui, sim, seria rota ausente na imagem publicada.
+3. Do mesmo console, compare os dois roteadores do Traefik que apontam para o
+   mesmo serviço da API:
+   ```sh
+   wget -qO- -S https://api.<cliente>/api/v1/auth/empresa-branding?alias=<alias> 2>&1 | head -5
+   wget -qO- -S https://crm.<cliente>/api/v1/auth/empresa-branding?alias=<alias> 2>&1 | head -10
+   ```
+   Em 2026-10-28 (cliente RCG, `api.rcgdist.com.br`/`crm.rcgdist.com.br`): o
+   segundo respondeu `200` normalmente, o primeiro deu `404` — ou seja, **só o
+   roteador `Host(${API_HOST})` dedicado está quebrado**, não o Traefik, não a
+   API, não o DNS (os dois domínios resolvem para o mesmo IP) e não as
+   variáveis (`API_HOST` e `WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL` conferidas
+   limpas, sem `https://` duplicado nem aspas). Também descartada colisão de
+   nome de roteador: só existe um stack `crm` na lista de Stacks do Portainer
+   para esse cliente.
+4. **Correção ainda não aplicada/verificada**: forçar a recriação da tarefa do
+   serviço `api` (Portainer → stack → serviço `api` → Update/Force update, sem
+   trocar imagem), pra o Traefik redescobrir os labels do zero. Fazer fora do
+   horário de uso — a API cai por alguns segundos. **Atualizar este item
+   depois de confirmar se resolveu.**
+
 ### Armadilha: serviços do Swarm não se enxergam (`P1001`, timeout até no Redis) **[a confirmar a causa]**
 
 Em 2026-10-18, depois de um reboot da VPS, `crm_api` ficou em 0/1 com
