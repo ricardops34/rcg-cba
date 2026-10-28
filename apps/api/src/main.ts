@@ -1,3 +1,4 @@
+import { createHash, timingSafeEqual } from 'node:crypto';
 import helmet from 'helmet';
 import { NestFactory } from '@nestjs/core';
 import { VersioningType } from '@nestjs/common';
@@ -177,9 +178,8 @@ async function bootstrap() {
         token = authHeader.substring(7);
       } else if (req.cookies && req.cookies.access_token) {
         token = req.cookies.access_token;
-      } else if (req.query && typeof req.query.token === 'string') {
-        token = req.query.token;
       }
+      // Sem `?token=`: a URL vai para log de acesso e proxy.
 
       if (token && process.env.JWT_ACCESS_SECRET) {
         try {
@@ -200,8 +200,16 @@ async function bootstrap() {
         authHeader.startsWith('Basic ')
       ) {
         const credentials = Buffer.from(authHeader.substring(6), 'base64').toString('utf8');
-        const [user, pass] = credentials.split(':');
-        if (user === swaggerUser && pass === swaggerPass) {
+        // Só o primeiro ':' separa usuário de senha (a senha pode ter ':').
+        const corte = credentials.indexOf(':');
+        const user = corte < 0 ? credentials : credentials.slice(0, corte);
+        const pass = corte < 0 ? '' : credentials.slice(corte + 1);
+        const igual = (a: string, b: string) => {
+          const ha = createHash('sha256').update(a).digest();
+          const hb = createHash('sha256').update(b).digest();
+          return timingSafeEqual(ha, hb);
+        };
+        if (igual(user, swaggerUser) && igual(pass, swaggerPass)) {
           return next();
         }
       }

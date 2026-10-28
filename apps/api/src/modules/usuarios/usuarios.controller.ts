@@ -13,6 +13,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ConferirConteudoUploadInterceptor } from '../../common/uploads/conferir-conteudo.interceptor';
 import { memoryStorage } from 'multer';
 import {
   ApiBearerAuth,
@@ -116,6 +117,7 @@ export class UsuariosController {
       storage: memoryStorage(),
       limits: { fileSize: 2 * 1024 * 1024, files: 1 },
     }),
+    ConferirConteudoUploadInterceptor,
   )
   async enviarFoto(
     @Param('id') id: string,

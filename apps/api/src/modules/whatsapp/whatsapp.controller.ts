@@ -14,6 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ConferirConteudoUploadInterceptor } from '../../common/uploads/conferir-conteudo.interceptor';
 import { whatsappUploadOptions } from '../../common/uploads/uploads.config';
 import {
   ApiBearerAuth,
@@ -1016,7 +1017,7 @@ export class WhatsappController {
   })
   @RequirePermission('whatsapp-conversas', 'cadastrar')
   @Post('conversas/:id/arquivos')
-  @UseInterceptors(FileInterceptor('arquivo', whatsappUploadOptions))
+  @UseInterceptors(FileInterceptor('arquivo', whatsappUploadOptions), ConferirConteudoUploadInterceptor)
   enviarArquivo(
     @Param('id') id: string,
     @UploadedFile() arquivo: Express.Multer.File | undefined,

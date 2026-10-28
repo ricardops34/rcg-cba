@@ -21,6 +21,7 @@ import {
   ApiTags,
 } from '@nestjs/swagger';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ConferirConteudoUploadInterceptor } from '../../common/uploads/conferir-conteudo.interceptor';
 import { PRODUTO_RELACIONADO_EXAMPLE } from '@plataforma/contracts';
 import { produtoFotoUploadOptions } from '../../common/uploads/uploads.config';
 import { ProdutosService } from './produtos.service';
@@ -175,7 +176,7 @@ export class ProdutosController {
   @ApiResponse({ status: 201, description: 'Foto gravada no produto' })
   @RequirePermission('produtos', 'editar', ['produtos-cadastro', 'editar'])
   @Post(':id/foto')
-  @UseInterceptors(FileInterceptor('file', produtoFotoUploadOptions))
+  @UseInterceptors(FileInterceptor('file', produtoFotoUploadOptions), ConferirConteudoUploadInterceptor)
   uploadFoto(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File | undefined,

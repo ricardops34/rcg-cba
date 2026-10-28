@@ -14,6 +14,7 @@ import {
   UnauthorizedException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ConferirConteudoUploadInterceptor } from '../../common/uploads/conferir-conteudo.interceptor';
 import { memoryStorage } from 'multer';
 import { Throttle } from '@nestjs/throttler';
 import {
@@ -275,7 +276,7 @@ export class AuthController {
   @ApiBearerAuth()
   @UseGuards(JwtAuthGuard)
   @Post('me/foto')
-  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } }))
+  @UseInterceptors(FileInterceptor('file', { storage: memoryStorage(), limits: { fileSize: 2 * 1024 * 1024, files: 1 } }), ConferirConteudoUploadInterceptor)
   uploadPhoto(@UploadedFile() file: Express.Multer.File | undefined, @CurrentUser() user: AuthenticatedUser) {
     return this.authService.uploadOwnAvatar(user.id, user.empresaAtivaId, file);
   }

@@ -13,6 +13,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ConferirConteudoUploadInterceptor } from '../../common/uploads/conferir-conteudo.interceptor';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ContasBancariasService } from './contas-bancarias.service';
 import {
@@ -100,7 +101,7 @@ export class ContasBancariasController {
   })
   @RequirePermission('contas-bancarias', 'editar')
   @Post(':id/logo')
-  @UseInterceptors(FileInterceptor('file', bancoLogoUploadOptions))
+  @UseInterceptors(FileInterceptor('file', bancoLogoUploadOptions), ConferirConteudoUploadInterceptor)
   uploadLogo(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File | undefined,

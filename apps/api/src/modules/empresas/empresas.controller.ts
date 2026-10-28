@@ -14,6 +14,7 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ConferirConteudoUploadInterceptor } from '../../common/uploads/conferir-conteudo.interceptor';
 import {
   ApiBearerAuth,
   ApiBody,
@@ -142,7 +143,7 @@ export class EmpresasController {
   @ApiResponse({ status: 400, description: 'Arquivo ausente ou formato inválido' })
   @RequirePermission('empresas', 'editar')
   @Post(':id/logo')
-  @UseInterceptors(FileInterceptor('file', logoUploadOptions))
+  @UseInterceptors(FileInterceptor('file', logoUploadOptions), ConferirConteudoUploadInterceptor)
   uploadLogo(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -186,7 +187,7 @@ export class EmpresasController {
   @ApiResponse({ status: 400, description: 'Arquivo ausente ou formato inválido' })
   @RequirePermission('empresas', 'editar')
   @Post(':id/banner')
-  @UseInterceptors(FileInterceptor('file', bannerUploadOptions))
+  @UseInterceptors(FileInterceptor('file', bannerUploadOptions), ConferirConteudoUploadInterceptor)
   uploadBanner(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File | undefined,
@@ -214,7 +215,7 @@ export class EmpresasController {
   @ApiResponse({ status: 400, description: 'Arquivo ausente ou formato inválido' })
   @RequirePermission('empresas', 'editar')
   @Post(':id/logo-danfe')
-  @UseInterceptors(FileInterceptor('file', logoDanfeUploadOptions))
+  @UseInterceptors(FileInterceptor('file', logoDanfeUploadOptions), ConferirConteudoUploadInterceptor)
   uploadLogoDanfe(
     @Param('id') id: string,
     @UploadedFile() file: Express.Multer.File | undefined,

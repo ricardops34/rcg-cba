@@ -22,6 +22,7 @@ import {
 } from '@nestjs/swagger';
 import type { Response } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { ConferirConteudoUploadInterceptor } from '../../common/uploads/conferir-conteudo.interceptor';
 import { agenteAnexoUploadOptions } from '../../common/uploads/uploads.config';
 import { Throttle } from '@nestjs/throttler';
 import {
@@ -501,7 +502,7 @@ export class AgenteController {
   @ApiResponse({ status: 201, schema: { example: AGENTE_ANEXO_EXAMPLE } })
   @RequirePermission('agente', 'visualizar')
   @Post('anexos')
-  @UseInterceptors(FileInterceptor('file', agenteAnexoUploadOptions))
+  @UseInterceptors(FileInterceptor('file', agenteAnexoUploadOptions), ConferirConteudoUploadInterceptor)
   anexar(
     @UploadedFile() file: Express.Multer.File | undefined,
     @CurrentUser() user: AuthenticatedUser,
