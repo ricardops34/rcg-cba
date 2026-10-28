@@ -26,7 +26,7 @@ version: "3.8"
 
 services:
   api:
-    image: bjsoftware/rcgcba-api:latest
+    image: ${API_IMAGE:-bjsoftware/rcgcba-api:latest}
     environment:
       # O JWT inclui permissões; perfis amplos precisam de mais espaço no Authorization.
       NODE_OPTIONS: "--max-http-header-size=65536"
@@ -105,7 +105,7 @@ services:
 
 
   web:
-    image: bjsoftware/rcgcba-web:latest
+    image: ${WEB_IMAGE:-bjsoftware/rcgcba-web:latest}
     networks:
       RCGNet:
         aliases:

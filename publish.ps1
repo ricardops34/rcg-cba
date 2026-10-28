@@ -69,7 +69,7 @@ function Invoke-ImageBuild {
     param(
         [string]$Label,
         [string]$Dockerfile,
-        [string]$Image,
+        [string[]]$Images,
         [string[]]$ExtraBuildArgs = @()
     )
 
@@ -77,9 +77,9 @@ function Invoke-ImageBuild {
     $dockerArgs = @(
         "build",
         "--progress=plain",
-        "-f", $Dockerfile,
-        "-t", $Image
+        "-f", $Dockerfile
     )
+    foreach ($img in $Images) { $dockerArgs += @("-t", $img) }
     if ($script:CaCertificatePath) {
         $dockerArgs += @(
             "--secret",
@@ -97,8 +97,10 @@ function Invoke-ImageBuild {
 
     if (-not $script:BuildOnly) {
         Write-Host "Enviando $Label para o Docker Hub..." -ForegroundColor Green
-        & docker push $Image
-        Assert-DockerSuccess "push de $Label"
+        foreach ($img in $Images) {
+            & docker push $img
+            Assert-DockerSuccess "push de $img"
+        }
     }
 }
 
@@ -130,18 +132,30 @@ try {
         return
     }
 
+    # Tag de versao alem de latest: permite voltar a imagem anterior (rollback).
+    $versao = Get-Date -Format "yyyy.MM.dd-HHmm"
+    # Transicao do nome: publica no nome novo (plataforma-*) e no antigo (rcgcba-*).
+    # A stack ainda aponta para o antigo ate a troca ser validada; ver
+    # docs/planos/2026-10-27-imagens-docker-nome-e-privacidade.md.
+    function Get-ImageTags([string]$Nome) {
+        return @(
+            "bjsoftware/plataforma-${Nome}:latest", "bjsoftware/plataforma-${Nome}:${versao}",
+            "bjsoftware/rcgcba-${Nome}:latest", "bjsoftware/rcgcba-${Nome}:${versao}"
+        )
+    }
+
     if ($Target -in @("all", "api")) {
         Invoke-ImageBuild `
             -Label "API" `
             -Dockerfile "docker/api.Dockerfile" `
-            -Image "bjsoftware/rcgcba-api:latest"
+            -Images (Get-ImageTags "api")
     }
 
     if ($Target -in @("all", "web")) {
         Invoke-ImageBuild `
             -Label "Web" `
             -Dockerfile "docker/web.Dockerfile" `
-            -Image "bjsoftware/rcgcba-web:latest" `
+            -Images (Get-ImageTags "web") `
             -ExtraBuildArgs @(
                 "--build-arg",
                 # Relativo, para a imagem servir a qualquer cliente (ver web.Dockerfile).
@@ -156,7 +170,7 @@ try {
         Write-Host " Sucesso! Build local concluido; nada foi enviado." -ForegroundColor Green
     }
     else {
-        Write-Host " Sucesso! Imagens publicadas." -ForegroundColor Green
+        Write-Host " Sucesso! Imagens publicadas (versao $versao)." -ForegroundColor Green
     }
     Write-Host "=========================================" -ForegroundColor Cyan
 }

@@ -70,3 +70,20 @@ ganho funcional imediato; a privacidade das imagens, sim, e vai junto.
 1. Onde hospedar as imagens: Docker Hub privado ou outro registry.
 2. O nome novo (`plataforma-*` ou o nome comercial do produto).
 3. Quando fazer: depois da validação e da publicação da stack variável.
+
+## Andamento (28/10/2026)
+
+O usuário criou no Docker Hub os repositórios `bjsoftware/plataforma-api`,
+`plataforma-web` e `plataforma-portal-cliente` (decisões 1 e 2: Docker Hub, nome
+`plataforma-*`). **Feito no repositório** (ainda não publicado):
+
+- `publish.ps1` publica API e web **nos dois nomes** (`plataforma-*` e `rcgcba-*`),
+  cada um com `latest` e uma tag de versão `yyyy.MM.dd-HHmm` (Parte A + transição).
+- A stack lê `API_IMAGE` e `WEB_IMAGE`, com padrão no nome antigo: nada muda na VPS
+  até a variável ser definida.
+
+**Falta:** (1) conferir se os repositórios novos são privados e, se forem,
+cadastrar o login do Docker Hub no Portainer antes de apontar a stack; (2) rodar o
+`publish.ps1`; (3) trocar `API_IMAGE`/`WEB_IMAGE` para o nome novo e validar;
+(4) imagens `plataforma-scripts` e `plataforma-portal-cliente` (a stack do portal e o
+runbook ainda usam `rcgcba-*`); (5) aposentar o nome antigo.
