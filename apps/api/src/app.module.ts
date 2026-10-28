@@ -51,6 +51,7 @@ import { NotificacoesModule } from './modules/notificacoes/notificacoes.module';
 import { InicioModule } from './modules/inicio/inicio.module';
 import { MeusAtendimentosModule } from './modules/meus-atendimentos/meus-atendimentos.module';
 import { AcessosModule } from './modules/acessos/acessos.module';
+import { PlanoDisponibilidadeModule } from './common/plano/plano-disponibilidade.module';
 import { ErrosModule } from './modules/erros/erros.module';
 import { ArmazenamentoModule } from './modules/armazenamento/armazenamento.module';
 import { BackupEmpresaModule } from './modules/backup-empresa/backup-empresa.module';
@@ -111,6 +112,7 @@ import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-econo
     // Antes do AuthModule: é global e fornece o registro de acessos e a
     // verificação de expediente que o login e o JwtAuthGuard consomem.
     AcessosModule,
+    PlanoDisponibilidadeModule,
     // Global porque JwtAuthGuard é usado em módulos diferentes e consulta o
     // aceite antes de liberar qualquer rota de negócio.
     TermosModule,
