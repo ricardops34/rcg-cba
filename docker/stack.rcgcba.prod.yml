@@ -9,7 +9,8 @@
 #   WEB_HOST       domínio do sistema            ex.: crm.suaempresa.com.br
 #   API_HOST       domínio da API (webhooks e    ex.: api.suaempresa.com.br
 #                  integração do ERP)
-#   EMPRESA_ALIAS  alias da empresa no login     ex.: suaempresa
+#   EMPRESA_ALIAS  alias da empresa no login     ex.: suaempresa   (SÓ MINÚSCULAS: é o
+#                  mesmo alias cadastrado na empresa; ver runbook, "Convenções")
 #   WEB_URL        endereço do sistema nos e-mails (opcional; sem ele vale o
 #                  primeiro CORS_ORIGIN)         ex.: https://crm.suaempresa.com.br
 #   CORS_ORIGIN    https://<WEB_HOST>

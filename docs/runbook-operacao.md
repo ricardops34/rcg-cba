@@ -816,6 +816,30 @@ de cliente para o serviço da API, e o resto para o web. Consequências:
 - `api.rcgdist.com.br` **continua existindo**: webhooks (Evolution GO) e quem
   integra por ele (ERP).
 
+### Convenções de nomes e valores por cliente **[decididas em 2026-10-27]**
+
+| Variável / campo | Convenção | Exemplo |
+|---|---|---|
+| `EMPRESA_ALIAS` (e o `alias` da empresa na plataforma) | **Só minúsculas**, letras, números e hífen (`^[a-z0-9-]+$`, 2 a 40). É o mesmo valor nos dois lados. | `rcg`, `cba`, `minha-empresa` |
+| `WEB_HOST` | Só o domínio: **sem** `https://`, **sem** barra no fim, sem espaço | `crm.rcgdist.com.br` |
+| `API_HOST` | Idem | `api.rcgdist.com.br` |
+| `WEB_URL` e `CORS_ORIGIN` | Endereço **completo**: `https://<WEB_HOST>`, sem barra no fim | `https://crm.rcgdist.com.br` |
+| `API_ALIAS` / `WEB_ALIAS` (opcionais) | Minúsculas e hífen; **únicos** na `RCGNet` | `api-rcg`, `web-rcg` |
+
+Por quê:
+
+- **Alias em minúsculas.** O alias é gravado em minúsculas no cadastro da empresa
+  (o contrato recusa maiúscula) e entra no `/login?empresa=<alias>` e nos nomes
+  dos roteadores do Traefik. O login só passou a ignorar maiúsculas em
+  27/10/2026 (commit `ef157ed2`); **antes disso `RCG` não casava com `rcg`** e dava
+  "Você não tem acesso a esta empresa". A convenção continua valendo: minúsculas
+  evitam a surpresa e mantêm um valor só nos dois lados.
+- **`WEB_HOST`/`API_HOST` sem esquema.** A stack monta ``Host(`${WEB_HOST}`)`` e
+  `https://${WEB_HOST}`; um `https://` a mais gera `https://https://...` e o Traefik
+  recebe um Host inválido (nada responde).
+- **Nada de cliente no código nem na imagem.** Domínio, alias, marca e e-mail de
+  exemplo vivem na configuração do stack, nunca no código, no seed ou na imagem.
+
 **Cliente novo — o que fazer** (nada de build novo, nada para editar no `.yml`):
 
 A stack (`docker/stack.rcgcba.prod.yml`) **não tem domínio, marca nem alias
