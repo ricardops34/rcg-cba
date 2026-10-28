@@ -491,6 +491,13 @@ export class UsuariosService {
    *
    * Uma conta é de um grupo só (decisão de 30/09/2026): acesso a empresa de
    * outro grupo é recusado, e o superior precisa ser usuário do mesmo grupo.
+   *
+   * A empresa de destino vem da URL, então precisa estar no **alcance do ator**
+   * — a empresa ativa dele e as do mesmo grupo, a mesma regra do
+   * `desvincularEmpresa` (SEC-01, auditoria de 27/10/2026). Antes o tenant da URL
+   * ia direto para a transação, e a única barreira era o RLS por grupo. O grupo
+   * segue sendo a unidade de administração: o administrador de uma empresa
+   * continua dando acesso às empresas irmãs. Só a plataforma opera fora disso.
    */
   async vincularEmpresa(
     usuarioId: string,
@@ -498,7 +505,15 @@ export class UsuariosService {
     input: UsuarioEmpresaCreate,
     actorId: string,
     atorEhAdminPlataforma: boolean,
+    empresaAtivaId?: string,
   ) {
+    if (!atorEhAdminPlataforma) {
+      // Sem a empresa ativa do ator não há de onde medir o alcance: recusa, em
+      // vez de liberar.
+      const alcance = empresaAtivaId ? await this.empresasNoAlcance(empresaAtivaId) : [];
+      if (!alcance.includes(empresaId)) throw new NotFoundException('Empresa não encontrada');
+    }
+    await this.garantirAlvoAlteravel(usuarioId, atorEhAdminPlataforma);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const usuario = await tx.usuario.findFirst({
         where: { id: usuarioId, deletedAt: null },

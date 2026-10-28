@@ -323,6 +323,7 @@ export class UsuariosController {
       dto,
       user.id,
       user.administradorPlataforma === true,
+      user.empresaAtivaId,
     );
   }
 
