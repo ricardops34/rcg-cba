@@ -206,7 +206,7 @@ export class UsuariosController {
     @Body() dto: UsuarioUpdateDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.update(id, dto, user.id);
+    return this.service.update(id, dto, user.id, user.administradorPlataforma === true);
   }
 
   @ApiOperation({
@@ -226,7 +226,7 @@ export class UsuariosController {
     @Body() dto: ResetPasswordDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.resetSenha(id, dto, user.id);
+    return this.service.resetSenha(id, dto, user.id, user.administradorPlataforma === true);
   }
 
   @ApiOperation({
@@ -243,7 +243,12 @@ export class UsuariosController {
     @Param('id') id: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.enviarSenhaProvisoria(id, user.empresaAtivaId, user.id);
+    return this.service.enviarSenhaProvisoria(
+      id,
+      user.empresaAtivaId,
+      user.id,
+      user.administradorPlataforma === true,
+    );
   }
 
   @ApiOperation({
@@ -278,7 +283,7 @@ export class UsuariosController {
     @Body() dto: UsuarioHorariosUpdateDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.salvarHorarios(id, dto, user.id);
+    return this.service.salvarHorarios(id, dto, user.id, user.administradorPlataforma === true);
   }
 
   @ApiOperation({
@@ -290,7 +295,7 @@ export class UsuariosController {
   @RequirePermission('usuarios', 'excluir')
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.remove(id, user.id);
+    return this.service.remove(id, user.id, user.administradorPlataforma === true);
   }
 
   @ApiOperation({
@@ -335,6 +340,12 @@ export class UsuariosController {
     @Param('empresaId') empresaId: string,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.desvincularEmpresa(id, empresaId, user.id, user.empresaAtivaId);
+    return this.service.desvincularEmpresa(
+      id,
+      empresaId,
+      user.id,
+      user.empresaAtivaId,
+      user.administradorPlataforma === true,
+    );
   }
 }

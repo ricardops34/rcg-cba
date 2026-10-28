@@ -177,6 +177,29 @@ export class UsuariosService {
     return { ...safe, usuarioEmpresas: vinculos };
   }
 
+  /**
+   * Conta de **plataforma** (perfil com `administraPlataforma`) só é alterada por
+   * quem também é da plataforma (SEC-02, auditoria de 27/10/2026).
+   *
+   * O que impedia um administrador de empresa de redefinir a senha, inativar ou
+   * excluir o administrador da plataforma era só o RLS por grupo (as duas contas
+   * ficam em grupos diferentes). Isso é isolamento de dado, não regra: uma conta
+   * de plataforma que entrasse no mesmo grupo de um cliente ficaria exposta — e
+   * trocar a senha dela é tomar a conta.
+   */
+  private async garantirAlvoAlteravel(id: string, atorEhAdminPlataforma: boolean) {
+    if (atorEhAdminPlataforma) return;
+    const alvo = await this.prisma.usuario.findFirst({
+      where: { id, deletedAt: null },
+      select: { perfil: { select: { administraPlataforma: true } } },
+    });
+    if (alvo?.perfil?.administraPlataforma) {
+      throw new ForbiddenException(
+        'Contas da plataforma só podem ser alteradas por administradores da plataforma.',
+      );
+    }
+  }
+
   /** A empresa ativa e, se ela for de um grupo econômico, as demais do grupo. */
   private async empresasNoAlcance(empresaAtivaId: string) {
     const ativa = await this.prisma.empresa.findUnique({
@@ -342,7 +365,13 @@ export class UsuariosService {
    * Gera uma nova senha provisória, grava (troca obrigatória no próximo login)
    * e envia por e-mail/SMS. Alternativa ao reset com senha digitada.
    */
-  async enviarSenhaProvisoria(id: string, empresaId: string, actorId: string) {
+  async enviarSenhaProvisoria(
+    id: string,
+    empresaId: string,
+    actorId: string,
+    atorEhAdminPlataforma = false,
+  ) {
+    await this.garantirAlvoAlteravel(id, atorEhAdminPlataforma);
     // Confere que o usuário tem vínculo com a empresa ativa (404 se não).
     await this.findOne(id, empresaId);
     const usuario = await this.prisma.usuario.findFirst({
@@ -384,7 +413,13 @@ export class UsuariosService {
     return { success: true, ...entrega };
   }
 
-  async update(id: string, input: UsuarioUpdate, actorId: string) {
+  async update(
+    id: string,
+    input: UsuarioUpdate,
+    actorId: string,
+    atorEhAdminPlataforma = false,
+  ) {
+    await this.garantirAlvoAlteravel(id, atorEhAdminPlataforma);
     await this.findOne(id);
     const atualizado = await this.prisma.usuario.update({
       where: { id },
@@ -402,7 +437,13 @@ export class UsuariosService {
   }
 
   /** Reset de senha por admin — não exige a senha atual do usuário-alvo. */
-  async resetSenha(id: string, input: ResetPasswordInput, actorId: string) {
+  async resetSenha(
+    id: string,
+    input: ResetPasswordInput,
+    actorId: string,
+    atorEhAdminPlataforma = false,
+  ) {
+    await this.garantirAlvoAlteravel(id, atorEhAdminPlataforma);
     const usuario = await this.prisma.usuario.findFirst({
       where: { id, deletedAt: null },
     });
@@ -431,7 +472,8 @@ export class UsuariosService {
     return { success: true };
   }
 
-  async remove(id: string, actorId: string) {
+  async remove(id: string, actorId: string, atorEhAdminPlataforma = false) {
+    await this.garantirAlvoAlteravel(id, atorEhAdminPlataforma);
     await this.findOne(id);
     await this.prisma.usuario.update({
       where: { id },
@@ -539,7 +581,9 @@ export class UsuariosService {
     id: string,
     input: UsuarioHorariosUpdate,
     actorId: string,
+    atorEhAdminPlataforma = false,
   ) {
+    await this.garantirAlvoAlteravel(id, atorEhAdminPlataforma);
     await this.findOne(id);
 
     await this.prisma.$transaction(async (tx) => {
@@ -579,7 +623,9 @@ export class UsuariosService {
     empresaId: string,
     actorId: string,
     empresaAtivaId: string,
+    atorEhAdminPlataforma = false,
   ) {
+    await this.garantirAlvoAlteravel(usuarioId, atorEhAdminPlataforma);
     const alcance = await this.empresasNoAlcance(empresaAtivaId);
     if (!alcance.includes(empresaId)) throw new NotFoundException('Vínculo não encontrado');
     const { count } = await this.prisma.withTenant(empresaId, (tx) =>
