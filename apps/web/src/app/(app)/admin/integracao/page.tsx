@@ -7,6 +7,7 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   integracaoApiKeyCreateSchema,
+  integracaoApiKeyUpdateSchema,
   type IntegracaoApiKey,
   type IntegracaoApiKeyCreate,
   type IntegracaoApiKeyCriada,
@@ -20,6 +21,8 @@ import { StatusDot } from "@/components/crud/status-dot";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Textarea } from "@/components/ui/textarea";
 import { Field, FieldError, FieldGroup, FieldLabel } from "@/components/ui/field";
 import { Card, CardContent } from "@/components/ui/card";
 import { Switch } from "@/components/ui/switch";
@@ -83,6 +86,7 @@ const dataHoraBr = (v: string | null) => {
 export default function IntegracaoPage() {
   const [abaAtiva, setAbaAtiva] = useState<"chaves" | "monitor" | "upload" | "processamento">("chaves");
   const [novaChaveAberta, setNovaChaveAberta] = useState(false);
+  const [chaveRestricoes, setChaveRestricoes] = useState<IntegracaoApiKey | null>(null);
   const [importDialogAberta, setImportDialogAberta] = useState(false);
   const [search, setSearch] = useState("");
   const [endpointSearch, setEndpointSearch] = useState("");
@@ -202,6 +206,19 @@ export default function IntegracaoPage() {
       ),
     },
     {
+      header: "Restrições",
+      cell: (c) => {
+        const sem = c.escopo.length === 0 && c.ipsPermitidos.length === 0;
+        const cor = sem ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground";
+        return (
+          <div className="text-xs">
+            <p className={cor}>{c.escopo.length ? `${c.escopo.length} entidade(s)` : "Todas as entidades"}</p>
+            <p className={cor}>{c.ipsPermitidos.length ? `${c.ipsPermitidos.length} IP(s)/faixa(s)` : "Qualquer IP"}</p>
+          </div>
+        );
+      },
+    },
+    {
       header: "Último uso",
       cell: (c) => (
         <span className="text-xs text-muted-foreground">{dataHoraBr(c.ultimoUso)}</span>
@@ -223,6 +240,9 @@ export default function IntegracaoPage() {
             </Button>
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
+            <DropdownMenuItem onClick={() => setChaveRestricoes(c)}>
+              <ShieldAlert className="size-4 text-primary" /> Restrições de uso
+            </DropdownMenuItem>
             <DropdownMenuItem onClick={() => onToggleAtivo(c)}>
               {c.ativo ? (
                 <>
@@ -547,6 +567,10 @@ export default function IntegracaoPage() {
         <NovaChaveDialog onClose={() => setNovaChaveAberta(false)} />
       )}
 
+      {chaveRestricoes && (
+        <RestricoesChaveDialog chave={chaveRestricoes} onClose={() => setChaveRestricoes(null)} />
+      )}
+
       {importDialogAberta && (
         <ImportTxtDialog
           chaves={rows.filter((r) => r.ativo)}
@@ -557,10 +581,150 @@ export default function IntegracaoPage() {
   );
 }
 
+/** IPs e faixas, um por linha (ou separados por vírgula/ponto e vírgula/espaço). */
+function parseIps(texto: string): string[] {
+  return [...new Set(texto.split(/[\s,;]+/).map((s) => s.trim()).filter(Boolean))];
+}
+
+/** Mesma validação do servidor (contrato), para avisar antes de enviar. */
+function validarIps(lista: string[]): string | null {
+  const r = integracaoApiKeyUpdateSchema.shape.ipsPermitidos.safeParse(lista);
+  return r.success ? null : r.error.issues[0]?.message ?? "IP inválido";
+}
+
+/**
+ * Escopo e IPs da chave (SEC-12). Nada marcado e nada digitado = sem restrição,
+ * como as chaves anteriores. A chave que vazar só faz o que o escopo permite e
+ * só de onde a lista deixa.
+ */
+function CamposRestricoes({
+  escopo,
+  setEscopo,
+  ipsTexto,
+  setIpsTexto,
+  erroIps,
+}: {
+  escopo: string[];
+  setEscopo: (v: string[]) => void;
+  ipsTexto: string;
+  setIpsTexto: (v: string) => void;
+  erroIps: string | null;
+}) {
+  const endpoints = useQuery<IntegracaoEndpointItem[]>({
+    queryKey: ["integracao-endpoints"],
+    queryFn: () => apiFetch<IntegracaoEndpointItem[]>("/integracao-keys/endpoints"),
+  });
+  // O sinal de vida do ERP sempre é aceito: não entra na escolha.
+  const itens = (endpoints.data ?? []).filter((e) => e.endpointKey !== "comunicacao");
+
+  const alternar = (chave: string, marcado: boolean) =>
+    setEscopo(marcado ? [...new Set([...escopo, chave])] : escopo.filter((e) => e !== chave));
+
+  return (
+    <>
+      <Field>
+        <FieldLabel>Entidades permitidas (opcional)</FieldLabel>
+        <div className="grid grid-cols-2 gap-x-4 gap-y-1.5 rounded-lg border p-3 max-h-44 overflow-y-auto">
+          {itens.map((e) => (
+            <label key={e.endpointKey} className="flex items-center gap-2 text-xs">
+              <Checkbox
+                checked={escopo.includes(e.endpointKey)}
+                onCheckedChange={(v) => alternar(e.endpointKey, v === true)}
+              />
+              {e.nome}
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-muted-foreground">
+          Nenhuma marcada = a chave acessa todas as entidades. Marque só o que esta integração precisa.
+        </p>
+      </Field>
+      <Field data-invalid={!!erroIps}>
+        <FieldLabel htmlFor="ipsPermitidos">IPs permitidos (opcional)</FieldLabel>
+        <Textarea
+          id="ipsPermitidos"
+          rows={3}
+          placeholder={"200.150.10.20\n200.150.10.0/24"}
+          value={ipsTexto}
+          onChange={(e) => setIpsTexto(e.target.value)}
+        />
+        {erroIps && <p className="text-xs text-destructive">{erroIps}</p>}
+        <p className="text-xs text-muted-foreground">
+          Um por linha, IP ou faixa (CIDR). Vazio = a chave vale de qualquer origem. Use o IP de saída do servidor do ERP.
+        </p>
+      </Field>
+    </>
+  );
+}
+
+/** Restringe (ou libera) uma chave que já existe. */
+function RestricoesChaveDialog({
+  chave,
+  onClose,
+}: {
+  chave: IntegracaoApiKey;
+  onClose: () => void;
+}) {
+  const queryClient = useQueryClient();
+  const [escopo, setEscopo] = useState<string[]>(chave.escopo);
+  const [ipsTexto, setIpsTexto] = useState(chave.ipsPermitidos.join("\n"));
+  const [erroIps, setErroIps] = useState<string | null>(null);
+
+  const salvar = useMutation({
+    mutationFn: (corpo: { escopo: string[]; ipsPermitidos: string[] }) =>
+      apiFetch(`/integracao-keys/${chave.id}`, { method: "PATCH", body: corpo }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["integracao-keys"] });
+      toast.success("Restrições da chave atualizadas");
+      onClose();
+    },
+    onError: (err) =>
+      toast.error(err instanceof ApiError ? err.message : "Erro ao salvar as restrições"),
+  });
+
+  const onSalvar = () => {
+    const ips = parseIps(ipsTexto);
+    const erro = validarIps(ips);
+    setErroIps(erro);
+    if (erro) return;
+    salvar.mutate({ escopo, ipsPermitidos: ips });
+  };
+
+  return (
+    <Dialog open onOpenChange={(open) => !open && onClose()}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>Restrições de uso — {chave.nome}</DialogTitle>
+        </DialogHeader>
+        <FieldGroup className="py-4 space-y-4">
+          <CamposRestricoes
+            escopo={escopo}
+            setEscopo={setEscopo}
+            ipsTexto={ipsTexto}
+            setIpsTexto={setIpsTexto}
+            erroIps={erroIps}
+          />
+        </FieldGroup>
+        <DialogFooter>
+          <Button type="button" variant="outline" onClick={onClose} disabled={salvar.isPending}>
+            Cancelar
+          </Button>
+          <Button type="button" onClick={onSalvar} disabled={salvar.isPending}>
+            {salvar.isPending ? "Salvando..." : "Salvar restrições"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function NovaChaveDialog({ onClose }: { onClose: () => void }) {
   const queryClient = useQueryClient();
   const [criada, setCriada] = useState<IntegracaoApiKeyCriada | null>(null);
   const [copiado, setCopiado] = useState(false);
+  const [escopo, setEscopo] = useState<string[]>([]);
+  const [ipsTexto, setIpsTexto] = useState("");
+  const [erroIps, setErroIps] = useState<string | null>(null);
 
   const form = useForm<IntegracaoApiKeyCreate>({
     resolver: zodResolver(integracaoApiKeyCreateSchema),
@@ -580,8 +744,12 @@ function NovaChaveDialog({ onClose }: { onClose: () => void }) {
   });
 
   const onSubmit = async (values: IntegracaoApiKeyCreate) => {
+    const ips = parseIps(ipsTexto);
+    const erro = validarIps(ips);
+    setErroIps(erro);
+    if (erro) return;
     try {
-      await criar.mutateAsync(values);
+      await criar.mutateAsync({ ...values, escopo, ipsPermitidos: ips });
     } catch (err) {
       toast.error(
         err instanceof ApiError ? err.message : "Erro ao criar chave",
@@ -598,7 +766,7 @@ function NovaChaveDialog({ onClose }: { onClose: () => void }) {
 
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
+      <DialogContent className="sm:max-w-lg">
         {criada ? (
           <>
             <DialogHeader>
@@ -665,6 +833,13 @@ function NovaChaveDialog({ onClose }: { onClose: () => void }) {
                   }
                 />
               </Field>
+              <CamposRestricoes
+                escopo={escopo}
+                setEscopo={setEscopo}
+                ipsTexto={ipsTexto}
+                setIpsTexto={setIpsTexto}
+                erroIps={erroIps}
+              />
             </FieldGroup>
             <DialogFooter>
               <Button
