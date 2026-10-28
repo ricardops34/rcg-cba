@@ -864,12 +864,15 @@ escritos**: tudo vem de variáveis do stack no Portainer. Um cliente novo é um
 1. **Só a stack** (roteadores `...-crm-api` novos), com o **web antigo** ainda no
    ar. É aditivo: nada muda para o usuário. Conferir:
    ```bash
-   for d in crm.rcgdist.com.br crm.cbadist.com.br; do
-     echo "$d $(curl -s -o /dev/null -w '%{http_code}' https://$d/api/v1/health/ready)"
-   done
+   curl -s -w '
+%{http_code}
+' 'https://crm.rcgdist.com.br/api/v1/auth/empresa-branding?alias=rcg'
    ```
-   Esperado: `200` nos dois (a API respondendo **no domínio do web**), e a raiz
-   `https://crm.<cliente>/` seguindo a abrir o login.
+   Esperado: um JSON com o nome da empresa e `200` (a API respondendo **no domínio
+   do web**), e a raiz `https://crm.<cliente>/` seguindo a abrir o login. Repetir
+   com o domínio e o alias de cada cliente. **Não use `/health/ready`:** esta API
+   não tem rota de saúde (dá 404 mesmo com o roteamento certo); a do `api.comercial`
+   é de outro projeto. `empresa-branding` é pública e não grava nada.
 2. **Publicar o web novo** (`.\publish.ps1 -Target web`, que já compila com
    `/api/v1`) e redeploy. Conferir login, uma tela com dados e uma imagem de
    `/uploads` **nos dois domínios**.
