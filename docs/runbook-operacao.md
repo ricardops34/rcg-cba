@@ -1293,13 +1293,21 @@ apareceram.
    ```
    Tem de voltar a linha `Access-Control-Allow-Origin: https://crm.rcgdist.com.br`.
    **[verificado em 2026-10-09]**
-7. **Seed** — **[pendente]**: com a API no ar (`Nest application successfully
-   started`), a base ainda está sem empresa, admin,
-   menus nem perfis. Comando para rodar no container de produção ainda não
-   registrado. Candidata: a imagem de `docker/api-scripts.Dockerfile`
-   (`node prisma/dist/seed-base.js`, `DATABASE_URL` com a role dona), que o
-   `publish.ps1` **não** publica — confirmar antes de usar. O seed cria o admin
-   `admin@bjsoft.com.br` com a senha fixa `Admin@123`: trocar no primeiro acesso.
+7. **Seed** — **[verificado em 2026-10-29, ambiente de demonstração
+   `plataforma.bjsoft.com.br`]**: com a API no ar (`Nest application
+   successfully started`), a base ainda está sem empresa, admin, menus nem
+   perfis, e o login responde "Credenciais inválidas" (a API valida o usuário
+   antes da empresa, então o alias nem chega a ser testado). A imagem da API já
+   traz o seed compilado; roda-se dentro do container dela, com a role **dona**
+   só nesse comando (a `DATABASE_URL` da API não muda):
+   ```bash
+   docker exec -e DATABASE_URL="postgresql://plataforma:SENHA_DONA@postgres_postgres:5432/plataforma?schema=public" \
+     <container-api> sh -c "cd /app/apps/api && node prisma/dist/seed-base.js"
+   ```
+   O seed é **destrutivo**: só em base de demonstração ou recém-criada. Cria a
+   empresa de alias `bjs` e o admin `admin@bjsoft.com.br` com a senha fixa
+   `Admin@123`: trocar no primeiro acesso. A imagem `plataforma-scripts` não é
+   necessária para isso.
 
 ## Armadilha: `too many clients already` (P2037) **[diagnosticado em 2026-10-07]**
 
