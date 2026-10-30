@@ -394,6 +394,18 @@ export class WhatsappController {
   }
 
   @ApiOperation({
+    summary: 'Todas as instâncias da empresa (configuração)',
+    description:
+      'Lista cada número conectado da empresa ativa, sem o recorte de equipe ' +
+      'do seletor da Central. Requer whatsapp-config.visualizar.',
+  })
+  @RequirePermission('whatsapp-config', 'visualizar')
+  @Get('config/sessoes')
+  listarDaEmpresa(@CurrentUser() user: AuthenticatedUser) {
+    return this.sessao.listarDaEmpresa(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
     summary: 'Situação do número institucional da empresa',
     description:
       'A porta de entrada atendida pela IA. Devolve null quando nunca foi ' +
