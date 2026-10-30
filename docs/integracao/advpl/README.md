@@ -384,7 +384,8 @@ ao `S_T_A_M_P_`. O que muda entre elas é **onde** esse carimbo é olhado:
 
 | Entidade | Dispara por | Por quê |
 |---|---|---|
-| Notas de saída (SF2+SD2) e de entrada (SF1+SD1) | **Só o cabeçalho** — `SF2.S_T_A_M_P_` / `SF1.S_T_A_M_P_` | Nota é documento fechado: o que muda nela muda o cabeçalho. O `JOIN` traz todos os itens, então o payload sobe sempre completo |
+| Notas de saída (SF2+SD2) | **Cabeçalho ou item** — `SF2.S_T_A_M_P_` ou `EXISTS` em `SD2.S_T_A_M_P_` | A devolução de venda grava `D2_VALDEV` no item e não toca a SF2; só com o cabeçalho a nota ficava com `vlrDev` zerado (000118094, 29/10/2026). O item entra por `EXISTS`, não por `OR` no `JOIN`, para o payload subir sempre completo |
+| Notas de entrada (SF1+SD1) | **Só o cabeçalho** — `SF1.S_T_A_M_P_` | Nota é documento fechado: o que muda nela muda o cabeçalho. O `JOIN` traz todos os itens, então o payload sobe sempre completo |
 | Tabelas de preço (DA0+DA1) | **Cabeçalho ou item** | Mexer no preço de um produto toca a DA1 e não encosta na DA0. Sem olhar o item, a alteração de preço não subiria |
 | Regras de desconto (SZ0 cabeçalho + faixas) | **Cabeçalho ou faixa** | Mesma razão: a faixa tem carimbo próprio |
 | As demais | O próprio registro | Tabela única, sem detalhe |
