@@ -86,7 +86,7 @@ services:
         - "traefik.enable=true"
         - "traefik.swarm.network=RCGNet"
         # API no domínio próprio: webhooks (Evolution GO) e quem integra por ele.
-        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-api.rule=Host(`${API_HOST}`)"
+        - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-api.rule=Host(`${API_HOST:?API_HOST vazio: defina o dominio da API nas variaveis da stack}`)"
         - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-api.entrypoints=websecure"
         - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-api.tls=true"
         - "traefik.http.routers.plataforma-${EMPRESA_ALIAS}-api.tls.certresolver=letsencryptresolver"

@@ -2890,14 +2890,41 @@ User Function BJMAPNFS(cMarca, cChave, cMarcaFim, lEnvDel)
 	Else
 		If !Empty(cMarca)
 
-			// Quem decide e o cabecalho: nota e documento fechado, e o que muda nela
-			// muda a SF2. O JOIN traz todos os itens, entao o payload vai sempre
-			// completo - cabecalho e itens -, nao um pedaco.
-			cQuery += "   AND SF2.S_T_A_M_P_ >= '" + cMarca + "' "
+			// A nota entra se o cabecalho OU algum item mudou na janela. So o
+			// cabecalho nao basta: a devolucao de venda grava D2_VALDEV no item da
+			// venda e nao encosta na SF2, entao a nota ja enviada nunca voltava e o
+			// vlrDev ficava zerado na plataforma (caso da 000118094, em 29/10/2026).
+			// O item entra por EXISTS, e nao por OR no JOIN: com OR, a nota em que so
+			// um item mudou subiria so com esse item. O JOIN continua trazendo todos
+			// os itens, entao o payload vai sempre completo - cabecalho e itens.
+			cQuery += "   AND (SF2.S_T_A_M_P_ >= '" + cMarca + "' "
 
 			If !Empty(cMarcaFim)
 				cQuery += "   AND SF2.S_T_A_M_P_ <= '" + cMarcaFim + "' "
 			EndIf
+
+			cQuery += "     OR EXISTS (SELECT 1 FROM " + RetSQLName("SD2") + " IT "
+			cQuery += "         WHERE IT.D2_FILIAL  = SF2.F2_FILIAL "
+			cQuery += "           AND IT.D2_DOC     = SF2.F2_DOC "
+			cQuery += "           AND IT.D2_SERIE   = SF2.F2_SERIE "
+			cQuery += "           AND IT.D2_CLIENTE = SF2.F2_CLIENTE "
+			cQuery += "           AND IT.D2_LOJA    = SF2.F2_LOJA "
+
+			If lTipoD2
+				cQuery += "           AND IT.D2_TIPO    = SF2.F2_TIPO "
+			EndIf
+
+			If !lEnvDel
+				cQuery += "           AND IT.D_E_L_E_T_ = ' ' "
+			EndIf
+
+			cQuery += "           AND IT.S_T_A_M_P_ >= '" + cMarca + "' "
+
+			If !Empty(cMarcaFim)
+				cQuery += "           AND IT.S_T_A_M_P_ <= '" + cMarcaFim + "' "
+			EndIf
+
+			cQuery += "     )) "
 
 		EndIf
 	EndIf

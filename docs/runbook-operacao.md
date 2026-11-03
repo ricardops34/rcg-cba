@@ -1293,13 +1293,21 @@ apareceram.
    ```
    Tem de voltar a linha `Access-Control-Allow-Origin: https://crm.rcgdist.com.br`.
    **[verificado em 2026-10-09]**
-7. **Seed** — **[pendente]**: com a API no ar (`Nest application successfully
-   started`), a base ainda está sem empresa, admin,
-   menus nem perfis. Comando para rodar no container de produção ainda não
-   registrado. Candidata: a imagem de `docker/api-scripts.Dockerfile`
-   (`node prisma/dist/seed-base.js`, `DATABASE_URL` com a role dona), que o
-   `publish.ps1` **não** publica — confirmar antes de usar. O seed cria o admin
-   `admin@bjsoft.com.br` com a senha fixa `Admin@123`: trocar no primeiro acesso.
+7. **Seed** — **[verificado em 2026-10-29, ambiente de demonstração
+   `plataforma.bjsoft.com.br`]**: com a API no ar (`Nest application
+   successfully started`), a base ainda está sem empresa, admin, menus nem
+   perfis, e o login responde "Credenciais inválidas" (a API valida o usuário
+   antes da empresa, então o alias nem chega a ser testado). A imagem da API já
+   traz o seed compilado; roda-se dentro do container dela, com a role **dona**
+   só nesse comando (a `DATABASE_URL` da API não muda):
+   ```bash
+   docker exec -e DATABASE_URL="postgresql://plataforma:SENHA_DONA@postgres_postgres:5432/plataforma?schema=public" \
+     <container-api> sh -c "cd /app/apps/api && node prisma/dist/seed-base.js"
+   ```
+   O seed é **destrutivo**: só em base de demonstração ou recém-criada. Cria a
+   empresa de alias `bjs` e o admin `admin@bjsoft.com.br` com a senha fixa
+   `Admin@123`: trocar no primeiro acesso. A imagem `plataforma-scripts` não é
+   necessária para isso.
 
 ## Armadilha: `too many clients already` (P2037) **[diagnosticado em 2026-10-07]**
 
@@ -1720,49 +1728,49 @@ curl -s https://api.comercial.rcgdist.com.br/api/v1/health/ready
 
 Esperado: 200/302/403 com `0`; `api.comercial` dá 404 na raiz (use `/health/ready`).
 
-### Armadilha: webhook da Evolution GO dá 404 em `api.<cliente>`, mas o resto funciona **[diagnosticado em 2026-10-28, correção pendente]**
+### Armadilha: `api.<cliente>` dá "404 page not found" (ERP e webhook da Evolution GO) **[resolvido em 2026-10-30; webhook a reconferir]**
 
-Sintoma: o container `evogo_evolution-go` loga `webhook failed - ... error:
-received non-2xx response: 404 Not Found` para toda tentativa de callback
-(`POST /api/v1/whatsapp/evolution/webhook/<empresaId>/<sessaoId>`), até esgotar
-as tentativas (`webhook failed after maximum retries`). Mensagem enviada e
-recebida continuam funcionando — só o retorno (recibo de entrega/leitura,
-mudança de estado da conexão) não chega, porque é a Evolution GO quem inicia
-essa chamada, de fora para dentro.
+Sintoma: toda chamada a `https://api.<cliente>/api/v1/...` volta **`404 page not
+found` em texto puro** (resposta padrão do Traefik; a API devolveria JSON), enquanto
+`https://crm.<cliente>/api/v1/...` responde normalmente. Atinge o ERP (API de
+integração) e o callback da Evolution GO (`evogo_evolution-go` loga `webhook failed
+... non-2xx response: 404 Not Found`). Em 2026-10-28 e 2026-10-30, cliente RCG.
 
-Roteiro de diagnóstico (isolar antes de mexer em qualquer coisa):
+**Causa:** a stack foi implantada com **`API_HOST` vazio**. O label ficou
+`traefik.http.routers.plataforma-<alias>-api.rule = Host(``)`, que não casa com
+domínio nenhum. Não era Traefik, API nem DNS. O `crm.<cliente>/api/` funcionava
+porque o roteador dele usa `WEB_HOST`, que estava preenchido.
+**Mudar a variável no Portainer não atualiza o serviço em execução**: só vale
+depois de **Update the stack**. O *Force update* do serviço, que este item
+sugeria antes, não resolveria — o valor vazio vem da implantação.
 
-1. **Não teste essa URL de fora da VPS por `curl`/navegador comum** se a
-   máquina tiver antivírus com inspeção HTTPS (Kaspersky e afins): o
-   certificado interceptado mascara a resposta real do servidor com um 404 do
-   próprio antivírus — confunde com o sintoma real. Teste sempre **de dentro
-   da VPS**.
-2. No console do container da **API** (Portainer → Containers → o da API, não
-   o do `evogo`), confirme que a rota existe e funciona por dentro:
+Diagnóstico (no terminal da VPS por SSH; o console de dentro de um container não
+tem `docker`):
+
+1. Confirme que é o Traefik: `curl -i https://api.<cliente>/api/v1/integracao/produtos`
+   deve dar `401` em JSON; `404` em texto puro = não há rota para o host. Teste de
+   fora da VPS pode ser mascarado por antivírus com inspeção HTTPS (Kaspersky e
+   afins); compare com o `crm.<cliente>`, que passa pelo mesmo caminho.
+2. Veja o que o Traefik realmente recebeu:
    ```sh
-   node -e "require('http').request({host:'localhost',port:3001,path:'/api/v1/whatsapp/evolution/webhook/<empresaId>/<sessaoId>',method:'POST',headers:{'content-type':'application/json'}},r=>{console.log('status:',r.statusCode)}).end('{}')"
+   docker service inspect crm_api --format '{{range $k,$v := .Spec.Labels}}{{$k}} = {{$v}}{{"\n"}}{{end}}' | grep "api.rule"
    ```
-   `401` = rota existe, só falta a credencial (esperado, o teste não manda o
-   segredo certo). `404` aqui, sim, seria rota ausente na imagem publicada.
-3. Do mesmo console, compare os dois roteadores do Traefik que apontam para o
-   mesmo serviço da API:
-   ```sh
-   wget -qO- -S https://api.<cliente>/api/v1/auth/empresa-branding?alias=<alias> 2>&1 | head -5
-   wget -qO- -S https://crm.<cliente>/api/v1/auth/empresa-branding?alias=<alias> 2>&1 | head -10
-   ```
-   Em 2026-10-28 (cliente RCG, `api.rcgdist.com.br`/`crm.rcgdist.com.br`): o
-   segundo respondeu `200` normalmente, o primeiro deu `404` — ou seja, **só o
-   roteador `Host(${API_HOST})` dedicado está quebrado**, não o Traefik, não a
-   API, não o DNS (os dois domínios resolvem para o mesmo IP) e não as
-   variáveis (`API_HOST` e `WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL` conferidas
-   limpas, sem `https://` duplicado nem aspas). Também descartada colisão de
-   nome de roteador: só existe um stack `crm` na lista de Stacks do Portainer
-   para esse cliente.
-4. **Correção ainda não aplicada/verificada**: forçar a recriação da tarefa do
-   serviço `api` (Portainer → stack → serviço `api` → Update/Force update, sem
-   trocar imagem), pra o Traefik redescobrir os labels do zero. Fazer fora do
-   horário de uso — a API cai por alguns segundos. **Atualizar este item
-   depois de confirmar se resolveu.**
+   `Host(``)` = a causa acima. O esperado é `Host(`api.<cliente>`)`.
+
+Correção: no Portainer, Stacks → a stack → confirme `API_HOST` (sem `https://`,
+espaço ou aspas) → **Update the stack** (fora do horário de uso; a API reinicia
+por alguns segundos) → repita o passo 2 e o `curl`.
+
+Em 2026-10-30 a variável **não chegou ao serviço** mesmo preenchida; para voltar
+foi escrito o domínio direto na linha do roteador, na stack do Portainer
+(`...-api.rule=Host(`api.rcgdist.com.br`)`, mantendo `${EMPRESA_ALIAS}` no nome — o
+nome do roteador tem que ser igual nas seis linhas). **Pendente:** descobrir por
+que `API_HOST` não chega e voltar para a variável; `WHATSAPP_EVOLUTION_WEBHOOK_BASE_URL`
+usa o mesmo `${API_HOST}` e pode ter ficado `https://` incompleta — conferir no
+serviço e reconferir o webhook da Evolution GO.
+
+Proteção: as stacks versionadas agora usam `${API_HOST:?...}` no roteador da API;
+com a variável vazia o deploy **falha** com mensagem, em vez de publicar `Host(``)`.
 
 ### Armadilha: serviços do Swarm não se enxergam (`P1001`, timeout até no Redis) **[a confirmar a causa]**
 

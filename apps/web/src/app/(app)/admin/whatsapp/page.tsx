@@ -653,7 +653,7 @@ function Instancias({ config }: { config: WhatsappConfig }) {
   const empresaDaLinha = (sessao: WhatsappSessao) =>
     usuario?.empresas.find((e) => e.empresaId === sessao.empresaId)?.nomeFantasia ?? sessao.empresaId;
   const linhaDeOutraEmpresa = (sessao: WhatsappSessao) => sessao.empresaId !== empresaAtivaId;
-  const { data = [], isLoading } = useQuery({ queryKey: ["whatsapp-sessoes"], queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/sessoes"), refetchInterval: 10_000 });
+  const { data = [], isLoading } = useQuery({ queryKey: ["whatsapp-sessoes"], queryFn: () => apiFetch<WhatsappSessao[]>("/whatsapp/config/sessoes"), refetchInterval: 10_000 });
   const atualizar = () => { void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessoes"] }); void queryClient.invalidateQueries({ queryKey: ["whatsapp-sessao"] }); };
   const reconectar = useMutation({
     mutationFn: (id: string) => apiFetch(`/whatsapp/config/sessoes/${id}/reconectar`, { method: "POST" }),

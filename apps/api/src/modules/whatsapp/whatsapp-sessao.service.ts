@@ -923,6 +923,27 @@ export class WhatsappSessaoService {
   }
 
   /**
+   * Todas as instâncias da empresa, para a tela de configuração do WhatsApp.
+   *
+   * Diferente de `listarEquipe` (seletor operacional da Central, recortado pelo
+   * vendedor do usuário e sua equipe), aqui o recorte é a empresa: quem tem
+   * `whatsapp-config` precisa ver todo aparelho conectado, inclusive o número
+   * institucional (sem vendedor) e o de usuários sem vendedor vinculado.
+   */
+  async listarDaEmpresa(empresaId: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const sessoes = await tx.whatsappSessao.findMany({
+        where: { empresaId },
+        include: { vendedor: { select: { nome: true } } },
+        orderBy: { updatedAt: 'desc' },
+      });
+      return sessoes.map((s) =>
+        this.paraLeitura(s, s.vendedor?.nome ?? 'Empresa'),
+      );
+    });
+  }
+
+  /**
    * Reabre uma instância existente pela central administrativa.
    *
    * A primeira conexão continua pertencendo ao vendedor porque inclui o aceite
