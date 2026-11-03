@@ -8,10 +8,12 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UploadedFile,
   UseGuards,
   UseInterceptors,
 } from '@nestjs/common';
+import type { Request } from 'express';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ConferirConteudoUploadInterceptor } from '../../common/uploads/conferir-conteudo.interceptor';
 import { memoryStorage } from 'multer';
@@ -286,6 +288,32 @@ export class UsuariosController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.salvarHorarios(id, dto, user.id, user.administradorPlataforma === true);
+  }
+
+  @ApiOperation({
+    summary: 'Personificar usuário ("Testar como este usuário")',
+    description:
+      'Gera um token de 15 min com o perfil do usuário alvo, sem precisar da senha dele ' +
+      'e sem derrubar a sessão real dele, se houver. Recusa alvo com perfil de administração ' +
+      '(sistemaBase ou administraPlataforma) e encadear personificação dentro de outra. ' +
+      'Toda ação feita com o token fica no log de Administração > Personificação. Requer usuarios.editar.',
+  })
+  @ApiParam({ name: 'id', example: USUARIO_ID_EXAMPLE })
+  @ApiResponse({ status: 200, schema: { example: { accessToken: '...', expiresIn: 900 } } })
+  @RequirePermission('usuarios', 'editar')
+  @Post(':id/personificar')
+  personificar(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Req() req: Request,
+  ) {
+    return this.auth.personificar(
+      user.id,
+      id,
+      user.empresaAtivaId,
+      { ip: req.ip, userAgent: req.headers['user-agent'] },
+      user.personificadoPorId,
+    );
   }
 
   @ApiOperation({

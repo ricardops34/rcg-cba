@@ -68,6 +68,7 @@ import { ToursModule } from './modules/tours/tours.module';
 import { PlanosModule } from './modules/planos/planos.module';
 import { AssinaturasModule } from './modules/assinaturas/assinaturas.module';
 import { SuporteAcessoModule } from './modules/suporte-acesso/suporte-acesso.module';
+import { PersonificacaoModule } from './modules/personificacao/personificacao.module';
 import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-economicos.module';
 
 @Module({
@@ -76,6 +77,7 @@ import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-econo
     PlanosModule,
     AssinaturasModule,
     SuporteAcessoModule,
+    PersonificacaoModule,
     ConfigModule.forRoot({
       isGlobal: true,
       validate: (config) => {

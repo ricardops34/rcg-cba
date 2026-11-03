@@ -348,6 +348,129 @@ export class AuthService {
   }
 
   /**
+   * Token da personificação ("Testar como este usuário", cadastro de
+   * Usuários): `sub` é do usuário alvo, a empresa ativa é a mesma de quem
+   * personifica e os poderes são os do perfil do alvo — é isso que o
+   * administrador quer testar. Perfil `sistemaBase` ou `administraPlataforma`
+   * no alvo é recusado: personificar outro admin abriria acesso a segredos de
+   * configuração que não são dele (contas, integrações) sem motivo de teste.
+   *
+   * Sem `sid`: o JwtAuthGuard libera token sem sessão até ele expirar, sem
+   * depender de nenhuma linha em `sessoes`/`refresh_tokens` — por isso não
+   * abre nem toca a sessão do usuário alvo (se ele estiver logado de verdade,
+   * continua). Sem refresh token de propósito: a personificação expira em
+   * 15 min e acabou, não se renova sozinha.
+   */
+  private async buildAccessTokenPersonificacao(
+    usuarioAlvoId: string,
+    empresaId: string,
+    administradorId: string,
+  ) {
+    const vinculo = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.usuarioEmpresa.findFirst({
+        where: {
+          usuarioId: usuarioAlvoId,
+          empresaId,
+          ativo: true,
+          deletedAt: null,
+        },
+        include: {
+          usuario: {
+            include: {
+              perfil: {
+                include: {
+                  permissoes: {
+                    where: { permitido: true },
+                    include: { rotina: { include: ROTINA_COM_ARVORE } },
+                  },
+                },
+              },
+            },
+          },
+        },
+      }),
+    );
+    if (!vinculo) {
+      throw new ForbiddenException(
+        'O usuário não tem acesso a esta empresa',
+      );
+    }
+    const perfil = vinculo.usuario.perfil;
+    if (perfil.sistemaBase || perfil.administraPlataforma) {
+      throw new ForbiddenException(
+        'Não é possível personificar um usuário com perfil de administração.',
+      );
+    }
+    const daEmpresa = await this.desativadosDaEmpresa(empresaId);
+    const permissoes = perfil.permissoes
+      .filter(
+        (p) =>
+          p.rotina.menu.moduloId !== MODULO_ADMINISTRACAO_ID &&
+          rotinaNoAr(p.rotina, daEmpresa),
+      )
+      .map((p) => `${p.rotina.codigo}.${p.acao}`);
+
+    return this.jwt.signAsync(
+      {
+        sub: usuarioAlvoId,
+        nome: vinculo.usuario.nome,
+        email: vinculo.usuario.email,
+        empresaAtivaId: empresaId,
+        isAdmin: false,
+        administradorPlataforma: false,
+        permissoes,
+        personificadoPor: administradorId,
+      },
+      {
+        secret: process.env.JWT_ACCESS_SECRET,
+        expiresIn: '15m',
+      },
+    );
+  }
+
+  /**
+   * "Testar como este usuário" (cadastro de Usuários, requer
+   * `usuarios.editar`): o administrador da empresa acessa com o perfil de um
+   * usuário dela, sem precisar da senha dele. `jaPersonificando` vem do token
+   * de quem chama (`personificadoPorId`) — presente, significa que é a
+   * própria sessão de personificação tentando encadear outra, recusado.
+   */
+  async personificar(
+    administradorId: string,
+    usuarioAlvoId: string,
+    empresaId: string,
+    meta: RequestMeta,
+    jaPersonificando?: string,
+  ) {
+    if (jaPersonificando) {
+      throw new ForbiddenException(
+        'Uma sessão de personificação não pode personificar outro usuário.',
+      );
+    }
+    if (administradorId === usuarioAlvoId) {
+      throw new BadRequestException('Escolha outro usuário para personificar.');
+    }
+    const accessToken = await this.buildAccessTokenPersonificacao(
+      usuarioAlvoId,
+      empresaId,
+      administradorId,
+    );
+    const administrador = await this.prisma.usuario.findUnique({
+      where: { id: administradorId },
+      select: { email: true },
+    });
+    await this.acessos.registrar({
+      evento: 'personificacao_iniciada',
+      email: administrador?.email ?? '',
+      usuarioId: administradorId,
+      empresaId,
+      detalhe: `Testar como este usuário (alvo ${usuarioAlvoId})`,
+      ...meta,
+    });
+    return { accessToken, expiresIn: 15 * 60 };
+  }
+
+  /**
    * "Entrar como suporte" (Plataforma > Empresas): troca a empresa ativa para
    * a do cliente sem vínculo, desde que ele tenha liberado o suporte. Mesma
    * sessão do login, como a troca de empresa comum.
@@ -964,10 +1087,20 @@ export class AuthService {
     return { accessToken, refreshToken, expiresIn: 15 * 60 };
   }
 
-  async me(usuarioId: string, empresaAtivaId: string) {
+  async me(
+    usuarioId: string,
+    empresaAtivaId: string,
+    personificadoPorId?: string,
+  ) {
     const usuario = await this.prisma.usuario.findUniqueOrThrow({
       where: { id: usuarioId },
     });
+    const administradorPersonificando = personificadoPorId
+      ? await this.prisma.usuario.findUnique({
+          where: { id: personificadoPorId },
+          select: { nome: true },
+        })
+      : null;
 
     const vinculos = await this.prisma.withUsuario(usuarioId, (tx) =>
       tx.usuarioEmpresa.findMany({
@@ -1075,6 +1208,11 @@ export class AuthService {
               validoAte: suporte.concessao.validoAte.toISOString(),
             }
           : null,
+      // Preenchido só na sessão de personificação: a tela mostra o aviso e o
+      // "Sair da personificação" (ver UsuariosController.personificar).
+      personificacao: administradorPersonificando
+        ? { administradorNome: administradorPersonificando.nome }
+        : null,
       empresaAtivaId,
       // Na sessão de suporte a empresa do cliente entra no fim da lista, para
       // a tela achar a empresa ativa (nome, logo, banner) como sempre.

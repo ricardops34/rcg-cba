@@ -15,6 +15,12 @@ export interface AuthenticatedUser {
    * liberação dele (`empresa_suporte_acessos`) que a autoriza.
    */
   suporteAcessoId?: string;
+  /**
+   * Token de personificação ("Testar como este usuário"): id do administrador
+   * da empresa que personifica — `id` acima já é o do usuário alvo. Ausente
+   * fora de uma sessão de personificação (ver AuthService.personificar).
+   */
+  personificadoPorId?: string;
 }
 
 export const CurrentUser = createParamDecorator(

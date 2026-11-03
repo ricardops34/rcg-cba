@@ -1,7 +1,7 @@
 "use client";
 
 import { create } from "zustand";
-import { persist } from "zustand/middleware";
+import { persist, createJSONStorage, type StateStorage } from "zustand/middleware";
 import type { CurrentUser } from "@plataforma/contracts";
 import { queryClient } from "@/app/providers";
 
@@ -10,10 +10,69 @@ import { queryClient } from "@/app/providers";
 // saiu para já abrir com ela.
 const ULTIMA_EMPRESA_KEY = "plataforma-ultima-empresa";
 
+/**
+ * Liga/desliga, só nesta aba, o armazenamento em `sessionStorage` em vez de
+ * `localStorage` para o estado de autenticação. Ligada por
+ * `/personificar/entrar` (ver o componente), antes de gravar o token
+ * personificado: sem isso, `localStorage` é compartilhado entre abas do
+ * mesmo navegador e o token do usuário personificado sobrescreveria a sessão
+ * real do administrador em todas as abas dele, não só nesta.
+ */
+const FLAG_PERSONIFICACAO = "plataforma-personificacao-ativa";
+
+export function ativarArmazenamentoDaAba() {
+  try {
+    sessionStorage.setItem(FLAG_PERSONIFICACAO, "1");
+    // `useAuthGuard` desloga (chamando `logout()`, que usa o cookie do
+    // navegador) quando o login do admin foi "efêmero" e esta aba não tem o
+    // marcador `plataforma-auth-session` — marcador que só a tela de login
+    // grava. Esta aba nunca passa pelo login, então precisa gravá-lo também,
+    // senão o guard derrubaria a sessão REAL do administrador ao montar
+    // (mesmo cookie HttpOnly em todas as abas do navegador).
+    sessionStorage.setItem("plataforma-auth-session", "1");
+  } catch {
+    // Sem sessionStorage, a personificação segue funcionando nesta carga de
+    // página — só não sobrevive a um F5 isolada do resto do navegador.
+  }
+}
+
+/** `getItem`/`setItem`/`removeItem` resolvidos a cada chamada, não na importação do módulo. */
+const storageDaAba: StateStorage = {
+  getItem: (name) => {
+    try {
+      const personificando = sessionStorage.getItem(FLAG_PERSONIFICACAO);
+      return (personificando ? sessionStorage : localStorage).getItem(name);
+    } catch {
+      return null;
+    }
+  },
+  setItem: (name, value) => {
+    try {
+      const personificando = sessionStorage.getItem(FLAG_PERSONIFICACAO);
+      (personificando ? sessionStorage : localStorage).setItem(name, value);
+    } catch {
+      // Sem armazenamento, a sessão só não sobrevive a um F5.
+    }
+  },
+  removeItem: (name) => {
+    try {
+      const personificando = sessionStorage.getItem(FLAG_PERSONIFICACAO);
+      (personificando ? sessionStorage : localStorage).removeItem(name);
+    } catch {
+      // idem
+    }
+  },
+};
+
 function lembrarEmpresaDoLogin(user: CurrentUser) {
   const alias = user.empresas.find((e) => e.empresaId === user.empresaAtivaId)?.alias;
   if (!alias) return;
   try {
+    // Sempre no localStorage real (não pela storageDaAba): é um atalho da
+    // tela de login, de propósito fora do estado isolado da personificação —
+    // uma aba de "Testar como este usuário" não deve trocar o que fica
+    // pré-preenchido no login de quem usa este navegador depois.
+    if (sessionStorage.getItem(FLAG_PERSONIFICACAO)) return;
     localStorage.setItem(ULTIMA_EMPRESA_KEY, alias);
   } catch {
     // Sem armazenamento, o login só abre sem a empresa preenchida.
@@ -34,6 +93,13 @@ interface AuthState {
   setTokens: (accessToken: string) => void;
   setUser: (user: CurrentUser) => void;
   logout: () => void;
+  /**
+   * Fecha a sessão desta aba sem chamar `/auth/logout`: a personificação não
+   * tem refresh token próprio, e o cookie HttpOnly é do navegador — chamar
+   * logout aqui encerraria a sessão real do administrador se o cookie dele
+   * estiver presente (mesmo navegador). Só limpa o estado local da aba.
+   */
+  encerrarAba: () => void;
   hasPermission: (rotinaCodigo: string, acao: string) => boolean;
 }
 
@@ -48,6 +114,10 @@ export const useAuthStore = create<AuthState>()(
       setUser: (user) => {
         lembrarEmpresaDoLogin(user);
         set({ user });
+      },
+      encerrarAba: () => {
+        queryClient.clear();
+        set({ accessToken: null, user: null });
       },
       logout: () => {
         // Sem isto, a consulta em cache de QUALQUER tela (não só WhatsApp)
@@ -76,6 +146,7 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: "plataforma-auth",
+      storage: createJSONStorage(() => storageDaAba),
       // v1: o refresh token saiu do armazenamento do navegador. Quem tinha o
       // formato antigo perde o token guardado (precisa entrar de novo uma vez)
       // e o valor antigo sai do localStorage.

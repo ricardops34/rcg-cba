@@ -186,7 +186,7 @@ export class AuthController {
   @PermitirTermoPendente()
   @Get('me')
   me(@CurrentUser() user: AuthenticatedUser) {
-    return this.authService.me(user.id, user.empresaAtivaId);
+    return this.authService.me(user.id, user.empresaAtivaId, user.personificadoPorId);
   }
 
   @ApiOperation({

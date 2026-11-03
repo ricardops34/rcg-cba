@@ -12,6 +12,7 @@ import { ResponsiveRouteGuard } from "@/components/layout/responsive-route-guard
 import { FaixaInstitucional } from "@/components/layout/faixa-institucional";
 import { AvisoAvaliacao } from "@/components/layout/aviso-avaliacao";
 import { AvisoSuportePlataforma } from "@/components/layout/aviso-suporte-plataforma";
+import { AvisoPersonificacao } from "@/components/layout/aviso-personificacao";
 import { TourProvider } from "@/components/tour/tour-provider";
 import { RegistroUsoRotina } from "@/components/layout/registro-uso-rotina";
 
@@ -85,6 +86,7 @@ export default function AppShellLayout({
           <FaixaInstitucional />
           <AvisoAvaliacao />
           <AvisoSuportePlataforma />
+          <AvisoPersonificacao />
 
           <div className="flex min-h-0 flex-1">
             <AppSidebar collapsed={collapsed} />

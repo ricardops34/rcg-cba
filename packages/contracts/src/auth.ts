@@ -193,6 +193,16 @@ export const currentUserSchema = z.object({
       "Preenchido na sessão de suporte da plataforma no ambiente de um cliente " +
         "(Entrar como suporte), com o prazo da liberação dele; null fora dela",
     ),
+  personificacao: z
+    .object({
+      administradorNome: z.string(),
+    })
+    .nullable()
+    .optional()
+    .describe(
+      "Preenchido na sessão de personificação (Testar como este usuário), com o " +
+        "nome de quem personifica; null fora dela",
+    ),
   empresas: z
     .array(
       z.object({

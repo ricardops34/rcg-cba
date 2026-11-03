@@ -16,6 +16,8 @@ export interface JwtPayload {
   sid?: string;
   /** Sessão de suporte: a liberação do cliente que a autoriza (ver entrarComoSuporte). */
   suporte?: string;
+  /** Personificação ("Testar como este usuário"): id do administrador que personifica. */
+  personificadoPor?: string;
 }
 
 @Injectable()
@@ -55,6 +57,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       permissoes: payload.permissoes ?? [],
       sessaoId: payload.sid,
       suporteAcessoId: payload.suporte,
+      personificadoPorId: payload.personificadoPor,
     };
   }
 }

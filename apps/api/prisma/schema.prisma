@@ -217,6 +217,7 @@ model Empresa {
   assinatura                 Assinatura?
   suporteAcessos             EmpresaSuporteAcesso[]
   suporteLogs                EmpresaSuporteLog[]
+  personificacaoLogs         UsuarioPersonificacaoLog[]
 
   @@index([grupoEconomicoId])
   @@map("empresas")
@@ -318,6 +319,8 @@ model Usuario {
   suporteConcessoesConcedidas EmpresaSuporteAcesso[]        @relation("SuporteConcedidoPor")
   suporteConcessoesRevogadas  EmpresaSuporteAcesso[]        @relation("SuporteRevogadoPor")
   suporteAcoesRealizadas      EmpresaSuporteLog[]           @relation("SuporteAcoesRealizadas")
+  personificacoesComoAdmin    UsuarioPersonificacaoLog[]    @relation("PersonificacaoAdministrador")
+  personificacoesComoAlvo     UsuarioPersonificacaoLog[]    @relation("PersonificacaoAlvo")
 
   @@map("usuarios")
 }
@@ -803,6 +806,30 @@ model EmpresaSuporteLog {
   @@map("empresa_suporte_logs")
 }
 
+/// Log auditado de cada ação do administrador da empresa enquanto personifica
+/// um usuário dela (botão "Testar como este usuário", cadastro de usuários).
+/// Sem tabela de concessão — não depende de liberação do usuário alvo, só da
+/// permissão de quem personifica (ver docs/ferramentas: acesso é código).
+model UsuarioPersonificacaoLog {
+  id              String   @id @default(uuid())
+  empresaId       String
+  administradorId String
+  usuarioAlvoId   String
+  metodoHttp      String
+  rota            String
+  payload         String?  @db.Text
+  ip              String?
+  userAgent       String?
+  createdAt       DateTime @default(now())
+
+  empresa       Empresa @relation(fields: [empresaId], references: [id])
+  administrador Usuario @relation("PersonificacaoAdministrador", fields: [administradorId], references: [id])
+  usuarioAlvo   Usuario @relation("PersonificacaoAlvo", fields: [usuarioAlvoId], references: [id])
+
+  @@index([empresaId, createdAt])
+  @@map("usuario_personificacao_logs")
+}
+
 /// Contrato único do grupo; empresaId é somente referência histórica.
 model Assinatura {
   grupoEconomicoId String? @unique
@@ -929,6 +956,8 @@ enum AcessoEvento {
   // "Esqueci minha senha" (2026-10-13): o pedido do link e a senha trocada por ele.
   senha_redefinicao_pedida
   senha_redefinida
+  // "Testar como este usuário" (2026-10-29): início de uma personificação.
+  personificacao_iniciada
 }
 
 /**

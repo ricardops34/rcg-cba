@@ -22,6 +22,7 @@ import { mensagemDoEnvio, type AcessoEnviado } from "@/lib/acesso-enviado";
 import { UsuarioEmpresasGrupo } from "@/components/crud/usuario-empresas-grupo";
 import { UsuarioDadosGrupo } from "@/components/crud/usuario-dados-grupo";
 import { UsuarioResetSenhaSection } from "@/components/crud/usuario-reset-senha-section";
+import { UsuarioPersonificarSection } from "@/components/crud/usuario-personificar-section";
 import { UsuarioHorariosSection } from "@/components/crud/usuario-horarios-section";
 import { UsuarioTelaInicial } from "@/components/crud/usuario-tela-inicial";
 import { ProfilePhoto } from "@/components/perfil/profile-photo";
@@ -217,6 +218,7 @@ export function UsuarioForm({ usuario }: { usuario?: Usuario }) {
             <Card>
               <CardContent className="space-y-6 pt-6">
                 <UsuarioResetSenhaSection usuarioId={usuario.id} />
+                <UsuarioPersonificarSection usuarioId={usuario.id} usuarioNome={usuario.nome} />
                 <UsuarioHorariosSection usuarioId={usuario.id} />
               </CardContent>
             </Card>
