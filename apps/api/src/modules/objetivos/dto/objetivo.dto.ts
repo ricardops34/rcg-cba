@@ -3,6 +3,7 @@ import {
   dashboardGerencialQuerySchema,
   dashboardGerencialVendedorQuerySchema,
   objetivoCopiarPeriodoSchema,
+  objetivoGerarSchema,
   objetivoDashboardMunicipiosQuerySchema,
   objetivoDashboardQuerySchema,
   objetivoVendedorMesCreateSchema,
@@ -15,6 +16,7 @@ export class ObjetivoUpdateDto extends createZodDto(objetivoVendedorMesUpdateSch
 export class ObjetivoQueryDto extends createZodDto(objetivoVendedorMesQuerySchema) {}
 export class ObjetivoDashboardQueryDto extends createZodDto(objetivoDashboardQuerySchema) {}
 export class ObjetivoCopiarPeriodoDto extends createZodDto(objetivoCopiarPeriodoSchema) {}
+export class ObjetivoGerarDto extends createZodDto(objetivoGerarSchema) {}
 export class DashboardGerencialQueryDto extends createZodDto(
   dashboardGerencialQuerySchema,
 ) {}
