@@ -823,13 +823,22 @@ export class ObjetivosService {
               id: { in: vendedorIds },
               empresaId,
               deletedAt: null,
-              // **Linha aqui é vendedor, e só.** A venda fica sempre com o
-              // vendedor que atende o cliente (regra do negócio): supervisor e
-              // gerente não têm venda própria — eles aparecem nesta tela como
-              // o **agrupador** do time, não como uma linha de faturamento.
-              // Sem este corte, quem vendia na carteira do subordinado surgia
-              // como um vendedor a mais, dobrando a leitura do mesmo número.
-              tipo: 'vendedor',
+              // Linha é vendedor — **ou qualquer cadastro com venda no
+              // período**. Supervisor e gerente aparecem como agrupador do
+              // time, mas há supervisor com carteira própria (CBA: ESCRITORIO,
+              // CLERIA...): cortar por `tipo` tirava a venda dele da tabela e
+              // o rodapé deixava de fechar com o cartão Realizado.
+              OR: [
+                { tipo: 'vendedor' },
+                {
+                  id: {
+                    in: [
+                      ...realizadoPorVendedor.keys(),
+                      ...positivacaoPorVendedor.keys(),
+                    ],
+                  },
+                },
+              ],
               // `usaDashboard` é a resposta do cadastro para "este vendedor
               // participa do acompanhamento gerencial?". O campo existe desde
               // sempre e está documentado no schema como "aparece nas telas
