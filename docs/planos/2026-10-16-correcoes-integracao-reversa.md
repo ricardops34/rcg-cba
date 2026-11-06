@@ -83,7 +83,7 @@ dependem de decisão ou são menores.
       O endpoint exportava os 500 primeiros clientes de qualquer situação, não a fila.
 - [x] 4. **K.1** carga em andamento não confere se a chave foi revogada/expirou/excluída
 - [x] 5. **K.2** `PATCH endpoints/:endpointKey` com DTO Zod (`ativo` obrigatório e booleano)
-- [ ] 6. **4.5** `resolverContaBancaria`: 404 em vez de criar conta
+- [x] 6. **4.5** `resolverContaBancaria`: **mantido como está** (cadastra a conta na hora) — decisão do usuário em 06/11/2026
 - [x] 7. **4.6** `resolverProduto`: sem busca por substring em `estoque` e `tabelas-preco`
 - [x] 8. **4.7** `upsert` de orçamento: recusar `aprovado` e `origem=erp` (e conferir no `remove`)
 - [ ] 9. **4.4** cliente por `PUT`/carga (depende da decisão acima)

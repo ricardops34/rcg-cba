@@ -49,7 +49,7 @@ Etapas 1–2, 4–5, 7–8, 10–14 já feitas. Faltam:
 | # | Item | Quem | Origem |
 |---|------|------|--------|
 | C1 | ~~**Etapa 3** — `arquivo/exportar`~~ **FEITO 2026-11-06:** retirado (envio é por API; `codigoErp` é informativo, controle pelo ID da plataforma) | — | `correcoes-integracao-reversa:81` |
-| C2 | **Etapa 6** — `resolverContaBancaria`: 404 em vez de criar conta (muda o contrato; avisar quem mantém o Protheus) | decisão | `:84` |
+| C2 | ~~**Etapa 6** — `resolverContaBancaria`~~ **FECHADO 06/11:** mantém o cadastro automático da conta; sem mudança | — | `:84` |
 | C3 | **Etapa 9** — cliente novo da plataforma → ERP: **API pronta 06/11** (fila `incluir` + `aplicada` com chave/codigoErp, 203 testes); falta aplicar a migration em dev, conferir e o BJPLA004 (usuário). `2026-11-06-cliente-novo-id-codigoerp.md` | Protheus (BJPLA004) | `:87` |
 | C4 | **Etapa 15** — `tsc` + suíte da API e validar em dev (recriar o container da API) | código | `:95` |
 
