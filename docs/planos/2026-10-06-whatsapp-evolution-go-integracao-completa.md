@@ -83,7 +83,7 @@ ordem de confiança: código (`pkg/sendMessage/handler/send_handler.go`,
   gravando áudio" (`POST .../presenca`, no máximo um sinal a cada 8 s).
   Corrigida também a invalidação de cache da reação.
 
-## Pendente — fatia 5
+## Pendente — fatia 5 (decisão 06/11: não fazer agora)
 
 Carrossel (`/send/carousel`) e figurinha de saída (`/send/sticker`) só
 aceitam imagem por **URL pública**: o gateway a baixa. A plataforma não expõe

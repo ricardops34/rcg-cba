@@ -70,11 +70,11 @@ Etapas 1–2, 4–5, 7–8, 10–14 já feitas. Faltam:
 
 | # | Item | Quem | Origem |
 |---|------|------|--------|
-| E1 | Achados do Reversa de 15/10: triagem IA não é chamada desde `d7d3205`; vínculo automático por 8 dígitos libera boleto | decisão | memória `whatsapp_achados_reversa_2026_10_15` |
-| E2 | WhatsApp do vendedor: sino, orçamento, governança; duas decisões pendentes | decisão | memória `whatsapp_vendedor_estado` |
-| E3 | WhatsApp da instância do usuário: limitar ao que a EvoGo oferece | código | memória `whatsapp_instancia_do_usuario` |
+| E1 | **ADIADO (decisão 06/11):** WhatsApp institucional fica para o futuro; foco no WhatsApp do vendedor. Triagem já corrigida em 18/10. Anotado para quando retomar: o vínculo automático por 8 dígitos libera boleto/nota sem confirmação de vendedor (o doc diz que o vínculo é feito por vendedor, o código vincula sozinho) | — | memória `whatsapp_achados_reversa_2026_10_15` |
+| E2 | **DECIDIDO 06/11: não mexer** — duas mensagens vazias do histórico e reação feita pelo próprio celular ficam como estão. Resta só a conferência visual do sino | conferência | memória `whatsapp_vendedor_estado` |
+| E3 | **FECHADO 06/11:** fatias 1–4 da integração com a Evolution GO já estavam prontas (06/10); fatia 5 (carrossel e figurinha de saída, exigem URL pública) **não será feita agora** por decisão do usuário | — | memória `whatsapp_instancia_do_usuario` |
 | E4 | Acompanhamento da equipe: conferir a tela; tempo médio de primeira resposta usa média | conferência | `2026-10-27-acompanhamento-equipe.md` |
-| E5 | Roteiro semanal: questionário com ~24 caixas sem resposta; sem isso não há o que codar | decisão | `2026-10-16-questionario-roteiro-semanal.md` |
+| E5 | **Desatualizado no consolidado:** o questionário foi respondido em 16/10 e o roteiro está implementado (API, tela na Agenda, 56 testes; F6.1–F6.5). Falta F6.6, teste com WhatsApp real, que depende da licença do gateway Evolution GO — usuário: "ainda não" (06/11) | conferência | `2026-10-16-questionario-roteiro-semanal.md` |
 
 ## F. Portal do Cliente (adiado por decisão de 27/10)
 
