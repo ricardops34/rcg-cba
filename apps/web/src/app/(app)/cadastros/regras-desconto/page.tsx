@@ -71,6 +71,7 @@ export default function RegrasDescontoPage() {
         <div className="flex items-center gap-2">
           <p className="font-medium">{r.descricao}</p>
           {r.padrao && <Badge variant="secondary">Padrão</Badge>}
+          {r.chave && <Badge variant="outline">ERP</Badge>}
         </div>
       ),
     },
@@ -110,11 +111,14 @@ export default function RegrasDescontoPage() {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => abrirEdicao(r)}>
-              <Pencil className="size-4" /> Editar
+              <Pencil className="size-4" /> {r.chave ? "Ver" : "Editar"}
             </DropdownMenuItem>
-            <DropdownMenuItem variant="destructive" onClick={() => onDelete(r)}>
-              <Trash2 className="size-4" /> Excluir
-            </DropdownMenuItem>
+            {/* Regra do ERP só se altera no ERP (a API recusa). */}
+            {!r.chave && (
+              <DropdownMenuItem variant="destructive" onClick={() => onDelete(r)}>
+                <Trash2 className="size-4" /> Excluir
+              </DropdownMenuItem>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       ),

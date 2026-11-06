@@ -1,4 +1,4 @@
-# Pendências consolidadas — 2026-11-06
+| D5 | Etapas 28/29: **trava de regra do ERP feita 06/11** (API 403 + lista com selo "ERP", só "Ver"). Faltam: bloquear excluir regra em uso, trava para padrão e código. **Não dar `chave` à regra criada na tela** (é o que a distingue do ERP) | código || D3 | **FEITO 06/11:** `PlatformAdminGuard` em criar/editar/excluir de estados, municípios, países, CEPs e CNAEs (leitura segue liberada). Falta, se quiser, tirar cadastrar/editar/excluir dos perfis de empresa (migration + catálogo) e esconder os botões na tela | código || D2 | **DECIDIDO 06/11:** a tela edita/exclui só regra criada nela; regra do ERP (com `chave`) só no ERP | — || D1 | **DECIDIDO 06/11: sim** — escrita nas 5 tabelas globais só da plataforma | — |# Pendências consolidadas — 2026-11-06
 
 Índice do que está aberto em `docs/planos/` e nas notas de estado. **Este arquivo não
 substitui os planos de origem**: o detalhe e o histórico ficam lá. Aqui ficam o

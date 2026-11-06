@@ -14,6 +14,7 @@ import { CnaesService } from './cnaes.service';
 import { CnaeCreateDto, CnaeQueryDto, CnaeUpdateDto } from './dto/cnae.dto';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { PlatformAdminGuard } from '../../../common/guards/platform-admin.guard';
 import { RequirePermission } from '../../../common/decorators/require-permission.decorator';
 import { ApiPaginationQuery } from '../../../common/decorators/api-pagination-query.decorator';
 import {
@@ -49,6 +50,7 @@ export class CnaesController {
   }
 
   @ApiOperation({ summary: 'Cadastrar CNAE', description: 'Requer cnaes.cadastrar.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('cnaes', 'cadastrar')
   @Post()
   create(@Body() dto: CnaeCreateDto, @CurrentUser() user: AuthenticatedUser) {
@@ -56,6 +58,7 @@ export class CnaesController {
   }
 
   @ApiOperation({ summary: 'Editar CNAE', description: 'Requer cnaes.editar.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('cnaes', 'editar')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: CnaeUpdateDto, @CurrentUser() user: AuthenticatedUser) {
@@ -63,6 +66,7 @@ export class CnaesController {
   }
 
   @ApiOperation({ summary: 'Excluir CNAE (soft delete)', description: 'Requer cnaes.excluir.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('cnaes', 'excluir')
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {

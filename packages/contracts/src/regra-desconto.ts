@@ -79,6 +79,8 @@ export const regraDescontoSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
   codigoErp: z.string().nullable(),
+  // Preenchida só na regra que veio do ERP; a regra criada na tela não tem.
+  chave: z.string().nullable().optional(),
   descricao: z.string(),
   percDescontoAutorizado: z.number(),
   percDescontoMaximo: z.number(),

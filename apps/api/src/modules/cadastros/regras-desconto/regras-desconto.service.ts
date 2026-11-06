@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -95,6 +96,19 @@ export class RegrasDescontoService {
     if (emUso) {
       throw new ConflictException(
         `Já existe uma regra com o código ERP '${codigoErp}'`,
+      );
+    }
+  }
+
+  /**
+   * A regra que veio do ERP (tem `chave`) é do ERP: ele reenvia e sobrescreve, e
+   * mexer aqui criaria uma divergência que a próxima carga desfaz. A tela só
+   * edita e exclui o que nasceu nela (decisão do usuário em 06/11/2026).
+   */
+  private exigirRegraDaTela(regra: { chave: string | null }) {
+    if (regra.chave) {
+      throw new ForbiddenException(
+        'Esta regra vem do ERP e só pode ser alterada lá. A tela edita apenas as regras criadas nela.',
       );
     }
   }
@@ -200,10 +214,11 @@ export class RegrasDescontoService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const regra = await tx.regraDesconto.findFirst({
         where: { id, empresaId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, chave: true },
       });
       if (!regra)
         throw new NotFoundException('Regra de desconto não encontrada');
+      this.exigirRegraDaTela(regra);
 
       const codigo =
         codigoErp !== undefined ? codigoErp?.trim() || null : undefined;
@@ -246,10 +261,11 @@ export class RegrasDescontoService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const regra = await tx.regraDesconto.findFirst({
         where: { id, empresaId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, chave: true },
       });
       if (!regra)
         throw new NotFoundException('Regra de desconto não encontrada');
+      this.exigirRegraDaTela(regra);
       await tx.regraDesconto.update({
         where: { id },
         data: {
