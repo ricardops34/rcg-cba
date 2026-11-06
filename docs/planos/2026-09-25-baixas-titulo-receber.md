@@ -1,5 +1,8 @@
 # Baixas do título a receber — juros, multa, desconto e abatimento
 
+> **Adiado (06/11/2026, decisão do usuário):** o envio de títulos como está atende; as baixas
+> ficam para um segundo momento. Fonte vigente do mapeador: `docs/integracao/advpl`.
+>
 > **Status (25/09/2026): plataforma pronta, AdvPL não começou.**
 > Lado da API implementado, compilando e com testes passando. Falta a migration
 > rodar, o mapeador AdvPL e a tela.

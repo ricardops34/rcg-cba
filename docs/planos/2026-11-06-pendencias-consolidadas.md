@@ -94,6 +94,7 @@ guarda · **P.4** tela de administração e troca de senha.
 | G5 | MinIO/backup: verificado em dev, falta produção | deploy |
 | G6 | WhatsApp institucional (funcionários): o que ainda não rodou de verdade | conferência |
 | G7 | VPS: `crm_api` 0/1 pendente | código/deploy |
+| G8 | **ADIADO (decisão 06/11):** movimentação dos títulos a receber (baixas: juros, multa, desconto, abatimento, conta onde o dinheiro entrou). O envio atual de títulos atende; `U_BJMAPTIT` não lê SE5/FKx. Plataforma pronta; retomar pelo Passo 1 (diagnóstico SE5) de `2026-09-25-baixas-titulo-receber.md` | Protheus |
 
 ---
 
