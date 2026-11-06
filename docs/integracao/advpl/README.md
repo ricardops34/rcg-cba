@@ -266,6 +266,7 @@ sem recompilar.
 | `MV_BJAPI06` | N | `2000` | Espera entre retentativas, em ms — multiplicada pelo número da tentativa |
 | `MV_BJAPI07` | N | `500` | Registros por transação ao enfileirar na SZZ. A coleta grava em blocos desse tamanho; `0` usa 500. **Precisa estar cadastrado** — o `GetMV` não tem padrão |
 | `MV_BJAPI08` | N | `1050` | Pausa entre requisições, em ms |
+| `MV_BJCLITP` | C | `F` | `A1_TIPO` dos clientes **incluídos** a partir da plataforma (`F` = consumidor final). Sem cadastro, vale o padrão. Ver `BJIncluiCliente` |
 | `MV_BJAPI09` | N | `1000` | Máximo de registros por `PUT` em bloco |
 | `MV_BJAPI10` | — | — | **Não é mais lido** desde 26/09/2026. Recuava a marca, em dias, quando a fila já tinha mensagens e nenhum lote tinha marca — e com a coleta fracionada esse é o caso da **carga inicial que caiu no meio**: o recuo perdia em silêncio tudo que ela não chegou a ler. Agora a coleta refaz a carga desde o corte (`MV_BJAPI14`); o envio descarta a mensagem repetida como superada. Pode ficar cadastrado, sem efeito |
 | `MV_BJAPI11` | N | `90` | Retenção da mensagem executada, em dias |

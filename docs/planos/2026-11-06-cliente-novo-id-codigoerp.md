@@ -46,12 +46,12 @@ recebimento já funciona.)
 - [x] 4. `aplicada` com corpo e gravação de chave/codigoErp no cliente.
 - [x] 5. Testes (`integracao-clientes-alteracoes.service.spec.ts`, 5 casos). Suítes
       `integracao` + `clientes`: 203 passam; `tsc` limpo.
-- [ ] 6. **Aplicar a migration em dev** (role dona, conforme o runbook) e conferir de ponta a
+- [~] 6. **Migration aplicada em dev (06/11); falta a conferência ponta a ponta pela tela.** Original: aplicar a migration em dev (role dona, conforme o runbook) e conferir de ponta a
       ponta: criar cliente na tela → aparece em `alteracoes` como `incluir` → `aplicada` com
       chave/codigoErp → cliente com chave.
-- [ ] 7. **Protheus (usuário):** `BJPLA004` tratar `operacao = incluir` (CRMA980 inclusão) e
+- [~] 7. **Escrito em 06/11 (`BJIncluiCliente` em `BJPLA004.prw`); falta copiar para o G:, compilar e testar.** Original, Protheus (usuário): `BJPLA004` tratar `operacao = incluir` (CRMA980 inclusão) e
       confirmar com `{ chave, codigoErp }`. Fontes em `docs/integracao/advpl/BJPLA004.prw`.
-- [ ] 8. Atualizar `docs/integracao/advpl/PLANO.md` quando o BJPLA004 estiver pronto.
+- [x] 8. (TASK-060 e `MV_BJCLITP` registrados) Atualizar `docs/integracao/advpl/PLANO.md` quando o BJPLA004 estiver pronto.
 
 ## Atenção
 
