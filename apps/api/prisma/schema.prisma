@@ -2161,6 +2161,13 @@ enum SituacaoEnvioErp {
   enviado
 }
 
+/// Inclusão = cliente criado na plataforma (o ERP devolve chave e codigoErp);
+/// alteração = campos de um cliente que já existe no ERP.
+enum OperacaoEnvioErp {
+  incluir
+  alterar
+}
+
 /// Fila de envio ao ERP das alterações de cliente aplicadas na plataforma —
 /// ver ClienteAlteracoesService.enfileirarEnvioErp. Pendente até o Protheus
 /// confirmar que gravou na SA1 (PATCH .../aplicada); o valor enviado é o atual
@@ -2173,6 +2180,7 @@ model ClienteEnvioErp {
   /// Campos da plataforma que mudaram (razaoSocial, vendedorId, cnaePrincipal...).
   campos      String[]
   situacao    SituacaoEnvioErp @default(pendente)
+  operacao    OperacaoEnvioErp @default(alterar)
   criadoEm    DateTime         @default(now())
   enviadoEm   DateTime?
 

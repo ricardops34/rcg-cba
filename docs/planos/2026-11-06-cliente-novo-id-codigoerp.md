@@ -1,74 +1,61 @@
-# Cliente: ligação com o ERP pelo `codigoErp`; ID da plataforma só para cadastro novo
+# Cliente novo criado na plataforma: envio ao ERP e retorno de chave/codigoErp
 
 Item **C3** de `2026-11-06-pendencias-consolidadas.md` (etapa 9 de
 `2026-10-16-correcoes-integracao-reversa.md`).
 
 ## Decisões do usuário (2026-11-06)
 
-1. **A ligação entre o ERP e a plataforma é sempre pelo `codigoErp`.**
-2. O **ID da plataforma** (uuid do cliente) é um código interno. Só trafega na integração
-   quando o cliente é **incluído pela plataforma**, para receber de volta o `codigoErp`.
-3. **Plataforma → ERP (cliente novo):** envia o ID. O ERP grava e **devolve o ID, o `codigoErp`
-   e a `chave`**; a plataforma grava os dois últimos no cliente.
-4. **ERP → plataforma (cadastro novo no ERP):** o ID vem vazio. Busca-se pelo `codigoErp`:
-   existe → atualiza; não existe → cria.
+1. A ligação entre ERP e plataforma é pelo código do ERP (`chave`/`codigoErp`). **O
+   recebimento de clientes do ERP já funciona** (upsert pela chave) e **não muda**; o mesmo
+   vale para produto, estoque e as demais entidades.
+2. O ID da plataforma (uuid do cliente) é interno. Só trafega quando o cliente é **incluído
+   pela plataforma**, para receber de volta o código do ERP.
+3. **Plataforma → ERP (cliente novo):** envia o ID. O ERP grava e **devolve a `chave` e o
+   `codigoErp`**; a plataforma os grava no cliente.
+4. **ERP → plataforma, cadastro novo no ERP:** já resolvido pelo recebimento existente.
 
-Isto **substitui, para clientes**, a decisão de 22/09 (`2026-09-22-chave-integracao.md`: a
-`chave` FILIAL-COD decide cadastrar/atualizar). A `chave` continua gravada e enviada, mas
-deixa de ser o critério de busca do cliente. As demais entidades seguem como estão até o
-usuário dizer o contrário (ver "Pergunta em aberto").
+(Uma primeira versão deste plano propunha trocar o critério de busca do `upsert` para
+`codigoErp`; foi descartada: na prática `codigoErp` e `chave` são o mesmo código do ERP e o
+recebimento já funciona.)
 
-## Como está hoje (conferido no código)
+## O buraco que havia
 
-- `IntegracaoClientesService.upsert` localiza por `chave` (única por empresa).
-- `GET /integracao/clientes/alteracoes` só lista cliente **com chave** — o cliente novo fica
-  de fora "até ganhar chave", e nada o faz ganhar.
-- `ClientesService.create` (cadastro pela tela) **não enfileira nada** em
-  `cliente_envios_erp`. Cliente criado na plataforma nunca chega ao ERP.
-- `PATCH .../alteracoes/:id/aplicada` não recebe corpo: não devolve ID, `codigoErp` nem chave.
+- `ClientesService.create` (cadastro pela tela) **não enfileirava nada**: cliente criado na
+  plataforma nunca chegava ao ERP.
+- `GET /integracao/clientes/alteracoes` deixava de fora cliente sem chave.
+- `PATCH .../aplicada` não recebia corpo: não havia como o ERP devolver chave e `codigoErp`.
 
-## Desenho
+## Contrato novo (plataforma pronta, falta o BJPLA004)
 
-### 1. Plataforma → ERP (cliente novo)
-
-- `cliente_envios_erp` ganha `operacao` (`incluir` | `alterar`, padrão `alterar`).
-- `ClientesService.create` enfileira um item `incluir` com **todos** os campos de
-  `CAMPOS_ENVIO_ERP` (não precisa de aprovação: o cliente nasce pelo usuário).
-- `GET .../alteracoes` passa a listar também item `incluir` de cliente sem chave. Cada item
-  traz `operacao`, `clienteId` (o ID da plataforma), `clienteChave` e `codigoErp` (vazios na
-  inclusão).
-- `PATCH .../alteracoes/:id/aplicada` aceita corpo `{ codigoErp?, chave? }`. Obrigatório
-  (`codigoErp`) quando o item é `incluir`: grava no cliente e tira o item da fila. 409 se já
-  confirmado, como hoje.
-- Item `alterar` continua exigindo cliente com `codigoErp`/chave (já existe no ERP).
-
-### 2. ERP → plataforma
-
-- `integracaoClienteCreateSchema` ganha `id` opcional (uuid).
-- `upsert`, nesta ordem: **`id`** (se veio) → **`codigoErp`** (não vazio) → **`chave`**
-  (rede de segurança: evita criar duplicata e estourar a unicidade da `chave` com cliente
-  antigo que ainda não tem `codigoErp`). Nenhum achou → cria.
-- A resposta devolve o `id` da plataforma.
-
-### 3. Lado Protheus (usuário)
-
-`BJPLA004` (`U_BJRETORNO`): tratar `operacao = incluir` (CRMA980 inclusão), gravar o ID da
-plataforma no cliente, e no `aplicada` mandar `{ codigoErp, chave }`. Contrato final do
-corpo registrado aqui quando a API estiver pronta.
+- `GET /integracao/clientes/alteracoes`: cada item traz `operacao` (`incluir` | `alterar`),
+  `clienteId` (ID da plataforma), `clienteChave` e `codigoErp` (vazios na inclusão), mais os
+  campos de sempre. Na inclusão vão **todos** os campos que a SA1 recebe.
+- `PATCH /integracao/clientes/alteracoes/:id/aplicada`:
+  - `incluir`: corpo `{ "chave": "...", "codigoErp": "..." }` **obrigatório** (400 sem os
+    dois). A plataforma grava no cliente. **409** se a chave já for de outro cliente (evita
+    duplicata) ou se o item já foi confirmado.
+  - `alterar`: corpo ignorado, como antes.
+- Sem a confirmação o item continua pendente e volta no ciclo seguinte.
 
 ## Etapas
 
-- [ ] 1. Migration `operacao` em `cliente_envios_erp`.
-- [ ] 2. `ClientesService.create` enfileira `incluir`.
-- [ ] 3. Fila `alteracoes` lista `incluir` sem chave e traz `operacao`/`clienteId`/`codigoErp`.
-- [ ] 4. `aplicada` com corpo (`codigoErp`, `chave`) e gravação no cliente.
-- [ ] 5. Contrato `id` opcional + `upsert` por id → codigoErp → chave.
-- [ ] 6. Testes (fila de inclusão, aplicada com retorno, upsert por codigoErp e fallback).
-- [ ] 7. Documentar o contrato (`docs/integracao`) e avisar o usuário para o `BJPLA004`.
+- [x] 1. Migration `20261106100000_cliente_envios_erp_operacao` (coluna `operacao`, itens
+      existentes ficam `alterar`) e `schema.prisma`.
+- [x] 2. `ClientesService.create` enfileira `incluir`.
+- [x] 3. Fila lista `incluir` sem chave e traz `operacao`/`clienteId`/`codigoErp`.
+- [x] 4. `aplicada` com corpo e gravação de chave/codigoErp no cliente.
+- [x] 5. Testes (`integracao-clientes-alteracoes.service.spec.ts`, 5 casos). Suítes
+      `integracao` + `clientes`: 203 passam; `tsc` limpo.
+- [ ] 6. **Aplicar a migration em dev** (role dona, conforme o runbook) e conferir de ponta a
+      ponta: criar cliente na tela → aparece em `alteracoes` como `incluir` → `aplicada` com
+      chave/codigoErp → cliente com chave.
+- [ ] 7. **Protheus (usuário):** `BJPLA004` tratar `operacao = incluir` (CRMA980 inclusão) e
+      confirmar com `{ chave, codigoErp }`. Fontes em `docs/integracao/advpl/BJPLA004.prw`.
+- [ ] 8. Atualizar `docs/integracao/advpl/PLANO.md` quando o BJPLA004 estiver pronto.
 
-## Pergunta em aberto
+## Atenção
 
-"A ligação é pelo `codigoErp` sempre": vale **só para clientes** (único cadastro que a
-plataforma cria e envia) ou para **todas** as entidades? `codigoErp` não é único em tabelas por
-filial (estoque, tabela de preço) e não existe nos itens, por isso a proposta é limitar a
-clientes. Assumido assim até resposta.
+- Cliente criado pela plataforma **antes** do BJPLA004 novo ficará pendente na fila. Se o
+  BJPLA004 antigo ler o item `incluir`, deve ignorá-lo (não confirmar sem chave); a API
+  recusa a confirmação sem chave, então nada se perde nem duplica.
+- Cliente criado pelo recebimento do ERP (`upsert`) não entra na fila (não é `create` da tela).

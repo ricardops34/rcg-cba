@@ -37,7 +37,10 @@ import {
 import { podeEmitirBoleto } from '../titulos-receber/boleto-atualizacao';
 import { comFlagXml } from '../notas-saida/nota-flags';
 import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
-import { ClienteAlteracoesService } from './cliente-alteracoes.service';
+import {
+  CAMPOS_ENVIO_ERP,
+  ClienteAlteracoesService,
+} from './cliente-alteracoes.service';
 import { EnriquecimentoService } from './enriquecimento.service';
 import { ClientesReceitaLoteService } from './clientes-receita-lote.service';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
@@ -728,6 +731,16 @@ export class ClientesService {
         } as never,
       });
       await sincronizarContatosErp(tx, empresaId, criado, user.id);
+      // Cliente novo vai ao ERP: a fila leva todos os campos que a SA1 recebe e o
+      // ERP devolve a chave e o codigoErp na confirmação (PATCH .../aplicada).
+      await tx.clienteEnvioErp.create({
+        data: {
+          empresaId,
+          clienteId: criado.id,
+          campos: Object.keys(CAMPOS_ENVIO_ERP),
+          operacao: 'incluir',
+        },
+      });
       return criado;
     });
   }

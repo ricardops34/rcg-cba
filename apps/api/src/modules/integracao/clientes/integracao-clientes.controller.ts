@@ -27,6 +27,7 @@ import { IntegracaoClientesService } from './integracao-clientes.service';
 import { IntegracaoClientesAlteracoesService } from './integracao-clientes-alteracoes.service';
 import { PaginationQueryDto } from '../../../common/dto/pagination.dto';
 import {
+  IntegracaoClienteAplicadaDto,
   IntegracaoClienteCreateDto,
   IntegracaoClienteLoteDto,
   IntegracaoClienteQueryDto,
@@ -56,10 +57,11 @@ export class IntegracaoClientesController {
     description:
       'Fila de envio: cada item é uma alteração aprovada na plataforma (à mão, campo a campo, ' +
       'ou autoaprovada — campo vazio preenchido pela Receita) com **só os campos aprovados**, ' +
-      'achatados e com o valor **atual** do cadastro. Referências saem como chave de integração ' +
+      'achatados e com o valor **atual** do cadastro. `operacao` diz se é `incluir` (cliente novo da ' +
+      'plataforma: `clienteId` é o ID dela, `clienteChave` e `codigoErp` vêm vazios) ou `alterar`. Referências saem como chave de integração ' +
       '(`vendedorChave`, `tabelaPrecoChave`, `condicaoPagamentoChave`) e o CNAE principal como ' +
-      '`cnae` com máscara ("4639-7/01"). Mais antigo primeiro. Cliente sem chave (ainda não está ' +
-      'na SA1) fica de fora até ganhar chave. O item continua aqui até PATCH .../aplicada.',
+      '`cnae` com máscara ("4639-7/01"). Mais antigo primeiro. Alteração de cliente sem chave (ainda ' +
+      'não está na SA1) fica de fora até ganhar chave. O item continua aqui até PATCH .../aplicada.',
   })
   @ApiPaginationQuery()
   @Get('alteracoes')
@@ -74,7 +76,10 @@ export class IntegracaoClientesController {
     summary: 'Confirmar que o ERP aplicou a alteração na SA1',
     description:
       'Tira o item da fila (situação "enviado", com a data). 404 se o id não existir; 409 se já ' +
-      'tiver sido confirmado — o ERP reenvia a confirmação depois de uma queda de rede.',
+      'tiver sido confirmado — o ERP reenvia a confirmação depois de uma queda de rede. ' +
+      'Item com `operacao = incluir` (cliente criado na plataforma) exige no corpo a `chave` e ' +
+      'o `codigoErp` que o ERP gravou: a plataforma os guarda no cadastro. 409 também se a ' +
+      'chave já pertence a outro cliente.',
   })
   @ApiParam({
     name: 'id',
@@ -82,12 +87,18 @@ export class IntegracaoClientesController {
   })
   @ApiResponse({ status: 404, description: 'Item não encontrado' })
   @ApiResponse({ status: 409, description: 'Já confirmado' })
+  @ApiBodyExample({ chave: '-000123-01', codigoErp: '00012301' })
+  @ApiResponse({
+    status: 400,
+    description: 'Inclusão confirmada sem chave e codigoErp',
+  })
   @Patch('alteracoes/:id/aplicada')
   marcarAlteracaoAplicada(
     @Param('id') id: string,
+    @Body() dto: IntegracaoClienteAplicadaDto,
     @CurrentIntegracao() integracao: IntegracaoContext,
   ) {
-    return this.alteracoes.marcarAplicada(integracao.empresaId, id);
+    return this.alteracoes.marcarAplicada(integracao.empresaId, id, dto);
   }
 
   @ApiOperation({

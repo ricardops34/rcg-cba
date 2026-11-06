@@ -548,6 +548,20 @@ export const integracaoClienteSchema = integracaoClienteCreateSchema.extend({
 });
 export type IntegracaoCliente = z.infer<typeof integracaoClienteSchema>;
 
+/**
+ * Corpo do `PATCH /integracao/clientes/alteracoes/:id/aplicada`. Só importa na
+ * **inclusão** (cliente criado na plataforma): o ERP devolve a chave e o código
+ * que gravou na SA1, e a plataforma os guarda no cadastro. Na alteração o corpo
+ * é ignorado. Os dois são validados no serviço, porque dependem da operação do item.
+ */
+export const integracaoClienteAplicadaSchema = z.object({
+  chave: z.string().trim().min(1).max(30).optional(),
+  codigoErp: z.string().trim().min(1).max(60).optional(),
+});
+export type IntegracaoClienteAplicada = z.infer<
+  typeof integracaoClienteAplicadaSchema
+>;
+
 export const integracaoClienteQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
 });
