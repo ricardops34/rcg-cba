@@ -206,8 +206,8 @@ export class CepsService {
 
     const codigoIbge = String(dados.ibge ?? '').replace(/\D/g, '');
     const municipio = codigoIbge
-      ? await this.prisma.municipio.findUnique({
-          where: { codigoIbge },
+      ? await this.prisma.municipio.findFirst({
+          where: { codigoIbge, deletedAt: null },
           select: { id: true, descricao: true },
         })
       : null;

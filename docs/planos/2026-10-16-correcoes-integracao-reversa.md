@@ -94,7 +94,7 @@ dependem de decisão ou são menores.
       `vendedorChave = "01-"` em cliente, paginação das filas, trava do `vincular`
 - [x] 13. **K.3** auditoria de quem ligou/desligou um endpoint (`updatedBy`) e de `expiraEm` no passado
 - [x] 14. Testes: `ApiKeyGuard`, `arquivo/importar|exportar`, filas de envio, `pedidos`, `estoque`
-- [ ] 15. `tsc` e suíte da API; validar em dev (recriar o container da API, conforme o runbook)
+- [x] 15. (06/11: tsc limpo, suíte 1114/1114; falta validar em dev com o container recriado) `tsc` e suíte da API; validar em dev (recriar o container da API, conforme o runbook)
 
 ## Observações
 
@@ -159,5 +159,5 @@ Achados do módulo `cadastros` (`_reversa_sdd/code-analysis.md`, seção 4.x do 
       `chave` na regra criada pela tela
 - [x] 29. **4.4/C.2** decidido em 06/11: a tela só edita regra criada nela (regra do ERP, com `chave`, é só leitura)
 - [x] 30. (feito em 06/11) **4.5** limite próprio para `ceps/consulta` e validade do cache de CEP
-- [ ] 31. **4.6** observações (permissão de relatório em categorias, `limpar` nos campos obrigatórios)
-- [ ] 32. Testes do módulo (regras de desconto, categorias, CEP, unicidade das globais)
+- [x] 31. (feito em 06/11) **4.6** observações (permissão de relatório em categorias, `limpar` nos campos obrigatórios)
+- [x] 32. (feito em 06/11, specs em cadastros/) Testes do módulo (regras de desconto, categorias, CEP, unicidade das globais)

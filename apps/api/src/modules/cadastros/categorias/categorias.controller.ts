@@ -50,7 +50,14 @@ export class CategoriasController {
     @Query() query: CategoriaQueryDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.findAll(user.empresaAtivaId, query);
+    // Quem entrou só pela permissão de relatório recebe os nomes e nada mais: o
+    // comentário acima dizia "só nomes", mas a resposta trazia o registro todo,
+    // com a regra de desconto vinculada.
+    const completo =
+      user.isAdmin || user.permissoes.includes('categorias.visualizar');
+    return this.service.findAll(user.empresaAtivaId, query, {
+      somenteNomes: !completo,
+    });
   }
 
   @ApiOperation({
