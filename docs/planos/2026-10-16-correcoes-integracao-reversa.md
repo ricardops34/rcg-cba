@@ -153,11 +153,11 @@ Achados do módulo `cadastros` (`_reversa_sdd/code-analysis.md`, seção 4.x do 
 - [x] 26. (guard feito em 06/11; perfis/catálogo/tela pendentes) **C.1/4.1** restringir a escrita das cinco tabelas globais à plataforma (guard, ou tirar
       `cadastrar`/`editar`/`excluir` dos perfis de empresa por migration, **e** no catálogo para não
       voltar pelo seed)
-- [ ] 27. **4.2** unicidade: conferir antes de criar, 409 claro, e recriar o excluído reativa a linha
+- [x] 27. (feito em 06/11) **4.2** unicidade: conferir antes de criar, 409 claro, e recriar o excluído reativa a linha
       (mesmo padrão do lote de 15/10); CEP excluído volta ao cache
 - [ ] 28. **4.3** regra de desconto: bloquear excluir em uso (ou avisar), trava para padrão e código,
       `chave` na regra criada pela tela
 - [x] 29. **4.4/C.2** decidido em 06/11: a tela só edita regra criada nela (regra do ERP, com `chave`, é só leitura)
-- [ ] 30. **4.5** limite próprio para `ceps/consulta` e validade do cache de CEP
+- [x] 30. (feito em 06/11) **4.5** limite próprio para `ceps/consulta` e validade do cache de CEP
 - [ ] 31. **4.6** observações (permissão de relatório em categorias, `limpar` nos campos obrigatórios)
 - [ ] 32. Testes do módulo (regras de desconto, categorias, CEP, unicidade das globais)

@@ -6,6 +6,7 @@ import {
 } from '../../../common/pagination/paginate';
 import type { EstadoCreate, EstadoQuery, EstadoUpdate } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
+import { criarOuReativar, gravarUnico, REATIVAR } from '../unicidade';
 
 const SORT_FIELDS = new Set(['sigla', 'descricao', 'codigoErp', 'ativo', 'createdAt']);
 
@@ -53,17 +54,39 @@ export class EstadosService {
   }
 
   async create(user: AuthenticatedUser, input: EstadoCreate) {
-    return this.prisma.estado.create({
-      data: { ...(this.limpar(input) as object), createdBy: user.id, updatedBy: user.id } as never,
+    const dados = this.limpar(input);
+    const chave = dados.sigla ? { sigla: dados.sigla as string } : null;
+    return criarOuReativar({
+      achaExcluido: () =>
+        chave
+          ? this.prisma.estado.findFirst({
+              where: { deletedAt: { not: null }, ...chave },
+              select: { id: true },
+            })
+          : Promise.resolve(null),
+      reativar: (id) =>
+        this.prisma.estado.update({
+          where: { id },
+          data: { ...(dados as object), ...REATIVAR, updatedBy: user.id } as never,
+        }),
+      criar: () =>
+        this.prisma.estado.create({
+          data: { ...(dados as object), createdBy: user.id, updatedBy: user.id } as never,
+        }),
+      jaExiste: 'Já existe um estado com esta sigla',
     });
   }
 
   async update(user: AuthenticatedUser, id: string, input: EstadoUpdate) {
     await this.findOne(id);
-    return this.prisma.estado.update({
-      where: { id },
-      data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
-    });
+    return gravarUnico(
+      () =>
+        this.prisma.estado.update({
+          where: { id },
+          data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
+        }),
+      'Já existe um estado com esta sigla',
+    );
   }
 
   async remove(user: AuthenticatedUser, id: string) {

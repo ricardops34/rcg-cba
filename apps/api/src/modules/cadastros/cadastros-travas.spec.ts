@@ -1,4 +1,6 @@
-import { ForbiddenException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
+import { criarOuReativar, gravarUnico } from './unicidade';
 import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
 import { RegrasDescontoService } from './regras-desconto/regras-desconto.service';
 import { EstadosController } from './estados/estados.controller';
@@ -43,7 +45,7 @@ describe('tabelas globais: escrita só da plataforma', () => {
 });
 
 describe('regras de desconto: a tela só mexe no que criou', () => {
-  const montar = (regra: { id: string; chave: string | null }) => {
+  const montar = (regra: { id: string; chave: string | null }, emUso = 0) => {
     const tx = {
       regraDesconto: {
         findFirst: jest.fn().mockResolvedValue(regra),
@@ -51,6 +53,9 @@ describe('regras de desconto: a tela só mexe no que criou', () => {
         updateMany: jest.fn(),
       },
       regraDescontoFaixa: { deleteMany: jest.fn() },
+      categoria: { count: jest.fn().mockResolvedValue(emUso) },
+      produto: { count: jest.fn().mockResolvedValue(0) },
+      tabelaPrecoItem: { count: jest.fn().mockResolvedValue(0) },
     };
     const prisma = {
       withTenant: (_e: string, fn: (t: typeof tx) => unknown) => fn(tx),
@@ -76,5 +81,59 @@ describe('regras de desconto: a tela só mexe no que criou', () => {
     await servico.update('e1', user, 'r2', { descricao: 'x' });
     await servico.remove('e1', user, 'r2');
     expect(tx.regraDesconto.update).toHaveBeenCalledTimes(2);
+  });
+
+  it('regra em uso por categoria/produto/tabela não é excluída (409)', async () => {
+    const { servico, tx } = montar({ id: 'r3', chave: null }, 2);
+    await expect(servico.remove('e1', user, 'r3')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(tx.regraDesconto.update).not.toHaveBeenCalled();
+  });
+});
+
+describe('unicidade das tabelas globais', () => {
+  const violacao = () =>
+    new Prisma.PrismaClientKnownRequestError('dup', {
+      code: 'P2002',
+      clientVersion: 'x',
+    });
+
+  it('código repetido vira 409, não 500', async () => {
+    await expect(
+      gravarUnico(() => Promise.reject(violacao()), 'Já existe'),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('outro erro passa como está', async () => {
+    const outro = new Error('queda');
+    await expect(gravarUnico(() => Promise.reject(outro), 'x')).rejects.toBe(
+      outro,
+    );
+  });
+
+  it('criar sobre registro excluído reativa a linha em vez de criar outra', async () => {
+    const reativar = jest.fn().mockResolvedValue('reativado');
+    const criar = jest.fn().mockResolvedValue('criado');
+    const r = await criarOuReativar({
+      achaExcluido: () => Promise.resolve({ id: 'antigo' }),
+      reativar,
+      criar,
+      jaExiste: 'x',
+    });
+    expect(r).toBe('reativado');
+    expect(reativar).toHaveBeenCalledWith('antigo');
+    expect(criar).not.toHaveBeenCalled();
+  });
+
+  it('sem excluído, cria', async () => {
+    const criar = jest.fn().mockResolvedValue('criado');
+    const r = await criarOuReativar({
+      achaExcluido: () => Promise.resolve(null),
+      reativar: jest.fn(),
+      criar,
+      jaExiste: 'x',
+    });
+    expect(r).toBe('criado');
   });
 });

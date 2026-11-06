@@ -19,6 +19,7 @@ import type {
   ConsultaCepResultado,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
+import { criarOuReativar, gravarUnico, REATIVAR } from '../unicidade';
 
 /** Resposta do ViaCEP — só o que consumimos. */
 interface ViaCepResposta {
@@ -33,6 +34,12 @@ interface ViaCepResposta {
 }
 
 const SORT_FIELDS = new Set(['cep', 'endereco', 'bairro', 'ativo', 'createdAt']);
+
+/**
+ * Depois deste tempo o CEP que veio do ViaCEP é consultado de novo (logradouro e
+ * bairro mudam). Se o ViaCEP estiver fora, vale o cache. CEP digitado à mão não vence.
+ */
+const VALIDADE_CACHE_VIACEP_MS = 180 * 24 * 60 * 60 * 1000;
 
 const ESTADO_SELECT = { select: { id: true, sigla: true } };
 const MUNICIPIO_SELECT = { select: { id: true, descricao: true } };
@@ -90,18 +97,40 @@ export class CepsService {
   }
 
   async create(user: AuthenticatedUser, input: CepCreate) {
-    return this.prisma.cep.create({
-      data: { ...(this.limpar(input) as object), createdBy: user.id, updatedBy: user.id } as never,
+    const dados = this.limpar(input);
+    const chave = dados.cep ? { cep: dados.cep as string } : null;
+    return criarOuReativar({
+      achaExcluido: () =>
+        chave
+          ? this.prisma.cep.findFirst({
+              where: { deletedAt: { not: null }, ...chave },
+              select: { id: true },
+            })
+          : Promise.resolve(null),
+      reativar: (id) =>
+        this.prisma.cep.update({
+          where: { id },
+          data: { ...(dados as object), ...REATIVAR, updatedBy: user.id } as never,
+        }),
+      criar: () =>
+        this.prisma.cep.create({
+          data: { ...(dados as object), createdBy: user.id, updatedBy: user.id } as never,
+        }),
+      jaExiste: 'Já existe um cadastro para este CEP',
     });
   }
 
   async update(user: AuthenticatedUser, id: string, input: CepUpdate) {
     const cep = await this.prisma.cep.findFirst({ where: { id, deletedAt: null } });
     if (!cep) throw new NotFoundException('CEP não encontrado');
-    return this.prisma.cep.update({
-      where: { id },
-      data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
-    });
+    return gravarUnico(
+      () =>
+        this.prisma.cep.update({
+          where: { id },
+          data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
+        }),
+      'Já existe um cadastro para este CEP',
+    );
   }
 
   async remove(user: AuthenticatedUser, id: string) {
@@ -128,30 +157,44 @@ export class CepsService {
       where: { cep, deletedAt: null },
       include: { estado: ESTADO_SELECT, municipio: MUNICIPIO_SELECT },
     });
-    if (cacheado) {
-      return {
-        cep,
-        endereco: cacheado.endereco,
-        bairro: cacheado.bairro,
-        municipio: cacheado.municipio?.descricao ?? null,
-        municipioId: cacheado.municipioId,
-        uf: cacheado.estado?.sigla ?? null,
-        estadoId: cacheado.estadoId,
-        origem: 'cache',
-      };
-    }
+    const doCache = (): ConsultaCepResultado | null =>
+      cacheado
+        ? {
+            cep,
+            endereco: cacheado.endereco,
+            bairro: cacheado.bairro,
+            municipio: cacheado.municipio?.descricao ?? null,
+            municipioId: cacheado.municipioId,
+            uf: cacheado.estado?.sigla ?? null,
+            estadoId: cacheado.estadoId,
+            origem: 'cache',
+          }
+        : null;
 
-    const dados = await this.http.getJson<ViaCepResposta>(
-      `${BASE_URLS.viacep()}/ws/${cep}/json/`,
-      {
-        fonte: 'ViaCEP',
-        // O ViaCEP responde 200 com { erro: true } para CEP inexistente.
-        naoEncontrado: (_status, corpo) =>
-          (corpo as ViaCepResposta)?.erro === true ||
-          (corpo as ViaCepResposta)?.erro === 'true',
-        mensagemNaoEncontrado: 'CEP não encontrado',
-      },
-    );
+    const vencido =
+      !!cacheado &&
+      cacheado.origem === 'viacep' &&
+      Date.now() - cacheado.updatedAt.getTime() > VALIDADE_CACHE_VIACEP_MS;
+    if (cacheado && !vencido) return doCache()!;
+
+    let dados: ViaCepResposta;
+    try {
+      dados = await this.http.getJson<ViaCepResposta>(
+        `${BASE_URLS.viacep()}/ws/${cep}/json/`,
+        {
+          fonte: 'ViaCEP',
+          // O ViaCEP responde 200 com { erro: true } para CEP inexistente.
+          naoEncontrado: (_status, corpo) =>
+            (corpo as ViaCepResposta)?.erro === true ||
+            (corpo as ViaCepResposta)?.erro === 'true',
+          mensagemNaoEncontrado: 'CEP não encontrado',
+        },
+      );
+    } catch (err) {
+      // Revalidação que falhou não derruba a consulta: o cache vencido ainda serve.
+      if (cacheado) return doCache()!;
+      throw err;
+    }
 
     const uf = dados.uf?.trim().toUpperCase() || null;
     const estado = uf
@@ -184,12 +227,15 @@ export class CepsService {
         municipioId: municipio?.id ?? null,
         origem: 'viacep',
       },
+      // Também traz de volta o CEP que tinha sido excluído: sem isso a linha
+      // seguia "excluída" e toda consulta voltava a chamar o ViaCEP.
       update: {
         endereco,
         bairro,
         estadoId: estado?.id ?? null,
         municipioId: municipio?.id ?? null,
         origem: 'viacep',
+        ...REATIVAR,
       },
     });
 

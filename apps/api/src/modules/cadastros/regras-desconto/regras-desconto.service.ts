@@ -266,6 +266,21 @@ export class RegrasDescontoService {
       if (!regra)
         throw new NotFoundException('Regra de desconto não encontrada');
       this.exigirRegraDaTela(regra);
+
+      // Regra apontada por categoria, produto ou item de tabela de preço não sai:
+      // o vínculo ficaria sem regra e o desconto/comissão cairia no padrão em silêncio.
+      const viva = { regraDescontoId: id, empresaId, deletedAt: null };
+      const [categorias, produtos, itens] = await Promise.all([
+        tx.categoria.count({ where: viva }),
+        tx.produto.count({ where: viva }),
+        tx.tabelaPrecoItem.count({ where: viva }),
+      ]);
+      if (categorias + produtos + itens > 0) {
+        throw new ConflictException(
+          `Regra em uso: ${categorias} categoria(s), ${produtos} produto(s) e ${itens} item(ns) de tabela de preço apontam para ela. Troque a regra deles antes de excluir.`,
+        );
+      }
+
       await tx.regraDesconto.update({
         where: { id },
         data: {

@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -59,6 +60,8 @@ export class CepsController {
       'só exige login, sem permissão de módulo.',
   })
   @ApiResponse({ status: 200, schema: { example: CONSULTA_CEP_EXAMPLE } })
+  // Cada consulta que não está no cache sai para o ViaCEP, que bloqueia abuso por IP.
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get('consulta/:cep')
   consultar(@Param('cep') cep: string) {
     return this.service.consultar(cep);
