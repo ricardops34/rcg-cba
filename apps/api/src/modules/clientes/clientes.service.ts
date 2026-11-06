@@ -13,6 +13,7 @@ import {
 } from '../../common/prisma/prisma.service';
 import {
   combinarFiltroVendedor,
+  resolverEscopoOrcamentos,
   resolverEscopoVendedores,
   type EscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
@@ -255,7 +256,11 @@ export class ClientesService {
 
   findAll(empresaId: string, user: AuthenticatedUser, query: ClienteQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // `paraOrcamento`: a escolha do cliente no orçamento segue o escopo do
+      // orçamento (vendedor com "atende outras carteiras" vê a empresa toda).
+      const escopo = query.paraOrcamento
+        ? await resolverEscopoOrcamentos(tx, empresaId, user)
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const where = {
         empresaId,
         deletedAt: null,
@@ -481,9 +486,16 @@ export class ClientesService {
     });
   }
 
-  async findOne(empresaId: string, user: AuthenticatedUser, id: string) {
+  async findOne(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    paraOrcamento = false,
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = paraOrcamento
+        ? await resolverEscopoOrcamentos(tx, empresaId, user)
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const cliente = await tx.cliente.findFirst({
         where: {
           id,

@@ -216,8 +216,17 @@ export class ClientesController {
     'visualizar',
   ])
   @Get(':id')
-  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.findOne(user.empresaAtivaId, user, id);
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('paraOrcamento') paraOrcamento?: string,
+  ) {
+    return this.service.findOne(
+      user.empresaAtivaId,
+      user,
+      id,
+      paraOrcamento === 'true',
+    );
   }
 
   @ApiOperation({

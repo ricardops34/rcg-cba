@@ -123,6 +123,11 @@ export const clienteQuerySchema = paginationQuerySchema.extend({
   vendedorId: z.string().uuid().optional(),
   carteira: booleanQueryParam,
   /**
+   * Busca feita pela rotina de orçamentos: o vendedor com "atende clientes de
+   * outras carteiras" enxerga a empresa toda; os demais, o escopo de sempre.
+   */
+  paraOrcamento: booleanQueryParam,
+  /**
    * Ramo de atividade, por **prefixo** do código CNAE.
    *
    * O prefixo não é preguiça: o código é hierárquico, então `56` pega

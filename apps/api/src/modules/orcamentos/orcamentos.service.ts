@@ -18,7 +18,7 @@ import {
 } from '../../common/prisma/prisma.service';
 import {
   combinarFiltroVendedor,
-  resolverEscopoVendedores,
+  resolverEscopoOrcamentos,
   type EscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
 import {
@@ -267,7 +267,7 @@ export class OrcamentosService {
     praca: Praca = {},
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoOrcamentos(tx, empresaId, user);
       if (clienteId) {
         await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId);
       }
@@ -309,7 +309,7 @@ export class OrcamentosService {
     praca: Praca = {},
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoOrcamentos(tx, empresaId, user);
       if (clienteId) {
         await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId);
       }
@@ -431,7 +431,7 @@ export class OrcamentosService {
       // isto (`Vendedor.atendeOutrasCarteiras`).
       const escopo = opcoes.ignorarEscopo
         ? null
-        : await resolverEscopoVendedores(tx, empresaId, user);
+        : await resolverEscopoOrcamentos(tx, empresaId, user);
       const numeroBuscado = query.search ? numeroDeBusca(query.search) : null;
       const situacaoWhere = this.filtroSituacao(query.situacao);
       const where = {
@@ -525,7 +525,7 @@ export class OrcamentosService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = opcoes.ignorarEscopo
         ? null
-        : await resolverEscopoVendedores(tx, empresaId, user);
+        : await resolverEscopoOrcamentos(tx, empresaId, user);
       const orcamento = await tx.orcamento.findFirst({
         where: {
           id,
@@ -560,7 +560,7 @@ export class OrcamentosService {
       // cliente mesmo fora da hierarquia de quem está atendendo.
       const escopo = opcoes.ignorarEscopo
         ? null
-        : await resolverEscopoVendedores(tx, empresaId, user);
+        : await resolverEscopoOrcamentos(tx, empresaId, user);
       const clienteId = input.clienteId || null;
       if (!clienteId && input.status === 'aprovado') {
         throw new ConflictException(MSG_SEM_CLIENTE_NAO_EFETIVA);
@@ -700,7 +700,7 @@ export class OrcamentosService {
     input: OrcamentoUpdate,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoOrcamentos(tx, empresaId, user);
       const orcamento = await tx.orcamento.findFirst({
         where: {
           id,
@@ -958,7 +958,7 @@ export class OrcamentosService {
 
   async remove(empresaId: string, user: AuthenticatedUser, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoOrcamentos(tx, empresaId, user);
       const orcamento = await tx.orcamento.findFirst({
         where: {
           id,

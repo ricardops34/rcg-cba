@@ -812,7 +812,8 @@ export function OrcamentoFormContent({
   // abaixo (só ao criar) e dos dados de cliente do PDF (só ao editar).
   const clienteSelecionadoQuery = useQuery({
     queryKey: ["clientes", clienteId],
-    queryFn: () => apiFetch<Cliente>(`/clientes/${clienteId}`),
+    queryFn: () =>
+      apiFetch<Cliente>(`/clientes/${clienteId}`, { query: { paraOrcamento: true } }),
     enabled: !!clienteId,
   });
 
@@ -1674,6 +1675,7 @@ export function OrcamentoFormContent({
                     value={form.watch("clienteId") || null}
                     onChange={(id) => form.setValue("clienteId", id ?? "")}
                     disabled={!orcamento && !!clienteIdPadrao}
+                    paraOrcamento
                   />
                 )}
                 <FieldError errors={[form.formState.errors.clienteId]} />
