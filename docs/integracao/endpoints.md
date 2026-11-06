@@ -53,8 +53,6 @@ até 1.000 registros de uma vez — ver [Lote](#lote--put-integracaoentidade).
 | `/integracao/pedidos` | `chave` | — | `POST`, `PUT` e `DELETE`, sem `GET`: situação do pedido gerado de um orçamento, e histórico do pedido digitado no ERP |
 | `/integracao/comunicacao` | — | — | Só `POST`, sem corpo: registra a última comunicação do ERP |
 | `/integracao/arquivo/importar` | — | — | `POST` envia arquivo TXT/JSON do Protheus e processa em lote |
-| `/integracao/arquivo/exportar` | — | — | `GET` baixa pendências da plataforma em TXT para importar no Protheus |
-
 Todos os `GET` de lista aceitam ainda `page`, `pageSize`, `search`, `sortBy` e
 `sortOrder`.
 

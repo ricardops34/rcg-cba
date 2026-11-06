@@ -78,7 +78,9 @@ dependem de decisão ou são menores.
 - [x] 1. **4.1** `conferirEndpointsAtivos` dentro de `withTenant` (recebimento e a cada bloco)
 - [x] 2. **4.2** `arquivo/importar`: schema Zod por item, `conferirEndpointsAtivos`, linha inválida em
       `erros`, `case` de `orcamentos`/`pedidos` ou recusa explícita
-- [ ] 3. **4.3** `arquivo/exportar`: exportar a fila `cliente_envios_erp` (ou retirar o endpoint)
+- [x] 3. **4.3** `arquivo/exportar` **retirado** (2026-11-06, decisão do usuário: o envio ao ERP é
+      por API/filas; `codigoErp` é só informativo e a plataforma controla pelo próprio ID).
+      O endpoint exportava os 500 primeiros clientes de qualquer situação, não a fila.
 - [x] 4. **K.1** carga em andamento não confere se a chave foi revogada/expirou/excluída
 - [x] 5. **K.2** `PATCH endpoints/:endpointKey` com DTO Zod (`ativo` obrigatório e booleano)
 - [ ] 6. **4.5** `resolverContaBancaria`: 404 em vez de criar conta

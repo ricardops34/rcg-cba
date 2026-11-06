@@ -66,7 +66,7 @@ describe('integração — controles de endpoint, chave e arquivo', () => {
       const servico = new IntegracaoFileService(
         produtos as never, {} as never, {} as never, {} as never, {} as never,
         {} as never, {} as never, {} as never, {} as never, {} as never,
-        {} as never, {} as never, {} as never, {} as never, {} as never,
+        {} as never, {} as never, {} as never, {} as never,
         cargas as never, entidades as never,
       );
       return { servico, upsert, cargas };
