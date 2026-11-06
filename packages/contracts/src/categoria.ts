@@ -9,6 +9,7 @@ export const categoriaSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
   codigoErp: z.string(),
+  chave: z.string().nullable().optional(),
   descricao: z.string(),
   categoriaPaiId: z.string().uuid().nullable(),
   usado: z.boolean().nullable(),

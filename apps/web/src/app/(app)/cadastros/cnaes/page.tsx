@@ -4,6 +4,7 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
 import type { Cnae } from "@plataforma/contracts";
+import { useAuthStore } from "@/stores/auth-store";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
@@ -21,6 +22,8 @@ import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 
 export default function CnaesPage() {
   const router = useRouter();
+  const ehAdminPlataforma =
+    useAuthStore((state) => state.user?.administradorPlataforma) ?? false;
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(10);
@@ -51,7 +54,7 @@ export default function CnaesPage() {
     }
   };
 
-  const columns: ColumnDef<Cnae>[] = [
+  const todasColunas: ColumnDef<Cnae>[] = [
     { header: "Descrição", sortKey: "descricao", cell: (c) => <p className="font-medium">{c.descricao}</p> },
     {
       header: "Código",
@@ -87,6 +90,11 @@ export default function CnaesPage() {
     },
   ];
 
+  // Catálogo global: só a plataforma altera; as empresas apenas consultam.
+  const columns = ehAdminPlataforma
+    ? todasColunas
+    : todasColunas.filter((c) => c.header !== "");
+
   return (
     <div className="space-y-4">
       <CrudHeader
@@ -97,7 +105,7 @@ export default function CnaesPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={() => router.push("/cadastros/cnaes/novo")}
+        onCreate={ehAdminPlataforma ? () => router.push("/cadastros/cnaes/novo") : undefined}
         createLabel="Novo CNAE"
       />
 

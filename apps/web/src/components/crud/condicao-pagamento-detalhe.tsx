@@ -20,6 +20,7 @@ export function CondicaoPagamentoDetalheContent({ condicao }: { condicao: Condic
     <Card>
       <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Info label="Código ERP" value={<span className="font-mono">{condicao.codigoErp}</span>} />
+        <Info label="Integração" value={<span className="font-mono">{condicao.chave || "—"}</span>} />
         <Info label="Descrição" value={condicao.descricao} />
         <Info label="Forma" value={condicao.forma} />
         <Info label="Status" value={<StatusDot active={condicao.ativo} />} />

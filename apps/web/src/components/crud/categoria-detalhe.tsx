@@ -25,6 +25,7 @@ export function CategoriaDetalheContent({ categoria }: { categoria: CategoriaDet
     <Card>
       <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Info label="Código ERP" value={<span className="font-mono">{categoria.codigoErp}</span>} />
+        <Info label="Integração" value={<span className="font-mono">{categoria.chave || "—"}</span>} />
         <Info label="Descrição" value={categoria.descricao} />
         <Info
           label="Nível"
