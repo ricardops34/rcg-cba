@@ -112,9 +112,13 @@ export class TabelasPrecoService {
         tabelaPrecoId,
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
+        // Item de produto excluído não aparece: o produto sai do catálogo e a linha
+        // ficaria órfã, com descrição de um cadastro que ninguém mais enxerga.
+        produto: { deletedAt: null },
         ...(query.search
           ? {
               produto: {
+                deletedAt: null,
                 OR: [
                   {
                     descricao: {

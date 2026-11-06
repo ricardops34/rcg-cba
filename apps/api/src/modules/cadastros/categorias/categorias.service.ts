@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import {
   buildPaginatedResult,
@@ -137,9 +137,17 @@ export class CategoriasService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existe = await tx.categoria.findFirst({
         where: { id, empresaId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, categoriaPaiId: true },
       });
       if (!existe) throw new NotFoundException('Categoria não encontrada');
+
+      // A subcategoria acompanha a categoria pai (a marcação desce dela). Marcá-la
+      // à parte criaria a divergência que a regra acima existe para evitar.
+      if (dto.equipamentoComodato !== undefined && existe.categoriaPaiId) {
+        throw new ConflictException(
+          'Esta é uma subcategoria: a marcação de equipamento de comodato acompanha a categoria pai. Altere na categoria pai.',
+        );
+      }
 
       if (dto.equipamentoComodato !== undefined) {
         await tx.categoria.updateMany({

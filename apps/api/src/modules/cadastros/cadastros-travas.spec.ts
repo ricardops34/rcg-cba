@@ -45,7 +45,15 @@ describe('tabelas globais: escrita só da plataforma', () => {
 });
 
 describe('regras de desconto: a tela só mexe no que criou', () => {
-  const montar = (regra: { id: string; chave: string | null }, emUso = 0) => {
+  const montar = (
+    regra: {
+      id: string;
+      chave: string | null;
+      padrao?: boolean;
+      codigoErp?: string | null;
+    },
+    emUso = 0,
+  ) => {
     const tx = {
       regraDesconto: {
         findFirst: jest.fn().mockResolvedValue(regra),
@@ -89,6 +97,43 @@ describe('regras de desconto: a tela só mexe no que criou', () => {
       ConflictException,
     );
     expect(tx.regraDesconto.update).not.toHaveBeenCalled();
+  });
+
+  it('a regra padrão não é excluída, desmarcada nem desativada', async () => {
+    const { servico, tx } = montar({ id: 'r4', chave: null, padrao: true });
+    await expect(servico.remove('e1', user, 'r4')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    await expect(
+      servico.update('e1', user, 'r4', { padrao: false }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    await expect(
+      servico.update('e1', user, 'r4', { ativo: false }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.regraDesconto.update).not.toHaveBeenCalled();
+  });
+
+  it('o código não muda enquanto a regra está em uso', async () => {
+    const { servico, tx } = montar(
+      { id: 'r5', chave: null, codigoErp: 'A' },
+      3,
+    );
+    await expect(
+      servico.update('e1', user, 'r5', { codigoErp: 'B' }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.regraDesconto.update).not.toHaveBeenCalled();
+  });
+
+  it('a tela não toma o padrão de uma regra do ERP', async () => {
+    const { servico, tx } = montar({ id: 'r6', chave: null });
+    // 1ª busca = a própria regra; 2ª = a padrão do ERP
+    tx.regraDesconto.findFirst
+      .mockResolvedValueOnce({ id: 'r6', chave: null, padrao: false, codigoErp: null })
+      .mockResolvedValueOnce({ descricao: 'Padrão ERP' });
+    await expect(
+      servico.update('e1', user, 'r6', { padrao: true }),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(tx.regraDesconto.updateMany).not.toHaveBeenCalled();
   });
 });
 
