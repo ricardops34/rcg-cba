@@ -4,6 +4,51 @@
 > Relacionado: [`2026-10-16-telas-no-celular.md`](2026-10-16-telas-no-celular.md) (revisão tela a tela),
 > [`portal-cliente.md`](portal-cliente.md) (app do cliente, fora deste plano).
 
+## Onde paramos (10/11/2026) — ler primeiro ao retomar
+
+**Situação:** tudo commitado no `main`, **nada publicado**. Nenhuma decisão em aberto.
+
+**Feito e verificado em dev** (testes, build, banco de dev):
+
+| Commit | O quê |
+|---|---|
+| `3aae6196` | Sessão 1 computador + 1 celular; aviso no celular (Web Push) com tudo do sino menos WhatsApp; Perfil › Conta › *App no celular*; tela "Sem conexão"; aviso de versão nova; margem da barra de gestos |
+| `506d9b56`, `3b9e22a6` | Módulo Administração e tela Campos do Produto fora do celular; o catálogo é o teto (a empresa não religa) |
+| `01d9a60c` | Posição de Cliente revisada no celular (liberação de desconto virou lista) |
+| `6a648d39` | Levantamento da parte 0 do offline (9.9): cabe com folga, cerca de 14 MB para a empresa inteira |
+
+**Para publicar** (nesta ordem):
+
+1. `publish.ps1`. A migration `20261110120000_app_celular_sessao_push` roda sozinha na subida da API.
+2. `sincronizar-catalogo` depois da migration. Sem ele, a Administração continua aparecendo no
+   celular.
+3. Gerar o par VAPID e gravar `VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e `VAPID_SUBJECT` na stack
+   (runbook, "Chaves do aviso no celular (VAPID)"). As stacks `rcg` e `bjsoft` estão fora do git:
+   as variáveis foram postas só nos arquivos locais. Conferir que chegaram ao container.
+4. Conferir num Android e num iPhone (instalado pela tela de início):
+   - instalar o app;
+   - ligar o aviso e mandar o aviso de teste;
+   - entrar no computador e no celular ao mesmo tempo;
+   - ver que a Administração some do menu;
+   - ver a tela "Sem conexão" em modo avião.
+
+**Próximo passo de desenvolvimento:**
+
+1. **F2 — revisão das telas no celular**, na ordem aprovada. Já feitas: Posição de Cliente e
+   Agenda. Faltam:
+   - **Estoque** (próxima);
+   - Produtos;
+   - Orçamentos (lista);
+   - Atividades;
+   - Oportunidades (kanban).
+
+   Critério e controle em [`2026-10-16-telas-no-celular.md`](2026-10-16-telas-no-celular.md).
+2. **Parte 1 do offline (consulta, só leitura)**, depois da F2 nas telas que ela usa. Piloto
+   pelo Android (9.8).
+3. Partes 2 a 4 do offline na sequência (9.8). Todas as regras estão fechadas: mesmo dia pela data
+   do servidor, três datas por operação, prazos por parâmetro, supervisor e gerente com a equipe
+   inteira, estoque insuficiente não impede o envio ao ERP.
+
 ## 1. Objetivo
 
 Colocar a plataforma no celular do **vendedor e do gestor** como um app: ícone na tela inicial,
