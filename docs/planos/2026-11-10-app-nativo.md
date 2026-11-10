@@ -1,12 +1,13 @@
 # App nativo — plano
 
-> **Em planejamento — nada implementado.** Nasceu na seção 11 do
+> **Planejamento aprovado em 10/11; início adiado — nada implementado.** Nasceu na seção 11 do
 > [plano do app no celular](2026-11-10-app-celular.md) e virou projeto à parte em 10/11.
 
 ## Onde paramos (10/11/2026)
 
-Decisões A1–A13 tomadas (seção 6). Pendentes antes de começar: **B1–B4** (seção 7). Nada no
-código; o APK de teste ainda não existe.
+Planejamento **fechado e aprovado** (A1–A13 e B1–B4, seções 6 e 7). **Início adiado** por decisão
+do usuário (10/11: "Aprovado. Mas não vamos começar agora"). Nada no código. Ao retomar, começar
+pela M0 e, antes dela, pela aprovação do login do app com revisão de segurança (B4).
 
 ## 1. Pedido
 
@@ -82,9 +83,9 @@ Estilo WhatsApp, com as cores e a logo **da empresa** (plataforma multicliente, 
 | A12 | Funções da 1ª versão | **Clientes e posição · Orçamentos · Agenda e atividades · Avisos · WhatsApp completo** — *"o WhatsApp completo que temos na plataforma, por conta das ferramentas"* · **Estoque** (10/11) |
 | A13 | O resto | Continua no navegador (dashboards, relatórios, cadastros, administração) |
 
-## 7. Pendentes antes de começar
+## 7. Decisões de partida (aprovadas em 10/11)
 
-| # | Pergunta | Proposta |
+| # | Pergunta | Aprovado |
 |---|---|---|
 | B1 | **Ordem das entregas** | M0 base (endereço, login, abas, sino) → M1 WhatsApp completo → M2 Clientes e posição → M3 Orçamentos → M4 Agenda e atividades → M5 Estoque → M6 Notificação FCM → M7 Offline. WhatsApp primeiro porque é o que mais se usa no celular e o que mais pesa (ferramentas) |
 | B2 | **Tipos da API** | O app usa o pacote `@plataforma/contracts` por caminho de arquivo, só leitura, para os tipos não divergirem da API. Não entra no workspace nem muda o pacote |
