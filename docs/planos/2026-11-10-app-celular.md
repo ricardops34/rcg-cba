@@ -33,8 +33,7 @@
    - ver que a Administração some do menu;
    - ver a tela "Sem conexão" em modo avião.
 
-**App nativo (10/11), em planejamento:** projeto à parte, sem afetar o navegador — Capacitor, APK de Android para
-teste local (build em Docker, abrindo a produção), lojas depois (seção 11). Projeto em `mobile/` (A7). Planejamento fechado; começa pela N1 quando o usuário mandar.
+**App nativo (10/11):** virou plano próprio, [2026-11-10-app-nativo.md](2026-11-10-app-nativo.md).
 
 **Próximo passo de desenvolvimento:**
 
@@ -164,7 +163,7 @@ não amplia quem vê o quê.
 
 | # | Decisão | Proposta | Resposta |
 |---|---|---|---|
-| D1 | Caminho | **A (PWA completo) agora**; B (Capacitor nas lojas) só se as lojas forem exigência comercial | **A** (10/11), e **B também** (10/11, mais tarde no mesmo dia): o usuário quer a opção de app nativo. Primeiro um APK de Android para teste local, lojas depois; o app do site continua junto. Ver seção 11 |
+| D1 | Caminho | **A (PWA completo) agora**; B (Capacitor nas lojas) só se as lojas forem exigência comercial | **A** (10/11), e **B também** (10/11, mais tarde no mesmo dia): o usuário quer a opção de app nativo. Primeiro um APK de Android para teste local, lojas depois; o app do site continua junto. Revisto de novo: telas próprias. Ver [app nativo](2026-11-10-app-nativo.md) |
 | D2 | Sessão única com o celular | **Uma sessão de computador + uma de celular** por usuário; um segundo celular derruba o primeiro, como hoje acontece entre computadores | **1 computador + 1 celular** (10/11) |
 | D3b | Onde o aviso chega | — | **Onde a pessoa estiver usando: computador e celular** (10/11). Cada aparelho ou navegador liga o seu no Perfil, com um toque (regra do navegador). Vai para todos os aparelhos com sessão aberta |
 | D3 | Quais avisos viram notificação no celular | Liberação de desconto (para o supervisor), pedido/orçamento liberado ou recusado, agenda do dia, recado da equipe. Mensagem de WhatsApp: **não** no início (volume alto; tem o próprio ícone) | **Tudo que vai para o sino**, menos mensagem de WhatsApp; respeita o expediente (10/11) |
@@ -459,58 +458,11 @@ Não há SQL direto na integração gravando sem atualizar `updatedAt`.
   INTERNO", "EMPRESA ENCERRADA") com centenas de clientes. Sem login, não levam nada ao celular.
   Só pesam na carga do superior deles.
 
-## 11. App nativo (Capacitor)
+## 11. App nativo
 
-> Decisão do usuário, 10/11: **"Quero uma opção de ter APP nativo."** Caminho B (casca nativa),
-> não reescrita. Primeiro um **APK de Android para teste local** (instalado à mão, fora da loja);
-> Google Play e App Store depois. O navegador e o app instalado pelo site **continuam como estão**.
-
-> **Princípio (usuário, 10/11): coisas separadas.** O app nativo é um projeto à parte e **não pode
-> afetar o sistema pelo navegador**. Nada do app entra no workspace do monorepo (`apps/*`,
-> `packages/*`, lockfile do pnpm), e nenhuma mudança na web ou na API vai junto com a casca. O que
-> precisar mexer na web ou na API (notificação nativa N3, ajustes N4) é entrega separada, com
-> aprovação própria, e não pode mudar o comportamento de quem usa pelo navegador.
->
-> **Em planejamento** — nada implementado.
-
-### 11.1 Como funciona
-
-O app nativo é uma casca fina: abre o mesmo sistema do servidor numa tela nativa (WebView). As
-telas continuam vindo do servidor — mudar tela não exige nova versão do app. Nova versão só quando
-a casca muda (plugin novo, ícone, permissão).
-
-| Parte | Onde | Observação |
-|---|---|---|
-| Projeto da casca | Pasta `mobile/` na raiz, fora do workspace, com dependências e lockfile próprios (A7) | Capacitor 8 (8.6.0 em 10/11). O endereço do sistema **não é fixo no build** (A10): a casca abre uma página local que pergunta ou lembra o endereço e então navega para ele |
-| Endereço do sistema (A10) | Página local da casca (`webDir`), sem nada na web | **1ª abertura:** pergunta o endereço da empresa (ex.: `crm.rcgdist.com.br`), aceita só `https`, guarda no aparelho. **Demais aberturas:** mostra "Abrindo crm.rcgdist.com.br…" por um instante, com o botão **Trocar endereço**, e segue sozinha. Trocar é por ali (ao abrir o app), porque o sistema no navegador não sabe que existe casca (A6). O build pode trazer um endereço sugerido, que só preenche o campo |
-| Notificação | **FCM** (Firebase Cloud Messaging), não Web Push | A WebView do Android não tem Push API: o Web Push de hoje não funciona dentro do app. A API passa a mandar pelos dois canais: Web Push para navegador e app do site, FCM para o app nativo |
-| Detectar o app | `window.Capacitor` na web | Dentro do nativo, a web esconde o "Instalar app" e a faixa de Web Push, e pede a permissão nativa |
-| Offline (partes 1–4 da seção 9) | Banco local nativo (SQLite), na parte 4 | É o que resolve a fragilidade do armazenamento do iPhone |
-
-### 11.2 Fases
-
-| Fase | Entrega | Precisa de | Situação |
-|---|---|---|---|
-| N1 | Casca Android abrindo o sistema; ícone e nome; voltar do Android navega; link externo abre fora | Projeto Capacitor | ⬜ |
-| N2 | APK de teste gerado e instalado num Android | Build em **container Docker** (decisão de 10/11): imagem mínima com JDK e só as partes do Android SDK que o build usa, nada instalado no Windows. Sem emulador: o APK vai para o celular por arquivo | ⬜ |
-| N3 | Notificação nativa: plugin de push, projeto Firebase, `google-services.json`, API enviando por FCM, assinatura do aparelho nativo na mesma tabela | Conta Firebase (gratuita) | ⬜ |
-| N4 | Web dentro do app: esconder instalar e Web Push, usar a permissão nativa | N1 | ⬜ |
-| N5 | Lojas: Google Play (US$ 25 uma vez) e App Store (US$ 99/ano, build de iOS precisa de Mac ou serviço de build) | Decisão de conta e de nome (D4) | ⬜ adiado |
-
-### 11.3 Decisões
-
-| # | Decisão | Resposta |
-|---|---|---|
-| A1 | Caminho | Casca nativa (Capacitor), não reescrita (10/11) |
-| A2 | Primeira entrega | APK de Android para teste local; lojas depois (10/11) |
-| A3 | App do site | Continua junto com o nativo (10/11) |
-| A4 | Onde gerar o APK | Container Docker (10/11) |
-| A5 | Endereço que o APK abre no teste | Produção, `crm.rcgdist.com.br` (10/11): mostra o que está publicado. Com A10, é o endereço digitado no teste (e o sugerido no build de teste), não um valor fixo |
-| A6 | Separação | Projeto à parte, sem afetar o navegador (10/11) |
-| A7 | Repositório próprio ou pasta `mobile/` neste repositório? | **Pasta `mobile/`** na raiz (10/11), fora do workspace do pnpm (`apps/*`, `packages/*`), com `package.json` e lockfile próprios |
-| A8 | Conta e nome nas lojas (N5) | Adiado até o teste local passar |
-| A9 | Como testar o APK (N2) | **Celular Android de verdade** (10/11): o APK vai por arquivo e é instalado com "fontes desconhecidas". Sem emulador nesta fase — o VS Code não tem emulador próprio, e o oficial exige o Android SDK no Windows, que A4 evitou. Emulador na nuvem descartado: o app abre a produção com dados reais. Rever ao chegar na notificação nativa (N3) ou no offline |
-| A10 | Endereço parametrizável | **Na tela do app** (10/11): um APK só para todos os clientes (combina com D4, app único e neutro); o app pergunta o endereço na primeira abertura, guarda e deixa trocar ao abrir. Desenho em 11.1. Cuidado de segurança: só `https`, e a casca não pode dar ao site digitado nenhum acesso nativo além do que o sistema usa |
+Virou projeto à parte em 10/11, com telas próprias estilo WhatsApp: ver
+[2026-11-10-app-nativo.md](2026-11-10-app-nativo.md). Este plano segue sendo o do sistema no
+navegador e do app instalado pelo site, que continuam como estão.
 
 ## 12. Riscos
 
