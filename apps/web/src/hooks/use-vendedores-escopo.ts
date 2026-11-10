@@ -10,8 +10,10 @@ export interface VendedoresEscopoResponse {
   ehVendedorPuro: boolean;
   /** Id do Vendedor vinculado ao usuário logado, ou null se não houver vínculo. */
   meuVendedorId: string | null;
-  /** Vendedor com "atende clientes de outras carteiras": vê orçamentos de todos. */
-  atendeOutrasCarteiras?: boolean;
+  /** O vendedor ligado ao usuário tem gente abaixo (supervisor/gerente). */
+  temEquipe?: boolean;
+  /** Vê além da própria árvore: Administrador/carteira completa ou "atende outras carteiras". */
+  veOutrasCarteiras?: boolean;
 }
 
 /**

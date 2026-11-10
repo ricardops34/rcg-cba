@@ -83,12 +83,24 @@ export async function resolverEscopoDoUsuario(
   // via a empresa toda (decisão de 30/09/2026: só Administrador e
   // Administrativo veem tudo).
   if (!vendedor) return [];
+  return arvoreDoVendedor(tx, empresaId, vendedor.id);
+}
 
+/**
+ * O vendedor e toda a árvore abaixo dele (ver resolverEscopoDoUsuario). Separado
+ * para quem precisa da árvore mesmo sem restrição de carteira — o filtro
+ * "Minha equipe" do Administrador com vendedor vinculado, por exemplo.
+ */
+export async function arvoreDoVendedor(
+  tx: TenantTx,
+  empresaId: string,
+  vendedorId: string,
+): Promise<string[]> {
   const linhas = await tx.$queryRaw<{ id: string }[]>`
     WITH RECURSIVE time_do_vendedor AS (
       SELECT v."id"
       FROM "vendedores" v
-      WHERE v."id" = ${vendedor.id}
+      WHERE v."id" = ${vendedorId}
         AND v."empresaId" = ${empresaId}
         AND v."deletedAt" IS NULL
       UNION

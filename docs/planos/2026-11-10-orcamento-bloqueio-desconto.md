@@ -81,3 +81,19 @@ salvar, se há item no máximo da regra ou acima e ainda não há pedido (inclus
 depois de recusa), abre o diálogo de justificativa ("Enviar solicitação" / "Agora
 não"). Não pergunta a quem tem `orcamentos.aprovar` (pode autorizar direto). Em
 "Salvar e fechar", fecha depois do diálogo, enviando ou não.
+
+## Filtro de carteira para supervisor, gerente e administrador (2026-11-10)
+
+Decisão do usuário: o filtro rápido de carteira vale também para eles.
+`carteira` = `minha` (só o próprio vendedor) | `equipe` (ele + árvore abaixo) |
+`outras` (fora da árvore), sempre somado ao escopo. Aparece para quem tem vendedor
+ligado e alguma coisa a separar:
+
+| Quem | Botões | Começa em |
+|---|---|---|
+| Vendedor com "atende outras carteiras" | Minha / Outras / Todas | Minha carteira |
+| Supervisor / Gerente | Minha / Equipe / Todas | Minha equipe |
+| Administrador com vendedor ligado | Minha / Outras / Todas (+ Equipe se tiver gente abaixo) | Todas |
+
+Sem vendedor ligado (ex.: administrador puro) o filtro não aparece — fica o filtro
+Vendedor do painel.

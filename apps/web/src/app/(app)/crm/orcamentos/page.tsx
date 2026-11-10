@@ -74,10 +74,11 @@ import {
 type StatusFiltro = "todos" | StatusOrcamento;
 type SituacaoFiltro = "todas" | "aberto" | "vencido" | "faturado";
 type DescontoFiltro = "todos" | SituacaoDesconto;
-type CarteiraFiltro = "minha" | "outras" | "todas";
+type CarteiraFiltro = "minha" | "equipe" | "outras" | "todas";
 
 const CARTEIRA_OPCOES: { value: CarteiraFiltro; label: string }[] = [
   { value: "minha", label: "Minha carteira" },
+  { value: "equipe", label: "Minha equipe" },
   { value: "outras", label: "Outras carteiras" },
   { value: "todas", label: "Todas" },
 ];
@@ -143,8 +144,8 @@ export default function OrcamentosPage() {
   const [desconto, setDesconto] = useState<DescontoFiltro>(
     () => (urlFiltros.texto("desconto") as DescontoFiltro | undefined) ?? "todos",
   );
-  // Padrão: a própria carteira — "outras" é a exceção de quem atende todos.
-  const [carteira, setCarteira] = useState<CarteiraFiltro>("minha");
+  // null = o padrão do perfil (ver carteiraPadrao), decidido quando o escopo chega.
+  const [carteiraEscolhida, setCarteira] = useState<CarteiraFiltro | null>(null);
   const podeLiberarDesconto = useAuthStore((s) => s.hasPermission)("orcamentos", "aprovar");
   const [criado, setCriado] = useState<Periodo>(SEM_PERIODO);
   const [validade, setValidade] = useState<Periodo>(SEM_PERIODO);
@@ -159,8 +160,25 @@ export default function OrcamentosPage() {
   const mostrarFiltroVendedor = !(
     vendedoresEscopoQuery.data?.ehVendedorPuro ?? false
   );
-  const atendeOutrasCarteiras =
-    vendedoresEscopoQuery.data?.atendeOutrasCarteiras ?? false;
+  // Filtro rápido de carteira (decisão de 10/11): só para quem tem vendedor
+  // ligado e alguma coisa além da própria carteira para separar.
+  //   vendedor que atende outras carteiras → Minha | Outras | Todas (começa Minha)
+  //   supervisor/gerente                   → Minha | Equipe | Todas (começa Equipe)
+  //   Administrador com vendedor           → Minha | Outras | Todas (começa Todas)
+  const escopoUsuario = vendedoresEscopoQuery.data;
+  const temEquipe = escopoUsuario?.temEquipe ?? false;
+  const veOutras = escopoUsuario?.veOutrasCarteiras ?? false;
+  const carteiraOpcoes = CARTEIRA_OPCOES.filter(
+    (o) => (o.value !== "equipe" || temEquipe) && (o.value !== "outras" || veOutras),
+  );
+  const mostrarFiltroCarteira =
+    !!escopoUsuario?.meuVendedorId && (temEquipe || veOutras);
+  const carteiraPadrao: CarteiraFiltro = !escopoUsuario?.restrito
+    ? "todas"
+    : temEquipe
+      ? "equipe"
+      : "minha";
+  const carteira = mostrarFiltroCarteira ? (carteiraEscolhida ?? carteiraPadrao) : "todas";
 
   const { data, isLoading, isFetching, refetch, error } =
     useResourceList<Orcamento>("orcamentos", {
@@ -173,7 +191,7 @@ export default function OrcamentosPage() {
       ...(statusOrcamento !== "todos" ? { status: statusOrcamento } : {}),
       ...(situacao !== "todas" ? { situacao } : {}),
       ...(desconto !== "todos" ? { desconto } : {}),
-      ...(atendeOutrasCarteiras && carteira !== "todas" ? { carteira } : {}),
+      ...(carteira !== "todas" ? { carteira } : {}),
       ...(criado.de ? { dataInicio: criado.de } : {}),
       // O dia inteiro: "até 15/10" inclui o que foi criado durante o dia 15.
       ...(criado.ate ? { dataFim: `${criado.ate}T23:59:59` } : {}),
@@ -567,11 +585,9 @@ export default function OrcamentosPage() {
               setPage(1);
             }}
           />
-          {/* Quem atende outras carteiras vê os orçamentos de todos; o padrão
-              é a própria carteira, e o resto fica a um clique. */}
-          {atendeOutrasCarteiras && (
+          {mostrarFiltroCarteira && (
             <QuickFilterGroup>
-              {CARTEIRA_OPCOES.map((opt) => (
+              {carteiraOpcoes.map((opt) => (
                 <QuickFilterButton
                   key={opt.value}
                   active={carteira === opt.value}

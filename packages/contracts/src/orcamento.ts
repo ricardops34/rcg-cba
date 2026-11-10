@@ -484,11 +484,12 @@ export const orcamentoQuerySchema = paginationQuerySchema.extend({
   /** Trava de desconto — ver situacaoDescontoOrcamento. */
   desconto: situacaoDescontoFiltroSchema.optional(),
   /**
-   * Para quem atende outras carteiras: **minha** = a própria hierarquia
-   * (ele e quem está abaixo), **outras** = o resto. Sem efeito para quem não
-   * tem a marca — o escopo já é só a hierarquia, ou a empresa toda.
+   * Recorte pelo vendedor ligado ao usuário, somado ao escopo: **minha** = só
+   * os orçamentos do próprio vendedor; **equipe** = ele e toda a árvore abaixo;
+   * **outras** = fora da árvore (só tem efeito para quem vê além dela —
+   * Administrador ou "atende outras carteiras"). Sem vendedor ligado, ignorado.
    */
-  carteira: z.enum(["minha", "outras"]).optional(),
+  carteira: z.enum(["minha", "equipe", "outras"]).optional(),
 });
 export type OrcamentoQuery = z.infer<typeof orcamentoQuerySchema>;
 

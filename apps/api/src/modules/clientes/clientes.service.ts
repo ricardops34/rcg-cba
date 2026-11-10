@@ -1754,10 +1754,21 @@ export class ClientesService {
         restrito: escopo !== null,
         ehVendedorPuro,
         meuVendedorId: vendedorProprio?.id ?? null,
-        // Vê orçamento de qualquer carteira (Vendedor.atendeOutrasCarteiras):
-        // a listagem de orçamentos mostra o filtro rápido Minha/Outras.
-        atendeOutrasCarteiras:
-          escopo !== null && (vendedorProprio?.atendeOutrasCarteiras ?? false),
+        // Filtro rápido de carteira da listagem de orçamentos: "Minha equipe"
+        // para quem tem gente abaixo; "Outras carteiras" para quem vê além da
+        // própria árvore (Administrador/carteira completa, ou a marca
+        // "atende outras carteiras").
+        temEquipe: vendedorProprio
+          ? (await tx.vendedor.count({
+              where: {
+                empresaId,
+                superiorId: vendedorProprio.id,
+                deletedAt: null,
+              },
+            })) > 0
+          : false,
+        veOutrasCarteiras:
+          escopo === null || (vendedorProprio?.atendeOutrasCarteiras ?? false),
       };
     });
   }

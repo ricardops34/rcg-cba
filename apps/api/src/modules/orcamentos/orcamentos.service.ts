@@ -19,7 +19,7 @@ import {
 import {
   combinarFiltroVendedor,
   resolverEscopoOrcamentos,
-  resolverEscopoVendedores,
+  arvoreDoVendedor,
   type EscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
 import {
@@ -477,18 +477,23 @@ export class OrcamentosService {
         empresaId,
         query.desconto,
       );
-      // Minha/Outras carteiras: só muda algo para quem enxerga além da própria
-      // hierarquia (atende outras carteiras). Admin e carteira completa não
-      // têm hierarquia própria a separar — o filtro não se aplica.
+      // Filtro de carteira (ver orcamentoQuerySchema.carteira), a partir do
+      // vendedor ligado ao usuário. Soma-se ao escopo — nunca alarga o que o
+      // usuário alcança. Sem vendedor ligado, não há "minha" a separar.
       let carteiraWhere: Prisma.OrcamentoWhereInput | null = null;
-      if (query.carteira && escopo === null && !opcoes.ignorarEscopo) {
-        const hierarquia = await resolverEscopoVendedores(tx, empresaId, user);
-        if (hierarquia) {
+      if (query.carteira && !opcoes.ignorarEscopo) {
+        const meu = await tx.vendedor.findFirst({
+          where: { usuarioId: user.id, empresaId, deletedAt: null },
+          select: { id: true },
+        });
+        if (meu) {
+          const arvore =
+            query.carteira === 'minha'
+              ? [meu.id]
+              : await arvoreDoVendedor(tx, empresaId, meu.id);
           carteiraWhere = {
             vendedorId:
-              query.carteira === 'minha'
-                ? { in: hierarquia }
-                : { notIn: hierarquia },
+              query.carteira === 'outras' ? { notIn: arvore } : { in: arvore },
           };
         }
       }
