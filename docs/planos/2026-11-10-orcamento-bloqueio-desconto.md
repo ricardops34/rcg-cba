@@ -72,3 +72,12 @@ interessado sem cadastro.
 - Aprovação/recusa: título sem "pelo cliente" (vale para link, portal e vendedor);
   o canal vai no detalhe ("Efetivado no sistema", "(pelo link ...)"); o autor diz
   quem — usuário, "Cliente (portal)", "Cliente (link)" ou "Atendimento automático".
+
+## Pedido de liberação já no salvar (2026-11-10)
+
+Pedido do usuário: ao salvar orçamento com desconto que depende de liberação, já
+perguntar se quer enviar a solicitação — sem ter de voltar ao orçamento. Depois de
+salvar, se há item no máximo da regra ou acima e ainda não há pedido (inclusive
+depois de recusa), abre o diálogo de justificativa ("Enviar solicitação" / "Agora
+não"). Não pergunta a quem tem `orcamentos.aprovar` (pode autorizar direto). Em
+"Salvar e fechar", fecha depois do diálogo, enviando ou não.

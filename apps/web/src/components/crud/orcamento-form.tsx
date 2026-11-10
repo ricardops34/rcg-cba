@@ -1181,6 +1181,16 @@ export function OrcamentoFormContent({
   const [acaoAutorizacao, setAcaoAutorizacao] = useState(false);
   // Liberar exige justificativa: o superior escreve o motivo num diálogo.
   const [liberandoDesconto, setLiberandoDesconto] = useState<"solicitar" | "autorizar" | "recusar" | null>(null);
+  // Pedido aberto logo depois de salvar (ver salvar): o diálogo explica que o
+  // orçamento já foi gravado e, se era "Salvar e fechar", fecha ao terminar —
+  // pedindo ou não.
+  const [pedidoAposSalvar, setPedidoAposSalvar] = useState<{ fechar: boolean } | null>(null);
+  const fecharDialogoDesconto = () => {
+    setLiberandoDesconto(null);
+    setJustificativaDesconto("");
+    if (pedidoAposSalvar?.fechar) onClose();
+    setPedidoAposSalvar(null);
+  };
   const [justificativaDesconto, setJustificativaDesconto] = useState("");
   const chamarAutorizacao = async (
     rota: "solicitar-autorizacao-desconto" | "autorizar-desconto" | "recusar-desconto",
@@ -1194,8 +1204,7 @@ export function OrcamentoFormContent({
         ...(justificativa ? { body: { justificativa } } : {}),
       });
       setSalvoNaSessao(atualizado);
-      setLiberandoDesconto(null);
-      setJustificativaDesconto("");
+      fecharDialogoDesconto();
       void queryClient.invalidateQueries({ queryKey: ["atividades"] });
       void queryClient.invalidateQueries({ queryKey: ["orcamentos"] });
       toast.success(
@@ -1408,6 +1417,20 @@ export function OrcamentoFormContent({
       // cache anterior.
       void queryClient.invalidateQueries({ queryKey: ["atividades"] });
       toast.success(registro ? "Orçamento atualizado" : "Orçamento cadastrado");
+      // Desconto acima do máximo ainda sem pedido: já oferece o pedido de
+      // liberação aqui, em vez de o vendedor ter de voltar ao orçamento para
+      // justificar. Quem pode autorizar não precisa pedir; recusado também
+      // pergunta de novo, porque o pedido anterior foi encerrado.
+      const precisaPedir =
+        exigeAutorizacao &&
+        !podeAutorizarDesconto &&
+        salvo.status !== "aprovado" &&
+        autorizacaoDescontoSituacao(salvo) === "nao_solicitada";
+      if (precisaPedir) {
+        setPedidoAposSalvar({ fechar });
+        setLiberandoDesconto("solicitar");
+        return;
+      }
       if (fechar) onClose();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao salvar orçamento");
@@ -2794,7 +2817,7 @@ export function OrcamentoFormContent({
           )}
         </CardFooter>
       </form>
-    <Dialog open={liberandoDesconto !== null} onOpenChange={(o) => !o && setLiberandoDesconto(null)}>
+    <Dialog open={liberandoDesconto !== null} onOpenChange={(o) => !o && fecharDialogoDesconto()}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
@@ -2808,7 +2831,9 @@ export function OrcamentoFormContent({
               {liberandoDesconto === "recusar"
                 ? "Informe o motivo da recusa. O vendedor é avisado e vê o motivo no orçamento."
                 : liberandoDesconto === "solicitar"
-                  ? "Explique por que o cliente precisa deste desconto. O supervisor lê o texto antes de decidir."
+                  ? pedidoAposSalvar
+                    ? "Orçamento salvo. Há item com desconto igual ou acima do máximo da regra — PDF, link e efetivação ficam bloqueados até a liberação. Explique por que o cliente precisa deste desconto para já enviar o pedido ao supervisor."
+                    : "Explique por que o cliente precisa deste desconto. O supervisor lê o texto antes de decidir."
                   : "Informe a justificativa da liberação. Ela fica registrada no histórico do orçamento."}
             </DialogDescription>
           </DialogHeader>
@@ -2820,8 +2845,8 @@ export function OrcamentoFormContent({
             placeholder="Justificativa"
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setLiberandoDesconto(null)}>
-              Cancelar
+            <Button type="button" variant="outline" onClick={fecharDialogoDesconto}>
+              {pedidoAposSalvar ? "Agora não" : "Cancelar"}
             </Button>
             <Button
               type="button"
@@ -2840,7 +2865,7 @@ export function OrcamentoFormContent({
               {liberandoDesconto === "recusar"
                 ? "Recusar"
                 : liberandoDesconto === "solicitar"
-                  ? "Solicitar"
+                  ? "Enviar solicitação"
                   : "Autorizar"}
             </Button>
           </DialogFooter>
