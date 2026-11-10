@@ -97,6 +97,12 @@ export function AppCelularCard() {
     if (aceito) setInstalado(true);
   }
 
+  // Sem as chaves do aviso na stack (ver o runbook, "Chaves do aviso no
+  // celular"), no computador não há nada a oferecer: o cartão some em vez de
+  // mostrar um recado técnico. No celular a parte de instalar continua.
+  const semAviso = !isLoading && !config?.chavePublica;
+  if (!celular && semAviso) return null;
+
   return (
     <Card>
       <CardHeader>
@@ -137,14 +143,18 @@ export function AppCelularCard() {
         )}
 
         <section className="space-y-2">
-          <h3 className="flex items-center gap-2 text-sm font-medium">
-            <BellRing className="size-4 text-muted-foreground" /> Avisos neste aparelho
-          </h3>
+          {/* No celular o cartão tem duas partes (instalar e avisos); no
+              computador o título do cartão já diz o que é. */}
+          {celular && (
+            <h3 className="flex items-center gap-2 text-sm font-medium">
+              <BellRing className="size-4 text-muted-foreground" /> Avisos
+            </h3>
+          )}
           {isLoading || ligado === null ? (
             <Skeleton className="h-10 w-full" />
-          ) : !config?.chavePublica ? (
+          ) : semAviso ? (
             <p className="text-sm text-muted-foreground">
-              O aviso no celular ainda não foi ativado no servidor.
+              Os avisos no celular ainda não estão disponíveis.
             </p>
           ) : motivo && !ligado ? (
             <p className="text-sm text-muted-foreground">{motivo}</p>
