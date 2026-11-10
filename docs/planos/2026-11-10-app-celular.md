@@ -33,8 +33,8 @@
    - ver que a Administração some do menu;
    - ver a tela "Sem conexão" em modo avião.
 
-**App nativo (10/11):** o usuário pediu a opção de app nativo — Capacitor, APK de Android para
-teste local primeiro, lojas depois (seção 11). Pendente: onde gerar o APK e qual endereço ele abre.
+**App nativo (10/11), em planejamento:** projeto à parte, sem afetar o navegador — Capacitor, APK de Android para
+teste local (build em Docker, abrindo a produção), lojas depois (seção 11). Pendente: repositório próprio ou pasta `mobile/` (A7).
 
 **Próximo passo de desenvolvimento:**
 
@@ -465,6 +465,14 @@ Não há SQL direto na integração gravando sem atualizar `updatedAt`.
 > não reescrita. Primeiro um **APK de Android para teste local** (instalado à mão, fora da loja);
 > Google Play e App Store depois. O navegador e o app instalado pelo site **continuam como estão**.
 
+> **Princípio (usuário, 10/11): coisas separadas.** O app nativo é um projeto à parte e **não pode
+> afetar o sistema pelo navegador**. Nada do app entra no workspace do monorepo (`apps/*`,
+> `packages/*`, lockfile do pnpm), e nenhuma mudança na web ou na API vai junto com a casca. O que
+> precisar mexer na web ou na API (notificação nativa N3, ajustes N4) é entrega separada, com
+> aprovação própria, e não pode mudar o comportamento de quem usa pelo navegador.
+>
+> **Em planejamento** — nada implementado.
+
 ### 11.1 Como funciona
 
 O app nativo é uma casca fina: abre o mesmo sistema do servidor numa tela nativa (WebView). As
@@ -473,7 +481,7 @@ a casca muda (plugin novo, ícone, permissão).
 
 | Parte | Onde | Observação |
 |---|---|---|
-| Projeto da casca | `apps/mobile` (Capacitor + `android/`) | `server.url` aponta para o endereço do sistema; um app por endereço no teste |
+| Projeto da casca | Fora do workspace: repositório próprio ou pasta `mobile/` na raiz, com dependências e lockfile próprios (decisão 11.3) | Capacitor 8 (8.6.0 em 10/11). `server.url` aponta para o endereço do sistema; um app por endereço no teste |
 | Notificação | **FCM** (Firebase Cloud Messaging), não Web Push | A WebView do Android não tem Push API: o Web Push de hoje não funciona dentro do app. A API passa a mandar pelos dois canais: Web Push para navegador e app do site, FCM para o app nativo |
 | Detectar o app | `window.Capacitor` na web | Dentro do nativo, a web esconde o "Instalar app" e a faixa de Web Push, e pede a permissão nativa |
 | Offline (partes 1–4 da seção 9) | Banco local nativo (SQLite), na parte 4 | É o que resolve a fragilidade do armazenamento do iPhone |
@@ -483,16 +491,23 @@ a casca muda (plugin novo, ícone, permissão).
 | Fase | Entrega | Precisa de | Situação |
 |---|---|---|---|
 | N1 | Casca Android abrindo o sistema; ícone e nome; voltar do Android navega; link externo abre fora | Projeto Capacitor | ⬜ |
-| N2 | APK de teste gerado e instalado num Android | **JDK 21 + Android SDK** (não há nesta máquina) ou build em container | ⬜ |
+| N2 | APK de teste gerado e instalado num Android | Build em **container Docker** (decisão de 10/11): imagem mínima com JDK e só as partes do Android SDK que o build usa, nada instalado no Windows. Sem emulador: o APK vai para o celular por arquivo | ⬜ |
 | N3 | Notificação nativa: plugin de push, projeto Firebase, `google-services.json`, API enviando por FCM, assinatura do aparelho nativo na mesma tabela | Conta Firebase (gratuita) | ⬜ |
 | N4 | Web dentro do app: esconder instalar e Web Push, usar a permissão nativa | N1 | ⬜ |
 | N5 | Lojas: Google Play (US$ 25 uma vez) e App Store (US$ 99/ano, build de iOS precisa de Mac ou serviço de build) | Decisão de conta e de nome (D4) | ⬜ adiado |
 
-### 11.3 Decisões pendentes
+### 11.3 Decisões
 
-- **Onde gerar o APK (N2):** instalar Android Studio nesta máquina, ou gerar num container Docker com o SDK.
-- **Endereço que o APK de teste abre:** o de dev ou o de produção (`crm.rcgdist.com.br`).
-- **Conta e nome nas lojas (N5):** adiado até o teste local passar.
+| # | Decisão | Resposta |
+|---|---|---|
+| A1 | Caminho | Casca nativa (Capacitor), não reescrita (10/11) |
+| A2 | Primeira entrega | APK de Android para teste local; lojas depois (10/11) |
+| A3 | App do site | Continua junto com o nativo (10/11) |
+| A4 | Onde gerar o APK | Container Docker (10/11) |
+| A5 | Endereço que o APK abre | Produção, `crm.rcgdist.com.br` (10/11): mostra o que está publicado |
+| A6 | Separação | Projeto à parte, sem afetar o navegador (10/11) |
+| A7 | **Repositório próprio ou pasta `mobile/` neste repositório?** | **Em aberto** |
+| A8 | Conta e nome nas lojas (N5) | Adiado até o teste local passar |
 
 ## 12. Riscos
 
