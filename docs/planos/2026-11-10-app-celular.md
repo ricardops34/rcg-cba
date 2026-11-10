@@ -163,13 +163,13 @@ montando o pedido. O pedido sobe sozinho quando o sinal volta.
 | Produtos, preço da tabela do cliente, regras de desconto | Cópia local, só leitura |
 | Estoque disponível | Cópia local **com a hora da foto** sempre visível ("estoque de 08:12") |
 | Agenda e atividades do dia/semana | Cópia local; concluir e registrar visita entram na fila |
-| **Criar e editar orçamento** | Fica no aparelho como *rascunho offline* e sobe ao reconectar (9.4) |
+| **Gerar, alterar, enviar e aprovar orçamento** (decisão de 10/11) | Só com a base sincronizada **no mesmo dia** (regra 9.3a). Gerar e alterar ficam no aparelho; enviar e aprovar entram na fila e **só acontecem de fato no sincronismo**, depois de o servidor revalidar (9.4) |
 | Registrar atividade, visita ou anotação no cliente | Fila de envio |
 
 | **Não** funciona offline | Por quê |
 |---|---|
-| Aprovar ou liberar desconto, aprovar orçamento | Decisão de outra pessoa; precisa do servidor |
-| Enviar orçamento ao ERP ou ao cliente (link, e-mail, WhatsApp) | Sai do sistema; só depois de validado |
+| Liberar desconto acima do máximo (supervisor) | Decisão de outra pessoa sobre um pedido que pode não estar no aparelho dela; segue o fluxo de liberação online que já existe |
+| Saída efetiva para o ERP ou para o cliente (link, e-mail, WhatsApp) | O pedido de envio feito offline espera na fila; nada sai do sistema antes da revalidação |
 | WhatsApp, Conversas | Tempo real por natureza |
 | Dashboards, consultas, relatórios | Volume grande e valor só se atualizado |
 | 2ª via de boleto e DANFE | Documento fiscal ou financeiro: sempre o vigente |
@@ -187,13 +187,51 @@ parâmetro da empresa (Administração › Parâmetros), com os valores sugerido
 | S1 | **Ao voltar a rede**: primeiro **envia** a fila do aparelho, depois **baixa** o que mudou | Automático, assim que houver conexão | Barra "Sincronizando…"; o vendedor continua trabalhando |
 | S2 | **Carga do dia**: sincronismo completo ao abrir o app | Primeira abertura do dia com rede, ou última sincronização há mais de `SYNC_COMPLETO_HORAS` (12 h) | Tela de progresso; só libera a lista depois de terminar |
 | S3 | **Aviso de dado envelhecendo** | Última sincronização há mais de `SYNC_AVISO_HORAS` (4 h) | Faixa amarela "Dados de ontem 17:40 — preço e estoque podem ter mudado" |
-| S4 | **Bloqueio de novos pedidos** | Sem sincronizar há mais de `SYNC_BLOQUEIO_HORAS` (24 h) | Consulta continua; **criar ou editar orçamento fica bloqueado** até sincronizar |
+| S4 | **Bloqueio do que não é orçamento** | Sem sincronizar há mais de `SYNC_BLOQUEIO_HORAS` (24 h) | Consulta continua; atividade e visita offline ficam bloqueadas até sincronizar. **Orçamento segue a regra do mesmo dia (9.3a)**, mais rígida |
 | S5 | **Base local expira** | Sem sincronizar há mais de `SYNC_EXPIRA_DIAS` (7 dias, igual à validade do login) | A cópia local é apagada e o app exige entrar online. **A fila pendente nunca é apagada sem ser enviada**: ela fica guardada e trancada até o próximo login do mesmo usuário |
 | S6 | **Antes de sair** | Logout, troca de empresa ou de usuário com fila pendente | Avisa "há N itens não enviados"; sair só depois de enviar ou com confirmação explícita de descartar |
 | S7 | **Sessão substituída ou desconectada** | Ao reconectar, o servidor diz que a sessão do aparelho foi encerrada (outro celular entrou, administração desconectou) | Envia a fila com novo login do mesmo usuário; apaga a cópia local se for outro usuário |
 
 A idade dos dados aparece sempre no topo do app quando offline ("Offline · dados de 08:12"). O
 vendedor nunca vê preço ou estoque sem saber de quando é.
+
+### 9.3a Regra do orçamento offline: o mesmo dia (decisão do usuário, 10/11)
+
+> *"A geração, alteração, envio e aprovação de orçamentos, quando offline, não podem ter mais de
+> um dia de diferença. Ex.: fiz um orçamento em 10/11/2026 às 17:00. Não vou conseguir fazer nada
+> nele no dia 11/11/2026 se não estiver online ou ter feito um sincronismo de dados no 11/11/2026."*
+
+**Regra:** offline, qualquer operação de orçamento (gerar, alterar, enviar, aprovar) só é permitida
+se o **último sincronismo do aparelho foi no mesmo dia do calendário** em que a operação é feita.
+O dia é a data civil no fuso da empresa (o mesmo do horário de trabalho), não um prazo de 24 h.
+
+| Situação | Pode operar orçamento offline? |
+|---|---|
+| Sincronizou 11/11 às 07:30, está offline às 16:00 do dia 11/11 | **Sim** |
+| Sincronizou 10/11 às 17:00, está offline às 08:00 do dia 11/11 (15 h depois) | **Não** — virou o dia |
+| Gerou orçamento offline 10/11 às 17:00 sem sincronizar; dia 11/11, ainda offline | **Não** — o orçamento fica trancado (só leitura) até ficar online ou sincronizar no dia 11/11 |
+| Mesmo caso, dia 11/11 com rede | Sincroniza: o orçamento de 10/11 sobe e é revalidado com o preço e o estoque do dia 11/11. Depois disso pode ser alterado normalmente |
+
+Consequências:
+
+- **Substitui o S4 para orçamentos.** O bloqueio de 24 h fica só para as demais operações
+  offline (atividade, visita). Orçamento segue a regra do dia.
+- **Começar o dia sincronizado.** A carga do dia (S2) passa a ser o que libera o orçamento offline.
+  Sem ela, o vendedor só consulta.
+- **A tela diz por quê.** Orçamento trancado mostra "Sincronize hoje para mexer neste orçamento",
+  com o botão de sincronizar quando houver rede.
+- **Acesso é código, também aqui.** O app bloqueia na tela, mas o bloqueio que vale é o do servidor.
+  - Cada sincronismo devolve um **comprovante emitido e assinado pelo servidor** com a data do dia.
+  - Todo item de orçamento na fila leva esse comprovante.
+  - No envio, o servidor recusa a operação de orçamento cujo comprovante seja de um dia diferente
+    do dia informado para a operação. Também recusa a que diz ter sido feita depois de chegar ao
+    servidor.
+  - **Limite conhecido:** a hora da operação vem do relógio do celular, e quem atrasa o relógio
+    consegue declarar um dia falso. Mesmo assim, ele não consegue usar a base de um dia em outro
+    sem um comprovante daquele dia, porque o comprovante é emitido pelo servidor. E a revalidação
+    de preço, desconto e estoque no envio continua valendo.
+- **Envio e aprovação feitos offline** ficam registrados com a hora do aparelho e a hora em que o
+  servidor de fato executou. No histórico do orçamento aparecem os dois.
 
 ### 9.4 O que acontece com o que foi feito offline
 
@@ -251,8 +289,8 @@ mexer no aparelho só consegue mandar para a fila o que o servidor vai recusar.
 
 | # | Decisão | Proposta | Resposta |
 |---|---|---|---|
-| O1 | O que funciona offline | Tabela 9.2: consulta da carteira, produtos/preço/estoque, agenda, orçamento e atividade. Sem fotos (no máximo miniatura). Supervisor e gerente levam só a própria carteira | _pendente_ |
-| O2 | Prazos do sincronismo | Aviso 4 h · carga completa 12 h · bloqueio de pedido 24 h · base expira 7 dias, por parâmetro da empresa | _pendente_ |
+| O1 | O que funciona offline | Tabela 9.2: consulta da carteira, produtos/preço/estoque, agenda, orçamento e atividade. Sem fotos (no máximo miniatura). Supervisor e gerente levam só a própria carteira | **Em parte (10/11):** orçamento offline = gerar, alterar, enviar e aprovar. Falta confirmar o resto da tabela, as fotos e o escopo de supervisor/gerente |
+| O2 | Prazos do sincronismo | Aviso 4 h · carga completa 12 h · bloqueio 24 h · base expira 7 dias, por parâmetro da empresa | **Em parte (10/11):** orçamento só com sincronismo **no mesmo dia do calendário** (9.3a). Faltam os prazos de aviso, de carga completa e de expiração da base, e o bloqueio das outras operações |
 | O3 | Preço mudou entre o offline e o envio | Recalcula com o preço atual e marca os itens alterados para o vendedor conferir | _pendente_ |
 | O4 | Orçamento feito offline, ao sincronizar | Vira rascunho que o vendedor confirma (não segue sozinho para liberação ou ERP) | _pendente_ |
 | O5 | Feito offline fora do expediente | Servidor aceita e marca "feito fora do horário" para a supervisão (o trabalho já foi feito; recusar só perde o pedido) | _pendente_ |
@@ -264,7 +302,7 @@ mexer no aparelho só consegue mandar para a fila o que o servidor vai recusar.
 | Fase | Entrega | Depende de | Situação |
 |---|---|---|---|
 | OF1 | Levantamento: integração apaga fisicamente? grava sem `updatedAt`? Volume da maior carteira (clientes, produtos, preços) | — | ⬜ |
-| OF2 | API de carga incremental e de envio idempotente, com escopo e revalidação; testes | O1, O3–O5, O7 | ⬜ |
+| OF2 | API de carga incremental e de envio idempotente, com escopo e revalidação; comprovante de sincronismo do dia e recusa de operação de orçamento fora do dia (9.3a); testes | O1, O3–O5, O7 | ⬜ |
 | OF3 | Banco local, casca em cache e motor de sincronismo (S1–S7), faixa de idade dos dados, tela de pendências | O2, O6 | ⬜ |
 | OF4 | Consultas offline: clientes, produtos, preço, estoque, agenda | OF3 | ⬜ |
 | OF5 | Orçamento e atividade offline, com fila e retorno do servidor | OF2, OF4 | ⬜ |
