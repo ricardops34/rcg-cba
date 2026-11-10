@@ -347,6 +347,21 @@ A parte 2 grava, mas nada sai do sistema. A parte 3 é a primeira em que uma aç
 chega ao ERP ou ao cliente, e por isso fica para quando as duas primeiras estiverem conferidas na
 rua.
 
+**Piloto pelo Android (decisão de 10/11).** O código é um só. O que muda é onde cada parte é
+testada e liberada primeiro:
+
+1. **Piloto** de cada parte com um ou dois vendedores com Android. No Android, o PWA guarda a base
+   de forma persistente, sincroniza em segundo plano, tem o botão "Instalar app" e é depurado
+   pelo Chrome do computador Windows por cabo. O que se testa é o que o vendedor vai ter.
+2. **Conferência num iPhone** antes de liberar cada parte para todos (instalado pela tela de
+   início). É conferência, não desenvolvimento novo.
+3. **Liberação para o iPhone:**
+   - a **parte 1** (consulta) vai junto com o Android. Se o sistema apagar a base, a carga do
+     dia recompõe e nada se perde;
+   - as **partes 2 e 3** (orçamento offline) vão para o iPhone só depois de testadas na rua com
+     o Android. No PWA, o risco no iPhone é o sistema apagar um orçamento ainda não enviado. A
+     parte 4 (Capacitor) elimina esse risco.
+
 Todo o offline depende de F2 (telas do vendedor revisadas no celular): não compensa tornar
 offline uma tela que ainda não está boa no celular.
 
