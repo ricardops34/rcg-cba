@@ -508,6 +508,7 @@ a casca muda (plugin novo, ícone, permissão).
 | A6 | Separação | Projeto à parte, sem afetar o navegador (10/11) |
 | A7 | **Repositório próprio ou pasta `mobile/` neste repositório?** | **Em aberto** |
 | A8 | Conta e nome nas lojas (N5) | Adiado até o teste local passar |
+| A9 | Como testar o APK (N2) | **Celular Android de verdade** (10/11): o APK vai por arquivo e é instalado com "fontes desconhecidas". Sem emulador nesta fase — o VS Code não tem emulador próprio, e o oficial exige o Android SDK no Windows, que A4 evitou. Emulador na nuvem descartado: o app abre a produção com dados reais. Rever ao chegar na notificação nativa (N3) ou no offline |
 
 ## 12. Riscos
 
