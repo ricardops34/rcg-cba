@@ -1483,6 +1483,23 @@ export class ClientesService {
           Prisma.sql`(COALESCE(u."ultimaData", c."ultimaCompra") IS NULL OR COALESCE(u."ultimaData", c."ultimaCompra") <= now() - (${query.diasSemComprar} * interval '1 day'))`,
         );
       }
+      // "Quem compra este produto?": já comprou em alguma nota de venda — a
+      // mesma regra de NOTA_DE_VENDA_SQL das colunas de venda, lida pelo item.
+      // Conjunto sem correlação com a linha (como comodatoSemConsumoSql): o
+      // Postgres monta a lista de clientes uma vez pelo índice
+      // (empresaId, produtoId) dos itens e só confere a pertença.
+      if (query.produtoId) {
+        condicoes.push(Prisma.sql`c."id" IN (
+          SELECT i."clienteId"
+            FROM "notas_saida_itens" i
+            JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+           WHERE i."empresaId" = ${empresaId} AND i."produtoId" = ${query.produtoId}
+             AND i."clienteId" IS NOT NULL
+             AND i."deletedAt" IS NULL AND i."ativo" = true AND i."comodato" = false
+             AND n."deletedAt" IS NULL AND n."ativo" = true AND n."comodato" = false
+             AND n."tipo" = 'N' AND n."condicaoPagamentoId" IS NOT NULL
+        )`);
+      }
       if (query.bloqueado !== undefined) {
         const bloqueadoExpr = Prisma.sql`(c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio"))`;
         condicoes.push(

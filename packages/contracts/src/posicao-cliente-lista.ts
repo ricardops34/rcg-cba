@@ -59,6 +59,11 @@ export const posicaoClienteListQuerySchema = paginationQuerySchema.extend({
     .positive()
     .optional()
     .describe("Filtro rápido: só clientes cuja última compra foi há N+ dias (ou nunca compraram)"),
+  produtoId: z
+    .string()
+    .uuid()
+    .optional()
+    .describe("Só clientes que já compraram este produto em nota de venda"),
   bloqueado: booleanQueryParam,
   temTituloVencido: booleanQueryParam,
   comodatoSemConsumo: booleanQueryParam,

@@ -71,13 +71,17 @@ export class ProdutosController {
   @ApiOperation({
     summary: 'Listar produtos',
     description:
-      'Catálogo da empresa ativa. Busca por descrição, código ERP, marca, categoria ou código de barras. Requer produtos.visualizar.',
+      'Catálogo da empresa ativa. Busca por descrição, código ERP, marca, categoria ou código de barras. Requer produtos.visualizar, produtos-cadastro.visualizar ou posicao-cliente.visualizar (busca do filtro Produto).',
   })
   @ApiPaginationQuery()
-  @RequirePermission('produtos', 'visualizar', [
-    'produtos-cadastro',
+  // posicao-cliente: o filtro "Produto" da Posição de Cliente busca o
+  // produto por aqui — o perfil Vendedor tem a tela sem ter o catálogo.
+  @RequirePermission(
+    'produtos',
     'visualizar',
-  ])
+    ['produtos-cadastro', 'visualizar'],
+    ['posicao-cliente', 'visualizar'],
+  )
   @Get()
   findAll(
     @Query() query: ProdutoQueryDto,

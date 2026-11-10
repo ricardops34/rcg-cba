@@ -143,7 +143,7 @@ export class ClientesController {
       'Carteira de clientes com colunas de venda calculadas ao vivo: venda dos últimos 30 dias, ' +
       'venda média (últimos 90 dias ÷ 3), diferença entre as duas, dias desde a última compra, ' +
       'comodato em aberto e bloqueio. Aceita os filtros de clientes.visualizar (busca, ativo, uf, ' +
-      'vendedorId, carteira) mais diasSemComprar (filtro rápido) e bloqueado. Requer posicao-cliente.visualizar.',
+      'vendedorId, carteira) mais diasSemComprar (filtro rápido), produtoId (já comprou o produto em nota de venda) e bloqueado. Requer posicao-cliente.visualizar.',
   })
   @ApiPaginationQuery()
   @RequirePermission('posicao-cliente', 'visualizar')
