@@ -1,5 +1,6 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -48,7 +49,7 @@ export default function ClientesPage() {
   const urlFiltros = useFiltrosUrl();
   const [search, setSearch] = useState(() => urlFiltros.texto("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useState("razaoSocial");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   // Abre em "Ativos" (pedido do usuário, 2026-10-07); o link que já traz

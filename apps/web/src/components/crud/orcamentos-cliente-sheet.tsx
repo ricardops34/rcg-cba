@@ -1,5 +1,6 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
@@ -49,7 +50,7 @@ export function OrcamentosClienteSheet({
 }) {
   const queryClient = useQueryClient();
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10, "orcamentos-cliente");
   const [form, setForm] = useState<OrcamentoSheetAlvo | null>(null);
 
   const hasPermission = useAuthStore((s) => s.hasPermission);

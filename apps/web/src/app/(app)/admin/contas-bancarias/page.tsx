@@ -1,5 +1,6 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { MoreHorizontal, Pencil, Star, Trash2, Landmark, CheckCircle2, CreditCard, Plus, Upload } from "lucide-react";
@@ -91,7 +92,7 @@ const textoOuNulo = (v: string) => (v.trim() ? v.trim() : null);
 export default function ContasBancariasPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useState("descricao");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");

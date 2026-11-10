@@ -12,6 +12,7 @@ import { DadosPessoaisCard } from "@/components/perfil/dados-pessoais-card";
 import { IdentidadeHeader } from "@/components/perfil/identidade-header";
 import { ProfilePhoto } from "@/components/perfil/profile-photo";
 import { TelaInicialCard } from "@/components/perfil/tela-inicial-card";
+import { TamanhoPaginaCard } from "@/components/perfil/tamanho-pagina-card";
 import { TermosAceitosCard } from "@/components/perfil/termos-aceitos-card";
 import { UsarFotoNoWhatsapp } from "@/components/perfil/usar-foto-no-whatsapp";
 import { WhatsappPareamentoCard } from "@/components/perfil/whatsapp-pareamento-card";
@@ -79,6 +80,7 @@ export default function PerfilPage() {
           )}
           <DadosPessoaisCard />
           <TelaInicialCard />
+          <TamanhoPaginaCard />
           <AppCelularCard />
         </TabsContent>
 

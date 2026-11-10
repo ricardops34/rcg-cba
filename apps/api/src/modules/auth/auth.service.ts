@@ -1132,6 +1132,7 @@ export class AuthService {
           nome: true,
           sistemaBase: true,
           administraPlataforma: true,
+          tamanhoPagina: true,
           rotinaInicial: {
             select: {
               nome: true,
@@ -1247,7 +1248,31 @@ export class AuthService {
       rotinaInicialRota,
       rotinaInicialId: ativo?.rotinaInicialId ?? null,
       rotinaInicialPerfilNome: ativo ? (perfil.rotinaInicial?.nome ?? null) : null,
+      // O do usuário vale acima do perfil; nenhum dos dois = padrão da tela.
+      tamanhoPagina: usuario.tamanhoPagina ?? perfil.tamanhoPagina ?? null,
+      tamanhoPaginaUsuario: usuario.tamanhoPagina,
+      tamanhoPaginaPerfil: perfil.tamanhoPagina,
     };
+  }
+
+  /**
+   * Itens por página das listagens, escolhido pelo próprio usuário em "Meu
+   * perfil". Fica no usuário (vale em todas as empresas); null volta para o
+   * do perfil. O valor já chega validado por `updateTamanhoPaginaSchema`, e o
+   * CHECK da coluna repete a regra no banco.
+   */
+  async updateTamanhoPagina(
+    usuarioId: string,
+    empresaAtivaId: string,
+    tamanhoPagina: number | null,
+  ) {
+    await this.prisma.withUsuario(usuarioId, (tx) =>
+      tx.usuario.update({
+        where: { id: usuarioId },
+        data: { tamanhoPagina, updatedBy: usuarioId },
+      }),
+    );
+    return this.me(usuarioId, empresaAtivaId);
   }
 
   async completeFirstAccess(

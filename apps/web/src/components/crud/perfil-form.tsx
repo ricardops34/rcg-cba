@@ -6,7 +6,13 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { perfilCreateSchema, type Perfil, type PerfilCreate } from "@plataforma/contracts";
+import {
+  perfilCreateSchema,
+  TAMANHOS_PAGINA,
+  type Perfil,
+  type PerfilCreate,
+  type TamanhoPagina,
+} from "@plataforma/contracts";
 import { useResourceMutations } from "@/hooks/use-resource";
 import { useAuthStore } from "@/stores/auth-store";
 import { apiFetch, ApiError } from "@/lib/api-client";
@@ -91,8 +97,16 @@ export function PerfilForm({ perfil, initialTab = "dados" }: { perfil?: Perfil; 
           ativo: perfil.ativo,
           rotinaInicialId: perfil.rotinaInicialId ?? null,
           carteiraCompleta: perfil.carteiraCompleta ?? false,
+          tamanhoPagina: perfil.tamanhoPagina ?? null,
         }
-      : { nome: "", descricao: "", ativo: true, rotinaInicialId: null, carteiraCompleta: false },
+      : {
+          nome: "",
+          descricao: "",
+          ativo: true,
+          rotinaInicialId: null,
+          carteiraCompleta: false,
+          tamanhoPagina: null,
+        },
   });
 
   const onSubmit = async (values: PerfilCreate) => {
@@ -192,6 +206,34 @@ export function PerfilForm({ perfil, initialTab = "dados" }: { perfil?: Perfil; 
                           </SelectContent>
                         </Select>
                         <FieldError errors={[form.formState.errors.rotinaInicialId]} />
+                      </Field>
+
+                      <Field data-invalid={!!form.formState.errors.tamanhoPagina}>
+                        <FieldLabel htmlFor="tamanhoPagina">Itens por página nas listagens</FieldLabel>
+                        <Select
+                          value={form.watch("tamanhoPagina") ? String(form.watch("tamanhoPagina")) : "none"}
+                          onValueChange={(val) =>
+                            form.setValue("tamanhoPagina", val === "none" ? null : (Number(val) as TamanhoPagina), {
+                              shouldDirty: true,
+                            })
+                          }
+                        >
+                          <SelectTrigger id="tamanhoPagina">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="none">Padrão de cada tela</SelectItem>
+                            {TAMANHOS_PAGINA.map((n) => (
+                              <SelectItem key={n} value={String(n)}>
+                                {n} por página
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <FieldDescription className="text-xs">
+                          O usuário pode trocar o seu em Meu perfil.
+                        </FieldDescription>
+                        <FieldError errors={[form.formState.errors.tamanhoPagina]} />
                       </Field>
                     </div>
 

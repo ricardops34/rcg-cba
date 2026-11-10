@@ -1,4 +1,5 @@
 "use client";
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { CrudHeader } from "@/components/crud/crud-header";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 
@@ -165,7 +166,7 @@ export default function AcessosPage() {
   const [evento, setEvento] = useState<string>("todos");
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useTamanhoPagina(20);
   const [pageSessoes, setPageSessoes] = useState(1);
   const [ordemEventos, setOrdemEventos] = useState<{
     sortBy?: string;

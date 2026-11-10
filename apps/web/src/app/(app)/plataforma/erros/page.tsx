@@ -1,4 +1,5 @@
 "use client";
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { CrudHeader } from "@/components/crud/crud-header";
 
 import { useState } from "react";
@@ -319,7 +320,7 @@ function PainelConfig() {
 
 export default function PlataformaErrosPage() {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useTamanhoPagina(20);
   const [origem, setOrigem] = useState("");
   const [search, setSearch] = useState("");
   const [aberto, setAberto] = useState<ErroLogGrupo | null>(null);

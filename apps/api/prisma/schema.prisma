@@ -258,6 +258,9 @@ model Usuario {
   // assinar com `nome` era esvaziar o campo).
   nomeWhatsapp     String?
   usarNomeWhatsapp Boolean @default(true)
+  // Itens por página das listagens, escolhido em "Meu perfil". Nulo = segue
+  // Perfil.tamanhoPagina. Do usuário, não do vínculo: vale em todas as empresas.
+  tamanhoPagina    Int?
   telefone       String?
   celular        String?
   dataNascimento DateTime?
@@ -507,6 +510,10 @@ model Perfil {
   // Vendedor ligado ao usuário e a do time abaixo dele — e, sem Vendedor
   // ligado, nenhuma. Administrador (sistemaBase) já vê tudo pelo isAdmin.
   carteiraCompleta     Boolean @default(false)
+  // Itens por página das listagens para quem tem este perfil (TAMANHOS_PAGINA
+  // dos contratos). Nulo = o padrão de cada tela. Usuario.tamanhoPagina vale
+  // acima deste.
+  tamanhoPagina        Int?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

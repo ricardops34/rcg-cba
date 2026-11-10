@@ -1,5 +1,6 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import { toast } from "sonner";
 import { TIPO_PARAMETRO_LABEL, type ParametroEmpresa } from "@plataforma/contracts";
@@ -37,7 +38,7 @@ function conteudoLegivel(p: ParametroEmpresa) {
 export default function ParametrosPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useTamanhoPagina(20);
   const [sortBy, setSortBy] = useState("parametro");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("ativos");

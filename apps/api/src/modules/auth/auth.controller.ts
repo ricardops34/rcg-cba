@@ -40,6 +40,7 @@ import {
   SwitchEmpresaDto,
   UpdateOwnProfileDto,
   UpdateRotinaInicialDto,
+  UpdateTamanhoPaginaDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
@@ -326,6 +327,28 @@ export class AuthController {
       user.id,
       user.empresaAtivaId,
       dto.rotinaId,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Escolher o próprio tamanho das listagens',
+    description:
+      'Grava os itens por página das listagens paginadas (10, 20, 50 ou 100) para o próprio ' +
+      'usuário, em todas as empresas. tamanhoPagina null volta para o padrão do perfil.',
+  })
+  @ApiBodyExample({ tamanhoPagina: 50 })
+  @ApiResponse({ status: 400, description: 'Tamanho fora de 10, 20, 50 ou 100' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/tamanho-pagina')
+  updateTamanhoPagina(
+    @Body() dto: UpdateTamanhoPaginaDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.authService.updateTamanhoPagina(
+      user.id,
+      user.empresaAtivaId,
+      dto.tamanhoPagina,
     );
   }
 }

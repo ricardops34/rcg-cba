@@ -14,6 +14,7 @@ import {
   vendedorFiltroLabel,
 } from "@/hooks/use-vendedores-escopo";
 import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import {
   guardarRolagem,
   rolagemGuardada,
@@ -106,7 +107,7 @@ export default function PosicaoClientePage() {
   // voltar — ver `useEstadoDaTela`.
   const [search, setSearch] = useEstadoDaTela("posicao-cliente:busca", "");
   const [page, setPage] = useEstadoDaTela("posicao-cliente:pagina", 1);
-  const [pageSize, setPageSize] = useEstadoDaTela("posicao-cliente:tamanho", 10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useEstadoDaTela("posicao-cliente:ordem", "dias");
   const [sortOrder, setSortOrder] = useEstadoDaTela<"asc" | "desc">(
     "posicao-cliente:sentido",
