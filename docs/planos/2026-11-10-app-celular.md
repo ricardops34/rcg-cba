@@ -33,6 +33,9 @@
    - ver que a Administração some do menu;
    - ver a tela "Sem conexão" em modo avião.
 
+**App nativo (10/11):** o usuário pediu a opção de app nativo — Capacitor, APK de Android para
+teste local primeiro, lojas depois (seção 11). Pendente: onde gerar o APK e qual endereço ele abre.
+
 **Próximo passo de desenvolvimento:**
 
 1. **F2 — revisão das telas no celular**, na ordem aprovada. Já feitas: Posição de Cliente e
@@ -161,7 +164,7 @@ não amplia quem vê o quê.
 
 | # | Decisão | Proposta | Resposta |
 |---|---|---|---|
-| D1 | Caminho | **A (PWA completo) agora**; B (Capacitor nas lojas) só se as lojas forem exigência comercial | **A** (10/11) |
+| D1 | Caminho | **A (PWA completo) agora**; B (Capacitor nas lojas) só se as lojas forem exigência comercial | **A** (10/11), e **B também** (10/11, mais tarde no mesmo dia): o usuário quer a opção de app nativo. Primeiro um APK de Android para teste local, lojas depois; o app do site continua junto. Ver seção 11 |
 | D2 | Sessão única com o celular | **Uma sessão de computador + uma de celular** por usuário; um segundo celular derruba o primeiro, como hoje acontece entre computadores | **1 computador + 1 celular** (10/11) |
 | D3b | Onde o aviso chega | — | **Onde a pessoa estiver usando: computador e celular** (10/11). Cada aparelho ou navegador liga o seu no Perfil, com um toque (regra do navegador). Vai para todos os aparelhos com sessão aberta |
 | D3 | Quais avisos viram notificação no celular | Liberação de desconto (para o supervisor), pedido/orçamento liberado ou recusado, agenda do dia, recado da equipe. Mensagem de WhatsApp: **não** no início (volume alto; tem o próprio ícone) | **Tudo que vai para o sino**, menos mensagem de WhatsApp; respeita o expediente (10/11) |
@@ -456,7 +459,42 @@ Não há SQL direto na integração gravando sem atualizar `updatedAt`.
   INTERNO", "EMPRESA ENCERRADA") com centenas de clientes. Sem login, não levam nada ao celular.
   Só pesam na carga do superior deles.
 
-## 10. Riscos
+## 11. App nativo (Capacitor)
+
+> Decisão do usuário, 10/11: **"Quero uma opção de ter APP nativo."** Caminho B (casca nativa),
+> não reescrita. Primeiro um **APK de Android para teste local** (instalado à mão, fora da loja);
+> Google Play e App Store depois. O navegador e o app instalado pelo site **continuam como estão**.
+
+### 11.1 Como funciona
+
+O app nativo é uma casca fina: abre o mesmo sistema do servidor numa tela nativa (WebView). As
+telas continuam vindo do servidor — mudar tela não exige nova versão do app. Nova versão só quando
+a casca muda (plugin novo, ícone, permissão).
+
+| Parte | Onde | Observação |
+|---|---|---|
+| Projeto da casca | `apps/mobile` (Capacitor + `android/`) | `server.url` aponta para o endereço do sistema; um app por endereço no teste |
+| Notificação | **FCM** (Firebase Cloud Messaging), não Web Push | A WebView do Android não tem Push API: o Web Push de hoje não funciona dentro do app. A API passa a mandar pelos dois canais: Web Push para navegador e app do site, FCM para o app nativo |
+| Detectar o app | `window.Capacitor` na web | Dentro do nativo, a web esconde o "Instalar app" e a faixa de Web Push, e pede a permissão nativa |
+| Offline (partes 1–4 da seção 9) | Banco local nativo (SQLite), na parte 4 | É o que resolve a fragilidade do armazenamento do iPhone |
+
+### 11.2 Fases
+
+| Fase | Entrega | Precisa de | Situação |
+|---|---|---|---|
+| N1 | Casca Android abrindo o sistema; ícone e nome; voltar do Android navega; link externo abre fora | Projeto Capacitor | ⬜ |
+| N2 | APK de teste gerado e instalado num Android | **JDK 21 + Android SDK** (não há nesta máquina) ou build em container | ⬜ |
+| N3 | Notificação nativa: plugin de push, projeto Firebase, `google-services.json`, API enviando por FCM, assinatura do aparelho nativo na mesma tabela | Conta Firebase (gratuita) | ⬜ |
+| N4 | Web dentro do app: esconder instalar e Web Push, usar a permissão nativa | N1 | ⬜ |
+| N5 | Lojas: Google Play (US$ 25 uma vez) e App Store (US$ 99/ano, build de iOS precisa de Mac ou serviço de build) | Decisão de conta e de nome (D4) | ⬜ adiado |
+
+### 11.3 Decisões pendentes
+
+- **Onde gerar o APK (N2):** instalar Android Studio nesta máquina, ou gerar num container Docker com o SDK.
+- **Endereço que o APK de teste abre:** o de dev ou o de produção (`crm.rcgdist.com.br`).
+- **Conta e nome nas lojas (N5):** adiado até o teste local passar.
+
+## 12. Riscos
 
 - **iPhone sem instalar não recebe push.** Quem usa pelo Safari sem "Adicionar à Tela de Início" não é avisado — por isso o convite de instalação (4.3) faz parte da entrega, não é enfeite.
 - **Texto do aviso na tela bloqueada.** Valor de pedido, nome de cliente e desconto ficam visíveis para quem pegar o aparelho. Aviso curto ("Novo pedido de desconto aguardando"), detalhe só dentro do app.
