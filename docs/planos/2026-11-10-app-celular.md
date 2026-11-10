@@ -481,7 +481,8 @@ a casca muda (plugin novo, ícone, permissão).
 
 | Parte | Onde | Observação |
 |---|---|---|
-| Projeto da casca | Pasta `mobile/` na raiz, fora do workspace, com dependências e lockfile próprios (A7) | Capacitor 8 (8.6.0 em 10/11). `server.url` aponta para o endereço do sistema; um app por endereço no teste |
+| Projeto da casca | Pasta `mobile/` na raiz, fora do workspace, com dependências e lockfile próprios (A7) | Capacitor 8 (8.6.0 em 10/11). O endereço do sistema **não é fixo no build** (A10): a casca abre uma página local que pergunta ou lembra o endereço e então navega para ele |
+| Endereço do sistema (A10) | Página local da casca (`webDir`), sem nada na web | **1ª abertura:** pergunta o endereço da empresa (ex.: `crm.rcgdist.com.br`), aceita só `https`, guarda no aparelho. **Demais aberturas:** mostra "Abrindo crm.rcgdist.com.br…" por um instante, com o botão **Trocar endereço**, e segue sozinha. Trocar é por ali (ao abrir o app), porque o sistema no navegador não sabe que existe casca (A6). O build pode trazer um endereço sugerido, que só preenche o campo |
 | Notificação | **FCM** (Firebase Cloud Messaging), não Web Push | A WebView do Android não tem Push API: o Web Push de hoje não funciona dentro do app. A API passa a mandar pelos dois canais: Web Push para navegador e app do site, FCM para o app nativo |
 | Detectar o app | `window.Capacitor` na web | Dentro do nativo, a web esconde o "Instalar app" e a faixa de Web Push, e pede a permissão nativa |
 | Offline (partes 1–4 da seção 9) | Banco local nativo (SQLite), na parte 4 | É o que resolve a fragilidade do armazenamento do iPhone |
@@ -504,11 +505,12 @@ a casca muda (plugin novo, ícone, permissão).
 | A2 | Primeira entrega | APK de Android para teste local; lojas depois (10/11) |
 | A3 | App do site | Continua junto com o nativo (10/11) |
 | A4 | Onde gerar o APK | Container Docker (10/11) |
-| A5 | Endereço que o APK abre | Produção, `crm.rcgdist.com.br` (10/11): mostra o que está publicado |
+| A5 | Endereço que o APK abre no teste | Produção, `crm.rcgdist.com.br` (10/11): mostra o que está publicado. Com A10, é o endereço digitado no teste (e o sugerido no build de teste), não um valor fixo |
 | A6 | Separação | Projeto à parte, sem afetar o navegador (10/11) |
 | A7 | Repositório próprio ou pasta `mobile/` neste repositório? | **Pasta `mobile/`** na raiz (10/11), fora do workspace do pnpm (`apps/*`, `packages/*`), com `package.json` e lockfile próprios |
 | A8 | Conta e nome nas lojas (N5) | Adiado até o teste local passar |
 | A9 | Como testar o APK (N2) | **Celular Android de verdade** (10/11): o APK vai por arquivo e é instalado com "fontes desconhecidas". Sem emulador nesta fase — o VS Code não tem emulador próprio, e o oficial exige o Android SDK no Windows, que A4 evitou. Emulador na nuvem descartado: o app abre a produção com dados reais. Rever ao chegar na notificação nativa (N3) ou no offline |
+| A10 | Endereço parametrizável | **Na tela do app** (10/11): um APK só para todos os clientes (combina com D4, app único e neutro); o app pergunta o endereço na primeira abertura, guarda e deixa trocar ao abrir. Desenho em 11.1. Cuidado de segurança: só `https`, e a casca não pode dar ao site digitado nenhum acesso nativo além do que o sistema usa |
 
 ## 12. Riscos
 
