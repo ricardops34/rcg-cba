@@ -1644,7 +1644,13 @@ export function OrcamentoFormContent({
               abas inteiras desativava também os botões das abas, e não dava
               nem para consultar os itens. */}
           <Tabs value={aba} onValueChange={setAba}>
-            <TabsList data-tour="orcamento-abas">
+            {/* No celular as abas quebram em linhas: rolando para o lado (o
+                padrão do TabsList, com a barra escondida) parecia que só
+                existiam as primeiras. */}
+            <TabsList
+              data-tour="orcamento-abas"
+              className="max-sm:h-auto! max-sm:w-full max-sm:flex-wrap max-sm:gap-0.5 max-sm:*:h-7!"
+            >
               <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
               <TabsTrigger data-tour="orcamento-itens" value="itens">Itens ({linhas.fields.length})</TabsTrigger>
               <TabsTrigger data-tour="orcamento-mix" value="mix">Mix de produtos ({mix.length})</TabsTrigger>
