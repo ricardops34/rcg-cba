@@ -1,5 +1,5 @@
 import { noCelular } from './estrutura.service';
-import { MODULOS, MODULO } from '../../../prisma/catalogo-sistema';
+import { MENUS, MODULOS, MODULO } from '../../../prisma/catalogo-sistema';
 
 describe('noCelular — o catálogo é o teto', () => {
   it('a empresa tira do celular o que o catálogo oferece', () => {
@@ -24,5 +24,10 @@ describe('noCelular — o catálogo é o teto', () => {
         celular: esperado,
       });
     }
+  });
+
+  it('Campos do Produto (Cadastros) fica fora do celular', () => {
+    const menu = MENUS.find((m) => m.id === 'seed-menu-produtos-campos');
+    expect(menu?.disponivelTelaPequena).toBe(false);
   });
 });

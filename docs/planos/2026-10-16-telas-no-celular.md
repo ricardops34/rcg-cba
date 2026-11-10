@@ -26,7 +26,7 @@ Legenda: ⬜ não revisada · 🔎 revisada, com pendência · ✅ ajustada (có
 
 | # | Decisão | Proposta | Resposta |
 |---|---------|----------|----------|
-| D1 | Quais telas **não** devem existir no celular | Estrutura, Perfis (matriz de permissões), Integração, Campos do Cliente, Campos do Produto, E-mail, Agente IA — são telas de configuração densas | **Decidido 10/11: o módulo Administração inteiro fica fora do celular.** No celular só os módulos de vendedor, supervisor, gerente, administrativo e diretor (Comercial, CRM, Gerencial, Consultas, Cadastros, Relatórios), cada um conforme o perfil. *Campos do Produto* está em Cadastros e segue no celular — confirmar |
+| D1 | Quais telas **não** devem existir no celular | Estrutura, Perfis (matriz de permissões), Integração, Campos do Cliente, Campos do Produto, E-mail, Agente IA — são telas de configuração densas | **Decidido 10/11: o módulo Administração inteiro fica fora do celular.** No celular só os módulos de vendedor, supervisor, gerente, administrativo e diretor (Comercial, CRM, Gerencial, Consultas, Cadastros, Relatórios), cada um conforme o perfil. *Campos do Produto* (Cadastros) também fica fora (10/11) |
 | D2 | Onde registrar "desligado no celular" | Pela tela Estrutura (por empresa) *ou* no catálogo (vale para todos) | **No catálogo, como teto** (10/11): a empresa só tira do celular, não põe o que o catálogo deixou fora. Implementado (`noCelular` em `estrutura.service.ts`, Administração com `disponivelTelaPequena: false`) |
 | D3 | Prioridade de revisão | Primeiro o que o vendedor usa na rua: Posição de Cliente, Estoque, Produtos, Orçamentos, Agenda, Atividades, Oportunidades | _pendente_ |
 
@@ -103,7 +103,7 @@ Colunas: *Tipo* = como a tela é construída (lista usa EntityTable; consulta e 
 | Gerencial | Dashboard Gerencial | `/gerencial/dashboard` | Tela própria | 881 | ligado | ✅ Ajustada | Manter — revisar | Cartões 2 colunas, coluna Vendedor fixa, barras menores (d90ceef) |
 | Consultas | Evolução Mensal | `/consultas/evolucao` | Consulta | 10 | ligado | ⬜ Não revisada | Manter — revisar |  |
 | Cadastros | Produtos | `/cadastros/produtos` | Lista (EntityTable) | 263 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Cadastros | Campos do Produto | `/admin/produtos-campos` | Tela própria | 633 | ligado | ⬜ Não revisada | Desligar no celular (a confirmar) |  |
+| Cadastros | Campos do Produto | `/admin/produtos-campos` | Tela própria | 633 | desligado | ⛔ Desligada no celular | Configuração fora do celular (10/11) |  |
 | Cadastros | Clientes | `/cadastros/clientes` | Lista (EntityTable) | 416 | ligado | ⬜ Não revisada | Manter — revisar |  |
 | Cadastros | Alterações de Cliente | `/cadastros/clientes-alteracoes` | Tela própria | 525 | ligado | ⬜ Não revisada | Manter — revisar |  |
 | Cadastros | Categorias | `/cadastros/categorias` | Lista (EntityTable) | 268 | ligado | ⬜ Não revisada | Manter — revisar |  |

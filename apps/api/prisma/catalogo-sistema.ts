@@ -268,6 +268,8 @@ export const MENUS: DefinicaoMenu[] = [
     icone: 'ruler',
     codigo: 'produtos-campos',
     moduloId: MODULO.cadastros,
+    // Tela de configuração: fora do celular (decisão de 2026-11-10).
+    disponivelTelaPequena: false,
   },
   {
     id: 'seed-menu-clientes',
