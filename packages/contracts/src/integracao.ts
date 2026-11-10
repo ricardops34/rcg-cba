@@ -1996,6 +1996,18 @@ export const integracaoOrcamentoSchema = integracaoOrcamentoCreateSchema.extend(
     id: z.string().uuid(),
     // Só leitura: o ERP grava no pedido (C5_XOBSVEN, junto da observação),
     // não envia de volta. Preenchidos só com o desconto autorizado agora.
+    descontoSolicitadoPor: z
+      .string()
+      .nullable()
+      .describe(
+        "Nome de quem pediu a liberação do desconto; null sem autorização vigente ou quando o superior liberou sem pedido",
+      ),
+    descontoSolicitacaoMotivo: z
+      .string()
+      .nullable()
+      .describe(
+        "Por que o vendedor pediu o desconto; null sem autorização vigente ou quando o superior liberou sem pedido",
+      ),
     descontoAutorizadoPor: z
       .string()
       .nullable()
@@ -2086,6 +2098,8 @@ export const INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE: IntegracaoOrcamentoCreate = {
 export const INTEGRACAO_ORCAMENTO_EXAMPLE: IntegracaoOrcamento = {
   ...INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE,
   id: "0d1e2f3a-4b5c-4d6e-7f80-91a2b3c4d5e6",
+  descontoSolicitadoPor: "JOAO",
+  descontoSolicitacaoMotivo: "Cliente comparou com a concorrência e pediu o mesmo preço",
   descontoAutorizadoPor: "ALEXANDER MARCO DA SILVA VELASQUEZ",
   descontoAutorizadoEm: "10/11/2026 14:32",
   descontoJustificativa: "Cliente fechou volume do trimestre",

@@ -96,8 +96,9 @@ export class IntegracaoOrcamentosService {
     const ids = [
       ...new Set(
         rows
-          .filter((r) => r.descontoAutorizadoEm && r.descontoAutorizadoPor)
-          .map((r) => r.descontoAutorizadoPor as string),
+          .filter((r) => r.descontoAutorizadoEm)
+          .flatMap((r) => [r.descontoAutorizadoPor, r.descontoSolicitadoPor])
+          .filter((id): id is string => !!id),
       ),
     ];
     const usuarios = ids.length
@@ -131,6 +132,15 @@ export class IntegracaoOrcamentosService {
       dataValidade: row.dataValidade,
       dataRetorno: row.dataRetorno,
       observacao: row.observacao,
+      // O pedido do vendedor sobrevive à autorização (só a recusa o apaga);
+      // nulo quando o superior liberou sem pedido.
+      descontoSolicitadoPor:
+        autorizadoEm && row.descontoSolicitadoPor
+          ? (nomes.get(row.descontoSolicitadoPor) ?? null)
+          : null,
+      descontoSolicitacaoMotivo: autorizadoEm
+        ? row.descontoSolicitacaoMotivo
+        : null,
       descontoAutorizadoPor:
         autorizadoEm && row.descontoAutorizadoPor
           ? (nomes.get(row.descontoAutorizadoPor) ?? null)

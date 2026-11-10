@@ -694,13 +694,15 @@ molde do pedido da Máxima, `Faturamento/Maxima/IMPPED.prw`): `C5_ORGPED = "P"`
 `C5_YTPVEN = "01"`, `C5_FORPGT` (da SA1, ou `"B"`), `C5_DTIMP`/`C5_HRIMP`,
 `C5_XSTATUS = "P"`, `C5_INDPRES = "1"` e `C6_QTDLIB = 0`.
 
-**Autorização de desconto no `C5_XOBSVEN`** (decisão de 10/11/2026). Quando o
-orçamento teve desconto acima do máximo liberado, o campo recebe, depois da
-observação do vendedor: `Desconto autorizado por <nome> em dd/mm/aaaa hh:mm:
-<justificativa>`. A plataforma manda os três campos (`descontoAutorizadoPor`,
-`descontoAutorizadoEm` já no horário local, `descontoJustificativa`) só com a
-autorização vigente. Campo caractere é cortado no tamanho do dicionário, com
-WARN no log, para o texto não derrubar o pedido.
+**Autorização de desconto no `C5_XOBSVEN`** (decisão de 10/11/2026). O campo
+é Memo e recebe a observação do vendedor e, quando o orçamento teve desconto
+acima do máximo liberado, em seguida: `Desconto pedido por <vendedor>: <motivo>
+| Desconto autorizado por <nome> em dd/mm/aaaa hh:mm: <justificativa>`. A parte
+do pedido some quando o superior liberou sem pedido. A plataforma manda
+`descontoSolicitadoPor`, `descontoSolicitacaoMotivo`, `descontoAutorizadoPor`,
+`descontoAutorizadoEm` (já no horário local) e `descontoJustificativa`, só com a
+autorização vigente. Se em algum dicionário o campo for caractere, o texto é
+cortado no tamanho dele, com WARN no log, para não derrubar o pedido.
 
 **Recusa do `MATA410`.** O `BJErroOrc` grava o erro na SZZ e avisa a
 plataforma (`PATCH /integracao/orcamentos/pendentes/{id}/erro`): o orçamento

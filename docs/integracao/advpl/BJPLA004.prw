@@ -501,6 +501,8 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 	Local cVend    := ""
 	Local cCond    := ""
 	Local cObs     := ""
+	Local cSolPor  := ""
+	Local cSolMot  := ""
 	Local cAutPor  := ""
 	Local cAutEm   := ""
 	Local cJustDes := ""
@@ -532,6 +534,9 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 
 	// Liberacao do desconto acima do maximo: so vem preenchida quando ha
 	// autorizacao vigente. A data/hora ja chega no horario local (dd/mm/aaaa hh:mm).
+	// O pedido do vendedor vem vazio quando o superior liberou sem pedido.
+	cSolPor  := AllTrim(cValToChar(oOrc:GetJsonObject("descontoSolicitadoPor")))       // nome de quem pediu
+	cSolMot  := AllTrim(cValToChar(oOrc:GetJsonObject("descontoSolicitacaoMotivo")))   // por que pediu
 	cAutPor  := AllTrim(cValToChar(oOrc:GetJsonObject("descontoAutorizadoPor")))   // nome de quem liberou
 	cAutEm   := AllTrim(cValToChar(oOrc:GetJsonObject("descontoAutorizadoEm")))    // quando liberou
 	cJustDes := AllTrim(cValToChar(oOrc:GetJsonObject("descontoJustificativa")))   // por que liberou
@@ -666,11 +671,24 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 		aAdd(aCabec, {"C5_INDPRES", "1", Nil})   // presencial
 	EndIf
 
-	// Decisao do usuario (10/11/2026): quem, quando e por que o desconto foi
-	// liberado vao no C5_XOBSVEN, depois da observacao do vendedor, para o pedido
-	// mostrar no ERP a autorizacao que destravou o orcamento.
+	// Decisao do usuario (10/11/2026): o pedido do vendedor (quem e por que) e a
+	// liberacao (quem, quando e por que) vao no C5_XOBSVEN, depois da observacao
+	// do vendedor, para o pedido mostrar no ERP a autorizacao que destravou o
+	// orcamento. O campo e Memo, entao o texto inteiro cabe.
 	If !Empty(cJustDes)
-		cTxtDes := "Desconto autorizado"
+		cTxtDes := ""
+
+		If !Empty(cSolMot)
+			cTxtDes := "Desconto pedido"
+
+			If !Empty(cSolPor)
+				cTxtDes += " por " + cSolPor
+			EndIf
+
+			cTxtDes += ": " + cSolMot + " | "
+		EndIf
+
+		cTxtDes += "Desconto autorizado"
 
 		If !Empty(cAutPor)
 			cTxtDes += " por " + cAutPor
