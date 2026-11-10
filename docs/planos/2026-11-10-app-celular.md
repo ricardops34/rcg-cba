@@ -232,7 +232,7 @@ Consequências:
   - Com isso fecha a brecha do relógio atrasado: o dia do comprovante e o dia de chegada são
     ambos do servidor, e nada do aparelho é usado para decidir.
   - **Chegou em outro dia:** feito offline no dia 10/11 com o comprovante de 10/11, mas só chegou
-    no dia 11/11. Proposta:
+    no dia 11/11. **Decidido (10/11):**
     - o conteúdo do orçamento **não se perde**: sobe como rascunho, revalidado com o preço e o
       estoque do dia 11/11;
     - **envio e aprovação pendentes não são executados**: o vendedor, que nessa hora já está
@@ -269,7 +269,10 @@ mexer no aparelho só consegue mandar para a fila o que o servidor vai recusar.
   - preço vigente diferente → decisão O3 (proposta: recalcula com o preço atual e marca os itens
     alterados para o vendedor ver);
   - desconto acima do máximo → entra no fluxo de liberação do supervisor que já existe;
-  - estoque insuficiente, produto inativo, cliente bloqueado ou fora da carteira → o item ou o
+  - **estoque insuficiente não impede nada** (decisão O7, 10/11): o orçamento é gravado e pode ir
+    ao ERP normalmente, como já acontece online. O item sem saldo na foto do envio só fica
+    marcado para o vendedor ver;
+  - produto inativo, cliente bloqueado ou fora da carteira → o item ou o
     orçamento volta com o motivo, sem gravar;
   - fora do expediente → decisão O5.
 - **Atividade e visita:** guardam as mesmas três datas (feito, transmitido, recebido). Vale a de
@@ -314,13 +317,13 @@ mexer no aparelho só consegue mandar para a fila o que o servidor vai recusar.
 
 | # | Decisão | Proposta | Resposta |
 |---|---|---|---|
-| O1 | O que funciona offline | Tabela 9.2: consulta da carteira, produtos/preço/estoque, agenda, orçamento e atividade. Sem fotos (no máximo miniatura). Supervisor e gerente levam só a própria carteira | **Em parte (10/11):** orçamento offline = gerar, alterar, enviar e aprovar; **supervisor e gerente levam a equipe inteira**. Falta confirmar o resto da tabela 9.2 e as fotos |
+| O1 | O que funciona offline | Tabela 9.2: consulta da carteira, produtos/preço/estoque, agenda, orçamento e atividade. Sem fotos (no máximo miniatura). Supervisor e gerente levam só a própria carteira | **Em parte (10/11):** orçamento offline = gerar, alterar, enviar e aprovar; **supervisor e gerente levam a equipe inteira**. Resto da tabela 9.2 e fotos: **proposta aceita** (sem fotos, no máximo miniatura) |
 | O2 | Prazos do sincronismo | Aviso 4 h · carga completa 12 h · bloqueio 24 h · base expira 7 dias, por parâmetro da empresa | **Decidido (10/11):** os prazos são **parâmetros do sistema**, por empresa, com os valores sugeridos como iniciais; orçamento só com sincronismo **no mesmo dia do calendário** (9.3a, fixo). Toda operação offline guarda **feito, transmitido e recebido**; só a de recebido (servidor) vale para regra |
-| O3 | Preço mudou entre o offline e o envio | Recalcula com o preço atual e marca os itens alterados para o vendedor conferir | _pendente_ |
-| O4 | Orçamento feito offline, ao sincronizar | Vira rascunho que o vendedor confirma (não segue sozinho para liberação ou ERP) | _pendente_ |
-| O5 | Feito offline fora do expediente | Servidor aceita e marca "feito fora do horário" para a supervisão (o trabalho já foi feito; recusar só perde o pedido) | _pendente_ |
+| O3 | Preço mudou entre o offline e o envio | Recalcula com o preço atual e marca os itens alterados para o vendedor conferir | **Proposta aceita (10/11)** |
+| O4 | Orçamento feito offline, ao sincronizar | Vira rascunho que o vendedor confirma (não segue sozinho para liberação ou ERP) | **Proposta aceita (10/11)** |
+| O5 | Feito offline fora do expediente | Servidor aceita e marca "feito fora do horário" para a supervisão (o trabalho já foi feito; recusar só perde o pedido) | **Proposta aceita (10/11)** |
 | O6 | PWA ou Capacitor para o offline | **Se a equipe usa principalmente Android: PWA.** Se tem muito iPhone: offline já no Capacitor (caminho B), pela persistência e pelo armazenamento cifrado | **Os dois (10/11), em partes:** partes 1–3 no app instalado (mesmo código para iPhone e Android); parte 4 leva para o Capacitor, que resolve os limites do iPhone (9.8) |
-| O7 | Pedido offline com estoque insuficiente no envio | Grava o orçamento e marca os itens sem estoque, em vez de recusar o orçamento inteiro | _pendente_ |
+| O7 | Pedido offline com estoque insuficiente no envio | Grava o orçamento e marca os itens sem estoque, em vez de recusar o orçamento inteiro | **Decidido (10/11): estoque insuficiente não impede o envio ao ERP.** O item só fica marcado; vale igual ao online |
 
 ### 9.8 Partes do offline (decisão de 10/11: iPhone e Android, em partes)
 
@@ -338,7 +341,7 @@ esses limites.
 |---|---|---|---|---|
 | **0. Levantamento** | A integração apaga linha fisicamente? Grava sem `updatedAt`? Volume da maior carteira **e da maior equipe** (supervisor e gerente levam todos: clientes, produtos, preços, estoque) e quanto ocupa no aparelho | — (evita surpresa nas outras) | — | ⬜ |
 | **1. Consulta offline** | Banco local; casca do app em cache; carga do dia e carga incremental (S1, S2, S3, S5); faixa "Offline · dados de HH:MM"; consulta de clientes da carteira, produtos, preço, estoque e agenda **só leitura**; apagar a base no logout e na troca de usuário | Consulta cliente, preço e estoque sem sinal | Parte 0; O1 (escopo); prazos de O2; F2 nas telas envolvidas | ⬜ |
-| **2. Orçamento offline: gerar e alterar** | Fila de envio idempotente; comprovante de sincronismo do dia; **regra do mesmo dia pela data do servidor** (9.3a); revalidação no envio (preço, desconto, estoque, cliente); tela "Pendências de envio"; aviso antes de sair com fila (S6) | Monta o pedido no cliente sem sinal | Parte 1; O3, O4, O7 e o caso "chegou em outro dia" | ⬜ |
+| **2. Orçamento offline: gerar e alterar** | Fila de envio idempotente; comprovante de sincronismo do dia; **regra do mesmo dia pela data do servidor** (9.3a); revalidação no envio (preço, desconto, cliente; estoque só marca); tela "Pendências de envio"; aviso antes de sair com fila (S6) | Monta o pedido no cliente sem sinal | Parte 1 (decisões tomadas em 10/11) | ⬜ |
 | **3. Orçamento offline: enviar e aprovar; atividade e visita** | Envio e aprovação na fila, executados só no sincronismo do mesmo dia; atividade, visita e anotação offline (S4); sessão substituída ou desconectada (S7); "apagar dados deste aparelho" em Acessos | Fecha o atendimento inteiro sem sinal | Parte 2; O5 | ⬜ |
 | **4. Casca nativa (Capacitor) para iPhone e Android** | O mesmo app dentro de um app nativo: base local persistente e cifrada, biometria para abrir offline, sincronização em segundo plano onde o sistema deixa, push nativo. Publicação nas lojas | Offline confiável no iPhone; app nas lojas | Parte 3; contas das lojas e Mac (seção 4.4); é a F6 deste plano | ⬜ |
 
