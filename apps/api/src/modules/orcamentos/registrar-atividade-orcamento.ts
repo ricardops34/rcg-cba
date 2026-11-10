@@ -208,6 +208,71 @@ export async function orcamentoExigeAutorizacao(
 }
 
 /**
+ * Rastro da autorização de desconto: cada pedido, liberação e recusa, com quem
+ * fez, quando e a justificativa. Vem das Atividades que cada etapa grava (ver
+ * `TITULO`), e não dos campos do orçamento: a recusa limpa o pedido, e um novo
+ * pedido limpa a recusa — os campos só guardam a rodada atual.
+ *
+ * A justificativa é o que segue o marcador que a própria etapa escreve na
+ * descrição ("Justificativa do vendedor:", "Justificativa:", "Motivo:").
+ */
+const PREFIXO_EVENTO_DESCONTO: Record<string, EventoDesconto> = {
+  'Autorização de desconto solicitada': 'solicitada',
+  'Desconto autorizado': 'autorizada',
+  'Desconto recusado': 'recusada',
+};
+export type EventoDesconto = 'solicitada' | 'autorizada' | 'recusada';
+
+export async function historicoDescontoOrcamento(
+  tx: TenantTx,
+  empresaId: string,
+  orcamentoId: string,
+) {
+  const atividades = await tx.atividade.findMany({
+    where: {
+      empresaId,
+      orcamentoId,
+      OR: Object.keys(PREFIXO_EVENTO_DESCONTO).map((p) => ({
+        titulo: { startsWith: p },
+      })),
+    },
+    select: { titulo: true, descricao: true, createdAt: true, createdBy: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const autores = [
+    ...new Set(
+      atividades.map((a) => a.createdBy).filter((v): v is string => !!v),
+    ),
+  ];
+  const nomes = new Map(
+    (
+      await tx.usuario.findMany({
+        where: { id: { in: autores } },
+        select: { id: true, nome: true },
+      })
+    ).map((u) => [u.id, u.nome]),
+  );
+  return atividades.flatMap((a) => {
+    const prefixo = Object.keys(PREFIXO_EVENTO_DESCONTO).find((p) =>
+      a.titulo.startsWith(p),
+    );
+    if (!prefixo) return [];
+    const justificativa =
+      /(?:Justificativa do vendedor|Justificativa|Motivo): ([\s\S]*)$/.exec(
+        a.descricao ?? '',
+      )?.[1] ?? null;
+    return [
+      {
+        evento: PREFIXO_EVENTO_DESCONTO[prefixo],
+        em: a.createdAt,
+        por: a.createdBy ? (nomes.get(a.createdBy) ?? null) : null,
+        justificativa,
+      },
+    ];
+  });
+}
+
+/**
  * A mesma regra de `orcamentoExigeAutorizacao`, em lote e no banco: ids dos
  * orçamentos com algum item no máximo da regra ou acima. Serve à listagem
  * (etiqueta e filtro "Desconto"), onde testar um a um não escala.

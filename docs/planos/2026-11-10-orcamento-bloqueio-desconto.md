@@ -51,3 +51,11 @@ cai quando algo **muda de fato**, o que resolve o efetivar pelo formulário.
 ## Pendente
 
 - Conferência visual da listagem.
+
+## Histórico da autorização (2026-11-10)
+
+Pedido do usuário: mostrar justificativas de solicitação/liberação/recusa, quem
+liberou ou recusou, e data e hora. Rota `GET /orcamentos/:id/historico-desconto`
+(lê as Atividades que cada etapa já grava — todas as rodadas, inclusive as que a
+recusa/novo pedido limparam dos campos do orçamento). Tabela na aba "Aprovação e
+integração" e nome + justificativa no aviso do topo do formulário.

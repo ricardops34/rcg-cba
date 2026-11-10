@@ -223,6 +223,21 @@ export class OrcamentosController {
   }
 
   @ApiOperation({
+    summary: 'Histórico da autorização de desconto',
+    description:
+      'Cada pedido, liberação e recusa de desconto do orçamento, em ordem: quem fez, quando e ' +
+      'a justificativa. Requer orcamentos.visualizar.',
+  })
+  @RequirePermission('orcamentos', 'visualizar')
+  @Get(':id/historico-desconto')
+  historicoDesconto(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.historicoDesconto(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
     summary: 'Baixar a proposta comercial em PDF',
     description:
       'Monta o arquivo no servidor e registra a emissão no histórico do orçamento/cliente. ' +

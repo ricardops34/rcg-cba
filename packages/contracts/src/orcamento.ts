@@ -395,6 +395,14 @@ export function autorizacaoDescontoSituacao(o: {
  * `null` = orçamento sem pendência de desconto. `exige` vem do servidor
  * (`exigeAutorizacaoDesconto`).
  */
+/** GET /orcamentos/:id/historico-desconto — cada pedido/liberação/recusa, em ordem. */
+export interface HistoricoDescontoEvento {
+  evento: "solicitada" | "autorizada" | "recusada";
+  em: string;
+  por: string | null;
+  justificativa: string | null;
+}
+
 export const situacaoDescontoFiltroSchema = z.enum([
   "bloqueado",
   "aguardando",

@@ -78,6 +78,11 @@ import { StatusDot } from "@/components/crud/status-dot";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { OrcamentoTimeline } from "@/components/crud/orcamento-timeline";
 import {
+  OrcamentoHistoricoDesconto,
+  ultimoEvento,
+  useHistoricoDesconto,
+} from "@/components/crud/orcamento-historico-desconto";
+import {
   ArrowLeft,
   CircleCheck,
   Copy,
@@ -1091,6 +1096,14 @@ export function OrcamentoFormContent({
     ? autorizacaoDescontoSituacao(registro)
     : "nao_solicitada";
   const travadoPorDesconto = exigeAutorizacao && situacaoAutorizacao !== "autorizada";
+  // Quem decidiu e por quê, para o aviso do topo (o histórico completo fica na
+  // aba Aprovação e integração).
+  const historicoDesconto = useHistoricoDesconto(registro?.id, exigeAutorizacao).data;
+  const quemEPorque = (evento: "solicitada" | "autorizada" | "recusada") => {
+    const e = ultimoEvento(historicoDesconto, evento);
+    if (!e) return "";
+    return `${e.por ? ` por ${e.por}` : ""}${e.justificativa ? ` — “${e.justificativa}”` : ""}`;
+  };
 
   // Oportunidades do vendedor escolhido — só as ativas, mesmo critério do form de Atividade.
   const oportunidadesQuery = useQuery({
@@ -1555,11 +1568,11 @@ export function OrcamentoFormContent({
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />
               <span className="min-w-0 flex-1">
                 {situacaoAutorizacao === "autorizada"
-                  ? `Desconto autorizado em ${dataHoraBr(registro?.descontoAutorizadoEm ?? null)} — PDF e efetivação liberados.`
+                  ? `Desconto autorizado em ${dataHoraBr(registro?.descontoAutorizadoEm ?? null)}${quemEPorque("autorizada")}. PDF e efetivação liberados.`
                   : situacaoAutorizacao === "pendente"
-                    ? `Autorização solicitada em ${dataHoraBr(registro?.descontoSolicitadoEm ?? null)} — aguardando liberação. PDF e efetivação seguem bloqueados.`
+                    ? `Autorização solicitada em ${dataHoraBr(registro?.descontoSolicitadoEm ?? null)}${quemEPorque("solicitada")}. Aguardando liberação — PDF e efetivação seguem bloqueados.`
                     : registro?.descontoRecusaMotivo
-                      ? `Desconto recusado em ${dataHoraBr(registro.descontoRecusadoEm ?? null)}: ${registro.descontoRecusaMotivo}`
+                      ? `Desconto recusado em ${dataHoraBr(registro.descontoRecusadoEm ?? null)}${ultimoEvento(historicoDesconto, "recusada")?.por ? ` por ${ultimoEvento(historicoDesconto, "recusada")?.por}` : ""}: ${registro.descontoRecusaMotivo}`
                       : "Há item com desconto igual ou acima do máximo da regra. PDF e efetivação ficam bloqueados até a autorização."}
               </span>
               </div>
@@ -2701,6 +2714,8 @@ export function OrcamentoFormContent({
                     </Table>
                   </Field>
                 )}
+
+                <OrcamentoHistoricoDesconto orcamentoId={registro.id} />
 
                 <p className="text-sm text-muted-foreground">
                   Só orçamentos aprovados ficam disponíveis para o ERP importar. Depois de importar,

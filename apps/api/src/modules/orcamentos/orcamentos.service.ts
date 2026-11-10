@@ -44,6 +44,7 @@ import { criarAtividadeRetorno } from './criar-atividade-retorno';
 import {
   orcamentoExigeAutorizacao,
   orcamentosQueExigemAutorizacao,
+  historicoDescontoOrcamento,
   registrarAtividadeOrcamento,
 } from './registrar-atividade-orcamento';
 import { calcularItensOrcamento } from './calcular-itens-orcamento';
@@ -603,6 +604,14 @@ export class OrcamentosService {
         user,
         await this.comissaoOcultaParaTodos(empresaId),
       );
+    });
+  }
+
+  /** Pedidos, liberações e recusas de desconto do orçamento, em ordem. */
+  historicoDesconto(empresaId: string, user: AuthenticatedUser, id: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.buscarParaAcao(tx, empresaId, { tipo: 'usuario', user }, id);
+      return historicoDescontoOrcamento(tx, empresaId, id);
     });
   }
 
