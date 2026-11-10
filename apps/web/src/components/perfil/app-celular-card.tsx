@@ -8,6 +8,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useIsMobile } from "@/hooks/use-mobile";
 import {
   assinarInstalacao,
   assinaturaAtual,
@@ -23,12 +24,17 @@ import {
 } from "@/lib/app-celular";
 
 /**
- * App no celular: instalar e ligar o aviso neste aparelho.
+ * Aviso do sino fora da tela, onde a pessoa estiver usando o sistema — no
+ * computador e no celular (decisão de 2026-11-10). Cada aparelho liga o seu:
+ * o navegador só dá a permissão com um toque da própria pessoa.
+ *
+ * No celular o cartão também ensina a instalar o app; no computador, não.
  *
  * Os avisos são os mesmos do sino (menos mensagem de WhatsApp, que tem o
  * ícone próprio), com texto curto — o detalhe só aparece dentro do app.
  */
 export function AppCelularCard() {
+  const celular = useIsMobile();
   const instalavel = useSyncExternalStore(assinarInstalacao, podeInstalar, () => false);
   const [instalado, setInstalado] = useState(false);
   const [ios, setIos] = useState(false);
@@ -95,34 +101,40 @@ export function AppCelularCard() {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
-          <Smartphone className="size-4 text-primary" />
-          App no celular
+          {celular ? (
+            <Smartphone className="size-4 text-primary" />
+          ) : (
+            <BellRing className="size-4 text-primary" />
+          )}
+          {celular ? "App no celular" : "Avisos neste navegador"}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
-        <section className="space-y-2">
-          <h3 className="text-sm font-medium">Instalar</h3>
-          {instalado ? (
-            <p className="text-sm text-muted-foreground">
-              Você está usando o app instalado.
-            </p>
-          ) : instalavel ? (
-            <Button type="button" onClick={instalarAgora} className="min-h-11 w-full sm:w-auto">
-              <Download /> Instalar app
-            </Button>
-          ) : ios ? (
-            <p className="text-sm text-muted-foreground">
-              No Safari, toque em <strong>Compartilhar</strong> e depois em{" "}
-              <strong>Adicionar à Tela de Início</strong>. O sistema passa a abrir pelo ícone,
-              em tela cheia.
-            </p>
-          ) : (
-            <p className="text-sm text-muted-foreground">
-              No menu do navegador, escolha <strong>Instalar app</strong> ou{" "}
-              <strong>Adicionar à tela inicial</strong>.
-            </p>
-          )}
-        </section>
+        {celular && (
+          <section className="space-y-2">
+            <h3 className="text-sm font-medium">Instalar</h3>
+            {instalado ? (
+              <p className="text-sm text-muted-foreground">
+                Você está usando o app instalado.
+              </p>
+            ) : instalavel ? (
+              <Button type="button" onClick={instalarAgora} className="min-h-11 w-full sm:w-auto">
+                <Download /> Instalar app
+              </Button>
+            ) : ios ? (
+              <p className="text-sm text-muted-foreground">
+                No Safari, toque em <strong>Compartilhar</strong> e depois em{" "}
+                <strong>Adicionar à Tela de Início</strong>. O sistema passa a abrir pelo ícone,
+                em tela cheia.
+              </p>
+            ) : (
+              <p className="text-sm text-muted-foreground">
+                No menu do navegador, escolha <strong>Instalar app</strong> ou{" "}
+                <strong>Adicionar à tela inicial</strong>.
+              </p>
+            )}
+          </section>
+        )}
 
         <section className="space-y-2">
           <h3 className="flex items-center gap-2 text-sm font-medium">
@@ -140,7 +152,9 @@ export function AppCelularCard() {
             <>
               <label className="flex min-h-11 items-center justify-between gap-3">
                 <span className="text-sm">
-                  Receber os avisos do sino neste aparelho
+                  {celular
+                    ? "Receber os avisos do sino neste aparelho"
+                    : "Receber os avisos do sino neste navegador, mesmo com o sistema em outra aba"}
                   <span className="block text-xs text-muted-foreground">
                     Desconto a liberar, orçamento aprovado, agenda, recados e o resto do sino.
                     Mensagem de WhatsApp não entra.

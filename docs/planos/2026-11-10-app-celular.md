@@ -15,6 +15,7 @@
 | `3aae6196` | Sessão 1 computador + 1 celular; aviso no celular (Web Push) com tudo do sino menos WhatsApp; Perfil › Conta › *App no celular*; tela "Sem conexão"; aviso de versão nova; margem da barra de gestos |
 | `506d9b56`, `3b9e22a6` | Módulo Administração e tela Campos do Produto fora do celular; o catálogo é o teto (a empresa não religa) |
 | `01d9a60c` | Posição de Cliente revisada no celular (liberação de desconto virou lista) |
+| (este) | Avisos onde a pessoa estiver usando, **computador e celular** (decisão de 10/11). No computador, o cartão do Perfil vira "Avisos neste navegador", sem a parte de instalar |
 | `6a648d39` | Levantamento da parte 0 do offline (9.9): cabe com folga, cerca de 14 MB para a empresa inteira |
 
 **Para publicar** (nesta ordem):
@@ -162,6 +163,7 @@ não amplia quem vê o quê.
 |---|---|---|---|
 | D1 | Caminho | **A (PWA completo) agora**; B (Capacitor nas lojas) só se as lojas forem exigência comercial | **A** (10/11) |
 | D2 | Sessão única com o celular | **Uma sessão de computador + uma de celular** por usuário; um segundo celular derruba o primeiro, como hoje acontece entre computadores | **1 computador + 1 celular** (10/11) |
+| D3b | Onde o aviso chega | — | **Onde a pessoa estiver usando: computador e celular** (10/11). Cada aparelho ou navegador liga o seu no Perfil, com um toque (regra do navegador). Vai para todos os aparelhos com sessão aberta |
 | D3 | Quais avisos viram notificação no celular | Liberação de desconto (para o supervisor), pedido/orçamento liberado ou recusado, agenda do dia, recado da equipe. Mensagem de WhatsApp: **não** no início (volume alto; tem o próprio ícone) | **Tudo que vai para o sino**, menos mensagem de WhatsApp; respeita o expediente (10/11) |
 | D4 | Nome e ícone (multicliente) | Um app só, neutro, com a marca da empresa dentro (logo já existe por empresa). Um app por cliente só no caminho B, e cada um custa uma publicação | Proposta adotada por padrão (nome "CRM"); revisitar se for para as lojas |
 | D5 | Offline | **Nenhum dado offline** (mantém a decisão do `sw.js`); só a tela de "sem conexão" | Adotada em 10/11 e **revista no mesmo dia**: o usuário quer trabalho offline com sincronismo obrigatório. Desenho e decisões O1–O7 na seção 9 |
