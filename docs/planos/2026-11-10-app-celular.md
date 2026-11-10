@@ -179,9 +179,10 @@ montando o pedido. O pedido sobe sozinho quando o sinal volta.
 
 ### 9.3 Sincronismo obrigatório
 
-O sincronismo não depende de botão. As regras a seguir são **obrigatórias**, e os prazos ficam em
-parâmetro da empresa (Administração › Parâmetros), com os valores sugeridos entre parênteses
-(decisão O2).
+O sincronismo não depende de botão. As regras a seguir são **obrigatórias**. **Os prazos são
+parâmetros do sistema** (decisão O2, 10/11), por empresa, em Administração › Parâmetros. Os
+valores entre parênteses são só o valor inicial de cada parâmetro. A regra do mesmo dia para
+orçamento (9.3a) é fixa e não vira parâmetro.
 
 | # | Regra | Quando | Efeito |
 |---|---|---|---|
@@ -241,9 +242,18 @@ Consequências:
   - O app também tranca a tela pelo relógio do celular, só para avisar antes de o vendedor
     perder trabalho. Quem adianta ou atrasa o relógio engana apenas o aviso; quem decide é o
     servidor.
-- **Datas no histórico:** criação, alteração, envio e aprovação são gravados com a **data do
-  servidor** em que foram aceitos. A hora informada pelo celular fica só como informação ("feito
-  offline, segundo o aparelho, às 17:02"), sem efeito em regra, prazo ou relatório.
+- **Três datas por operação (decisão de 10/11).** Toda operação feita offline guarda:
+
+  | Data/hora | O que é | Relógio | Para quê |
+  |---|---|---|---|
+  | **Feito** | Quando o vendedor fez a operação no celular | Do celular | Informação e auditoria |
+  | **Transmitido** | Quando o celular enviou o item ao servidor | Do celular | Mostra quanto tempo o item ficou parado no aparelho |
+  | **Recebido** | Quando o servidor recebeu e tratou o item | **Do servidor** | **A única que vale para regra, prazo e relatório** (regra do mesmo dia, histórico, data do pedido) |
+
+  As três aparecem no histórico do orçamento ("feito 10/11 16:40 no celular · transmitido
+  11/11 07:52 · recebido 11/11 07:52"). As duas do celular nunca decidem nada: servem para
+  mostrar o que aconteceu, e uma diferença estranha entre elas (por exemplo, "feito" depois de
+  "recebido") fica marcada para a supervisão. Operação feita online tem as três iguais.
 
 ### 9.4 O que acontece com o que foi feito offline
 
@@ -262,17 +272,20 @@ mexer no aparelho só consegue mandar para a fila o que o servidor vai recusar.
   - estoque insuficiente, produto inativo, cliente bloqueado ou fora da carteira → o item ou o
     orçamento volta com o motivo, sem gravar;
   - fora do expediente → decisão O5.
-- **Atividade e visita:** vale a data do servidor na chegada, como no orçamento. A hora informada
-  pelo aparelho fica só como informação. Se a mesma atividade foi alterada no servidor nesse meio tempo, vale a mais recente
-  e o vendedor é avisado.
+- **Atividade e visita:** guardam as mesmas três datas (feito, transmitido, recebido). Vale a de
+  recebido, do servidor. Se a mesma atividade foi alterada no servidor nesse meio tempo, vale a
+  mais recente e o vendedor é avisado.
 - **Resultado visível:** tela "Pendências de envio" com cada item (enviado / recusado com motivo /
   aguardando). Item recusado não some: fica para o vendedor corrigir ou descartar.
 
 ### 9.5 Segurança e privacidade do dado no aparelho
 
 - **Só o que o usuário já vê:** a carga usa o mesmo escopo e as mesmas permissões das telas
-  (carteira do vendedor, RLS da empresa), e nada a mais. Supervisor e gerente: decidir em O1 se
-  levam a equipe inteira ou só a própria carteira (volume).
+  (carteira do vendedor, RLS da empresa), e nada a mais. **Supervisor e gerente levam a equipe
+  inteira** (decisão O1, 10/11): a carteira de todos os vendedores que eles já veem no sistema. É
+  a maior base possível no aparelho, por isso o levantamento da parte 0 mede o volume da maior
+  equipe, e não só o da maior carteira. Se não couber com folga, voltamos a conversar antes da
+  parte 1.
 - **Celular perdido:** a cópia local é a carteira do vendedor, com CNPJ, contatos e títulos. Ela é
   apagada no logout, na troca de usuário, ao expirar (S5) e na desconexão pela administração (S7).
   Também deve haver um botão "Apagar dados deste aparelho" em Acessos › Sessões, que vale na
@@ -301,8 +314,8 @@ mexer no aparelho só consegue mandar para a fila o que o servidor vai recusar.
 
 | # | Decisão | Proposta | Resposta |
 |---|---|---|---|
-| O1 | O que funciona offline | Tabela 9.2: consulta da carteira, produtos/preço/estoque, agenda, orçamento e atividade. Sem fotos (no máximo miniatura). Supervisor e gerente levam só a própria carteira | **Em parte (10/11):** orçamento offline = gerar, alterar, enviar e aprovar. Falta confirmar o resto da tabela, as fotos e o escopo de supervisor/gerente |
-| O2 | Prazos do sincronismo | Aviso 4 h · carga completa 12 h · bloqueio 24 h · base expira 7 dias, por parâmetro da empresa | **Em parte (10/11):** orçamento só com sincronismo **no mesmo dia do calendário** (9.3a). Faltam os prazos de aviso, de carga completa e de expiração da base, e o bloqueio das outras operações |
+| O1 | O que funciona offline | Tabela 9.2: consulta da carteira, produtos/preço/estoque, agenda, orçamento e atividade. Sem fotos (no máximo miniatura). Supervisor e gerente levam só a própria carteira | **Em parte (10/11):** orçamento offline = gerar, alterar, enviar e aprovar; **supervisor e gerente levam a equipe inteira**. Falta confirmar o resto da tabela 9.2 e as fotos |
+| O2 | Prazos do sincronismo | Aviso 4 h · carga completa 12 h · bloqueio 24 h · base expira 7 dias, por parâmetro da empresa | **Decidido (10/11):** os prazos são **parâmetros do sistema**, por empresa, com os valores sugeridos como iniciais; orçamento só com sincronismo **no mesmo dia do calendário** (9.3a, fixo). Toda operação offline guarda **feito, transmitido e recebido**; só a de recebido (servidor) vale para regra |
 | O3 | Preço mudou entre o offline e o envio | Recalcula com o preço atual e marca os itens alterados para o vendedor conferir | _pendente_ |
 | O4 | Orçamento feito offline, ao sincronizar | Vira rascunho que o vendedor confirma (não segue sozinho para liberação ou ERP) | _pendente_ |
 | O5 | Feito offline fora do expediente | Servidor aceita e marca "feito fora do horário" para a supervisão (o trabalho já foi feito; recusar só perde o pedido) | _pendente_ |
@@ -323,7 +336,7 @@ esses limites.
 
 | Parte | Entrega | Valor para o vendedor | Depende de | Situação |
 |---|---|---|---|---|
-| **0. Levantamento** | A integração apaga linha fisicamente? Grava sem `updatedAt`? Volume da maior carteira (clientes, produtos, preços, estoque) e quanto ocupa no aparelho | — (evita surpresa nas outras) | — | ⬜ |
+| **0. Levantamento** | A integração apaga linha fisicamente? Grava sem `updatedAt`? Volume da maior carteira **e da maior equipe** (supervisor e gerente levam todos: clientes, produtos, preços, estoque) e quanto ocupa no aparelho | — (evita surpresa nas outras) | — | ⬜ |
 | **1. Consulta offline** | Banco local; casca do app em cache; carga do dia e carga incremental (S1, S2, S3, S5); faixa "Offline · dados de HH:MM"; consulta de clientes da carteira, produtos, preço, estoque e agenda **só leitura**; apagar a base no logout e na troca de usuário | Consulta cliente, preço e estoque sem sinal | Parte 0; O1 (escopo); prazos de O2; F2 nas telas envolvidas | ⬜ |
 | **2. Orçamento offline: gerar e alterar** | Fila de envio idempotente; comprovante de sincronismo do dia; **regra do mesmo dia pela data do servidor** (9.3a); revalidação no envio (preço, desconto, estoque, cliente); tela "Pendências de envio"; aviso antes de sair com fila (S6) | Monta o pedido no cliente sem sinal | Parte 1; O3, O4, O7 e o caso "chegou em outro dia" | ⬜ |
 | **3. Orçamento offline: enviar e aprovar; atividade e visita** | Envio e aprovação na fila, executados só no sincronismo do mesmo dia; atividade, visita e anotação offline (S4); sessão substituída ou desconectada (S7); "apagar dados deste aparelho" em Acessos | Fecha o atendimento inteiro sem sinal | Parte 2; O5 | ⬜ |
