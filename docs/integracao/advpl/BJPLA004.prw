@@ -501,6 +501,11 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 	Local cVend    := ""
 	Local cCond    := ""
 	Local cObs     := ""
+	Local cAutPor  := ""
+	Local cAutEm   := ""
+	Local cJustDes := ""
+	Local cTxtDes  := ""
+	Local nTamObs  := 0
 	Local cChvCli  := ""
 	Local cLogErr  := ""
 	Local cDtEmis  := ""
@@ -524,6 +529,12 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 	cCond   := AllTrim(cValToChar(oOrc:GetJsonObject("condicaoPagamentoChave")))
 	cObs    := AllTrim(cValToChar(oOrc:GetJsonObject("observacao")))
 	aItJson := oOrc:GetJsonObject("itens")
+
+	// Liberacao do desconto acima do maximo: so vem preenchida quando ha
+	// autorizacao vigente. A data/hora ja chega no horario local (dd/mm/aaaa hh:mm).
+	cAutPor  := AllTrim(cValToChar(oOrc:GetJsonObject("descontoAutorizadoPor")))   // nome de quem liberou
+	cAutEm   := AllTrim(cValToChar(oOrc:GetJsonObject("descontoAutorizadoEm")))    // quando liberou
+	cJustDes := AllTrim(cValToChar(oOrc:GetJsonObject("descontoJustificativa")))   // por que liberou
 
 	// vendedorChave e condicaoPagamentoChave voltam como a chave de integracao
 	// que saiu daqui (01-000234, ou -000234 em tabela compartilhada); o pedido
@@ -655,8 +666,42 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 		aAdd(aCabec, {"C5_INDPRES", "1", Nil})   // presencial
 	EndIf
 
+	// Decisao do usuario (10/11/2026): quem, quando e por que o desconto foi
+	// liberado vao no C5_XOBSVEN, depois da observacao do vendedor, para o pedido
+	// mostrar no ERP a autorizacao que destravou o orcamento.
+	If !Empty(cJustDes)
+		cTxtDes := "Desconto autorizado"
+
+		If !Empty(cAutPor)
+			cTxtDes += " por " + cAutPor
+		EndIf
+
+		If !Empty(cAutEm)
+			cTxtDes += " em " + cAutEm
+		EndIf
+
+		cTxtDes += ": " + cJustDes
+
+		If Empty(cObs)
+			cObs := cTxtDes
+		Else
+			cObs += " | " + cTxtDes
+		EndIf
+	EndIf
+
 	// A observacao so entra se o campo existir neste dicionario
 	If !Empty(cObs) .And. SC5->(FieldPos("C5_XOBSVEN")) > 0
+		// Campo caractere: corta no tamanho do dicionario, senao o ExecAuto pode
+		// recusar o pedido inteiro por causa do texto. Memo nao tem limite.
+		If TamSX3("C5_XOBSVEN")[3] != "M"
+			nTamObs := TamSX3("C5_XOBSVEN")[1]
+
+			If Len(cObs) > nTamObs
+				FwLogMsg("WARN", /*cTransactionId*/, "BJPLA", FunName(), "", "01", "Observacao do orcamento " + cIdPlat + " cortada em " + cValToChar(nTamObs) + " caracteres (tamanho do C5_XOBSVEN).", 0, 0, {})
+				cObs := Left(cObs, nTamObs)
+			EndIf
+		EndIf
+
 		aAdd(aCabec, {"C5_XOBSVEN", cObs, Nil})
 	EndIf
 
