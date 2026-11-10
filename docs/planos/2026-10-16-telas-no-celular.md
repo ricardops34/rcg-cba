@@ -28,7 +28,7 @@ Legenda: ⬜ não revisada · 🔎 revisada, com pendência · ✅ ajustada (có
 |---|---------|----------|----------|
 | D1 | Quais telas **não** devem existir no celular | Estrutura, Perfis (matriz de permissões), Integração, Campos do Cliente, Campos do Produto, E-mail, Agente IA — são telas de configuração densas | **Decidido 10/11: o módulo Administração inteiro fica fora do celular.** No celular só os módulos de vendedor, supervisor, gerente, administrativo e diretor (Comercial, CRM, Gerencial, Consultas, Cadastros, Relatórios), cada um conforme o perfil. *Campos do Produto* (Cadastros) também fica fora (10/11) |
 | D2 | Onde registrar "desligado no celular" | Pela tela Estrutura (por empresa) *ou* no catálogo (vale para todos) | **No catálogo, como teto** (10/11): a empresa só tira do celular, não põe o que o catálogo deixou fora. Implementado (`noCelular` em `estrutura.service.ts`, Administração com `disponivelTelaPequena: false`) |
-| D3 | Prioridade de revisão | Primeiro o que o vendedor usa na rua: Posição de Cliente, Estoque, Produtos, Orçamentos, Agenda, Atividades, Oportunidades | _pendente_ |
+| D3 | Prioridade de revisão | Primeiro o que o vendedor usa na rua: Posição de Cliente, Estoque, Produtos, Orçamentos, Agenda, Atividades, Oportunidades | **Aprovada (10/11)** |
 
 ## 4. Alavancas — componentes compartilhados
 

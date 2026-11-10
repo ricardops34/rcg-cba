@@ -340,7 +340,7 @@ esses limites.
 
 | Parte | Entrega | Valor para o vendedor | Depende de | Situação |
 |---|---|---|---|---|
-| **0. Levantamento** | A integração apaga linha fisicamente? Grava sem `updatedAt`? Volume da maior carteira **e da maior equipe** (supervisor e gerente levam todos: clientes, produtos, preços, estoque) e quanto ocupa no aparelho | — (evita surpresa nas outras) | — | ⬜ |
+| **0. Levantamento** | A integração apaga linha fisicamente? Grava sem `updatedAt`? Volume da maior carteira **e da maior equipe** (supervisor e gerente levam todos: clientes, produtos, preços, estoque) e quanto ocupa no aparelho | — (evita surpresa nas outras) | — | ✅ (10/11) — ver 9.9 |
 | **1. Consulta offline** | Banco local; casca do app em cache; carga do dia e carga incremental (S1, S2, S3, S5); faixa "Offline · dados de HH:MM"; consulta de clientes da carteira, produtos, preço, estoque e agenda **só leitura**; apagar a base no logout e na troca de usuário | Consulta cliente, preço e estoque sem sinal | Parte 0; O1 (escopo); prazos de O2; F2 nas telas envolvidas | ⬜ |
 | **2. Orçamento offline: gerar e alterar** | Fila de envio idempotente; comprovante de sincronismo do dia; **regra do mesmo dia pela data do servidor** (9.3a); revalidação no envio (preço, desconto, cliente; estoque só marca); tela "Pendências de envio"; aviso antes de sair com fila (S6) | Monta o pedido no cliente sem sinal | Parte 1 (decisões tomadas em 10/11) | ⬜ |
 | **3. Orçamento offline: enviar e aprovar; atividade e visita** | Envio e aprovação na fila, executados só no sincronismo do mesmo dia; atividade, visita e anotação offline (S4); sessão substituída ou desconectada (S7); "apagar dados deste aparelho" em Acessos | Fecha o atendimento inteiro sem sinal | Parte 2; O5 | ⬜ |
@@ -368,6 +368,45 @@ testada e liberada primeiro:
 
 Todo o offline depende de F2 (telas do vendedor revisadas no celular): não compensa tornar
 offline uma tela que ainda não está boa no celular.
+
+### 9.9 Resultado do levantamento (parte 0, 10/11)
+
+Medido na base de dev, que é cópia da produção.
+
+**Exclusões:** a integração marca `deletedAt` (não apaga a linha) em clientes, produtos,
+estoque, tabelas de preço e títulos a receber. Então a carga incremental sabe o que sumiu.
+Duas exceções, sem impedimento:
+
+- itens do orçamento/pedido são regravados inteiros (`orcamento_itens`), como já previsto: o
+  orçamento sincroniza com cabeçalho e itens juntos;
+- faixas de regra de desconto são apagadas e recriadas (`regra_desconto_faixas`): a regra
+  sincroniza inteira, com as faixas.
+
+Não há SQL direto na integração gravando sem atualizar `updatedAt`.
+
+**Volume** (empresa `rcg`, a maior):
+
+| Dado | Linhas | Tamanho no banco |
+|---|---:|---:|
+| Clientes | 6.713 | 3,7 MB |
+| Produtos ativos | 4.912 | 3,7 MB |
+| Itens de tabela de preço | 17.455 | 4,5 MB |
+| Estoques | 2.730 | 1,0 MB |
+| Títulos em aberto | 1.265 (de 133 mil no total) | 1,3 MB |
+| **Total** | | **≈ 14 MB** |
+
+- **Maior equipe:** os dois superiores do topo veem a carteira inteira (6.711 clientes). Com a
+  decisão O1, é a base completa da empresa. A maior carteira de vendedor tem cerca de 2 mil
+  clientes ("ESCRITORIO"). Um representante típico fica entre 300 e 500.
+- **Cabe com folga:** cerca de 14 MB no banco, algo como 30 a 45 MB no celular (com índices), e
+  3 a 4 MB para baixar compactado na carga completa. O espaço do navegador no celular fica na casa
+  dos gigabytes. A carga incremental do dia é bem menor.
+- **Fica de fora da carga:** títulos já pagos (133 mil linhas) e o histórico completo de notas.
+  Para "últimas compras" vai um resumo por cliente, com as últimas N compras, sem os itens
+  de todas as notas.
+- **Achado à parte:** há "vendedores" que não são pessoas ("ESCRITORIO", "TEMP REGIAO 001
+  INTERNO", "EMPRESA ENCERRADA") com centenas de clientes. Sem login, não levam nada ao celular.
+  Só pesam na carga do superior deles.
 
 ## 10. Riscos
 
