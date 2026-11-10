@@ -42,17 +42,64 @@ function normalizar(v: unknown): unknown {
 }
 
 /**
- * Algum campo do cabeçalho que veio no payload difere do gravado? Campo ausente
- * (`undefined`) é "não mexeu".
+ * Campos do cabeçalho que vieram no payload e diferem do gravado. Campo
+ * ausente (`undefined`) é "não mexeu".
  */
+export function camposAlterados(
+  payload: Record<string, unknown>,
+  gravado: Record<string, unknown>,
+  ignorar: ReadonlySet<string> = IGNORADOS,
+): string[] {
+  return Object.entries(payload)
+    .filter(
+      ([campo, valor]) =>
+        valor !== undefined &&
+        !ignorar.has(campo) &&
+        normalizar(valor) !== normalizar(gravado[campo]),
+    )
+    .map(([campo]) => campo);
+}
+
+/** Algum campo de conteúdo da proposta mudou? (derruba a liberação) */
 export function cabecalhoMudou(
   payload: Record<string, unknown>,
   gravado: Record<string, unknown>,
 ): boolean {
-  return Object.entries(payload).some(
-    ([campo, valor]) =>
-      valor !== undefined &&
-      !IGNORADOS.has(campo) &&
-      normalizar(valor) !== normalizar(gravado[campo]),
-  );
+  return camposAlterados(payload, gravado).length > 0;
+}
+
+/** Para o histórico: status tem evento próprio, vendedor acompanha o cliente. */
+export const IGNORADOS_NO_HISTORICO: ReadonlySet<string> = new Set([
+  'status',
+  'vendedorId',
+  'itens',
+]);
+
+const ROTULO_CAMPO: Record<string, string> = {
+  titulo: 'título',
+  clienteId: 'cliente',
+  oportunidadeId: 'oportunidade',
+  condicaoPagamentoId: 'condição de pagamento',
+  tabelaPrecoId: 'tabela de preço',
+  dataValidade: 'validade',
+  dataRetorno: 'data de retorno',
+  observacao: 'observação',
+  ativo: 'ativo/inativo',
+};
+
+/**
+ * "Alterado: itens, condição de pagamento." — o que o histórico mostra.
+ * Os dados do interessado (prospect*) viram um item só.
+ */
+export function descreverAlteracao(campos: string[]): string {
+  const rotulos = [
+    ...new Set(
+      campos.map((c) =>
+        c.startsWith('prospect')
+          ? 'dados do interessado'
+          : (ROTULO_CAMPO[c] ?? c),
+      ),
+    ),
+  ];
+  return `Alterado: ${rotulos.join(', ')}.`;
 }

@@ -223,6 +223,19 @@ export class OrcamentosController {
   }
 
   @ApiOperation({
+    summary: 'Histórico completo do orçamento',
+    description:
+      'Tudo o que aconteceu com o orçamento, do mais recente ao mais antigo: cadastro, ' +
+      'alterações (com os campos alterados), PDF, envio, link, decisão, autorização de ' +
+      'desconto e retornos — com quem fez e quando. Requer orcamentos.visualizar.',
+  })
+  @RequirePermission('orcamentos', 'visualizar')
+  @Get(':id/historico')
+  historico(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.historico(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
     summary: 'Histórico da autorização de desconto',
     description:
       'Cada pedido, liberação e recusa de desconto do orçamento, em ordem: quem fez, quando e ' +

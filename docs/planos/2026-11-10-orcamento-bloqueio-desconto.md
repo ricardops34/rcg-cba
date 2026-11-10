@@ -59,3 +59,16 @@ liberou ou recusou, e data e hora. Rota `GET /orcamentos/:id/historico-desconto`
 (lê as Atividades que cada etapa já grava — todas as rodadas, inclusive as que a
 recusa/novo pedido limparam dos campos do orçamento). Tabela na aba "Aprovação e
 integração" e nome + justificativa no aviso do topo do formulário.
+
+## Histórico completo na aba Histórico (2026-11-10)
+
+Decisão do usuário: sem aba nova — a aba Histórico abre com "Histórico deste
+orçamento" (o quê, quem, quando, detalhe; rota `GET /orcamentos/:id/historico`) e,
+abaixo, a linha do tempo do cliente. A aba passa a existir também no orçamento de
+interessado sem cadastro.
+
+- Alteração registra os campos que mudaram ("Alterado: itens, condição de
+  pagamento."); salvar sem mudança nenhuma não gera mais registro.
+- Aprovação/recusa: título sem "pelo cliente" (vale para link, portal e vendedor);
+  o canal vai no detalhe ("Efetivado no sistema", "(pelo link ...)"); o autor diz
+  quem — usuário, "Cliente (portal)", "Cliente (link)" ou "Atendimento automático".

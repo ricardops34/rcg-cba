@@ -77,6 +77,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusDot } from "@/components/crud/status-dot";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { OrcamentoTimeline } from "@/components/crud/orcamento-timeline";
+import { OrcamentoHistorico } from "@/components/crud/orcamento-historico";
 import {
   OrcamentoHistoricoDesconto,
   ultimoEvento,
@@ -1644,7 +1645,7 @@ export function OrcamentoFormContent({
               {/* O histórico é do cliente, então já vale antes de gravar. Já
                   aprovação/integração só existe depois (status, codigoErp e
                   auditoria vêm do servidor). */}
-              {clienteId && <TabsTrigger data-tour="orcamento-historico" value="historico">Histórico</TabsTrigger>}
+              {(registro || clienteId) && <TabsTrigger data-tour="orcamento-historico" value="historico">Histórico</TabsTrigger>}
               {registro && <TabsTrigger data-tour="orcamento-integracao" value="integracao">Aprovação e integração</TabsTrigger>}
             </TabsList>
 
@@ -2561,13 +2562,26 @@ export function OrcamentoFormContent({
                   </TabsContent>
                 )}
 
-            {clienteId && (
-              <TabsContent value="historico" className="space-y-2 pt-3">
-                <p className="text-sm text-muted-foreground">
-                  Atendimentos registrados com este cliente — tudo que aconteceu até chegar neste
-                  orçamento.
-                </p>
-                <OrcamentoTimeline clienteId={clienteId} orcamentoId={registro?.id} />
+            {(registro || clienteId) && (
+              <TabsContent value="historico" className="space-y-4 pt-3">
+                {/* Primeiro o orçamento (completo, com quem fez); depois o
+                    contexto do cliente. Orçamento de interessado sem cadastro
+                    só tem a primeira parte. */}
+                {registro && (
+                  <section className="space-y-2">
+                    <h3 className="text-sm font-medium">Histórico deste orçamento</h3>
+                    <OrcamentoHistorico orcamentoId={registro.id} />
+                  </section>
+                )}
+                {clienteId && (
+                  <section className="space-y-2">
+                    <h3 className="text-sm font-medium">Atendimentos do cliente</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Tudo que aconteceu com este cliente até chegar neste orçamento.
+                    </p>
+                    <OrcamentoTimeline clienteId={clienteId} orcamentoId={registro?.id} />
+                  </section>
+                )}
               </TabsContent>
             )}
 

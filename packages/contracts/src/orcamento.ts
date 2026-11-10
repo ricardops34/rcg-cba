@@ -395,6 +395,18 @@ export function autorizacaoDescontoSituacao(o: {
  * `null` = orçamento sem pendência de desconto. `exige` vem do servidor
  * (`exigeAutorizacaoDesconto`).
  */
+/** GET /orcamentos/:id/historico — tudo o que aconteceu, do mais recente ao mais antigo. */
+export interface HistoricoOrcamentoEvento {
+  id: string;
+  titulo: string;
+  detalhe: string | null;
+  em: string;
+  /** Usuário, "Cliente (portal)", "Cliente (link)" ou "Atendimento automático". */
+  por: string;
+  /** Atividade ainda em aberto (pedido de liberação, retorno agendado). */
+  pendente: boolean;
+}
+
 /** GET /orcamentos/:id/historico-desconto — cada pedido/liberação/recusa, em ordem. */
 export interface HistoricoDescontoEvento {
   evento: "solicitada" | "autorizada" | "recusada";

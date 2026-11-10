@@ -1,4 +1,33 @@
-import { cabecalhoMudou, itensMudaram } from './orcamento-alterado';
+import {
+  cabecalhoMudou,
+  camposAlterados,
+  descreverAlteracao,
+  IGNORADOS_NO_HISTORICO,
+  itensMudaram,
+} from './orcamento-alterado';
+
+describe('histórico da alteração', () => {
+  it('lista só o que mudou, e ativo conta no histórico', () => {
+    expect(
+      camposAlterados(
+        { titulo: 'A', ativo: false, status: 'aprovado', observacao: 'x' },
+        { titulo: 'A', ativo: true, status: 'rascunho', observacao: null },
+        IGNORADOS_NO_HISTORICO,
+      ),
+    ).toEqual(['ativo', 'observacao']);
+  });
+
+  it('descreve com rótulos e junta os dados do interessado', () => {
+    expect(
+      descreverAlteracao([
+        'itens',
+        'condicaoPagamentoId',
+        'prospectNome',
+        'prospectTelefone',
+      ]),
+    ).toBe('Alterado: itens, condição de pagamento, dados do interessado.');
+  });
+});
 
 describe('orcamento-alterado', () => {
   const item = (produtoId: string, quantidade = 1, vlrUnitario = 10) => ({

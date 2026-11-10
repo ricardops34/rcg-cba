@@ -35,8 +35,10 @@ const TITULO: Record<EventoOrcamento, (numero: string) => string> = {
   pdf: (n) => `Proposta em PDF gerada — orçamento nº ${n}`,
   envio_whatsapp: (n) => `Proposta enviada pelo WhatsApp — orçamento nº ${n}`,
   link_gerado: (n) => `Link do orçamento nº ${n} gerado para o cliente`,
-  aprovacao_cliente: (n) => `Orçamento nº ${n} aprovado pelo cliente`,
-  recusa_cliente: (n) => `Orçamento nº ${n} recusado pelo cliente`,
+  // Sem "pelo cliente": o mesmo evento vem do link, do portal e do vendedor
+  // efetivando na tela. O canal vai na descrição; quem fez, no autor.
+  aprovacao_cliente: (n) => `Orçamento nº ${n} aprovado`,
+  recusa_cliente: (n) => `Orçamento nº ${n} recusado`,
   autorizacao_solicitada: (n) =>
     `Autorização de desconto solicitada — orçamento nº ${n}`,
   autorizacao_concedida: (n) => `Desconto autorizado — orçamento nº ${n}`,
@@ -239,19 +241,7 @@ export async function historicoDescontoOrcamento(
     select: { titulo: true, descricao: true, createdAt: true, createdBy: true },
     orderBy: { createdAt: 'asc' },
   });
-  const autores = [
-    ...new Set(
-      atividades.map((a) => a.createdBy).filter((v): v is string => !!v),
-    ),
-  ];
-  const nomes = new Map(
-    (
-      await tx.usuario.findMany({
-        where: { id: { in: autores } },
-        select: { id: true, nome: true },
-      })
-    ).map((u) => [u.id, u.nome]),
-  );
+  const nomes = await nomesDosAutores(tx, atividades);
   return atividades.flatMap((a) => {
     const prefixo = Object.keys(PREFIXO_EVENTO_DESCONTO).find((p) =>
       a.titulo.startsWith(p),
@@ -270,6 +260,79 @@ export async function historicoDescontoOrcamento(
       },
     ];
   });
+}
+
+/** Nome dos usuários que gravaram as atividades (createdBy é o id). */
+async function nomesDosAutores(
+  tx: TenantTx,
+  atividades: { createdBy: string | null }[],
+) {
+  const autores = [
+    ...new Set(
+      atividades.map((a) => a.createdBy).filter((v): v is string => !!v),
+    ),
+  ];
+  if (autores.length === 0) return new Map<string, string>();
+  return new Map(
+    (
+      await tx.usuario.findMany({
+        where: { id: { in: autores } },
+        select: { id: true, nome: true },
+      })
+    ).map((u) => [u.id, u.nome]),
+  );
+}
+
+/**
+ * Quem fez, para o histórico. Além do usuário da plataforma, o autor pode ser
+ * o próprio cliente: pelo portal o createdBy é `portal-cliente:<contato>`; pelo
+ * link e pelo atendimento automático do WhatsApp não há autor (nulo), e a
+ * descrição gravada pelo link diz "(pelo link ...)".
+ */
+function autorDoHistorico(
+  createdBy: string | null,
+  descricao: string | null,
+  nomes: Map<string, string>,
+): string {
+  if (createdBy?.startsWith('portal-cliente:')) return 'Cliente (portal)';
+  if (createdBy) return nomes.get(createdBy) ?? 'Usuário removido';
+  if (descricao?.includes('(pelo link')) return 'Cliente (link)';
+  return 'Atendimento automático';
+}
+
+/**
+ * Histórico completo do orçamento — tudo o que aconteceu com ele, em ordem:
+ * cadastro, alterações (com os campos), PDF, envio, link, decisão do cliente,
+ * autorização de desconto e retornos agendados. Mostrado na aba Histórico do
+ * formulário, acima da linha do tempo do cliente.
+ */
+export async function historicoOrcamento(
+  tx: TenantTx,
+  empresaId: string,
+  orcamentoId: string,
+) {
+  const atividades = await tx.atividade.findMany({
+    where: { empresaId, orcamentoId, deletedAt: null },
+    select: {
+      id: true,
+      titulo: true,
+      descricao: true,
+      createdAt: true,
+      createdBy: true,
+      concluida: true,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 500,
+  });
+  const nomes = await nomesDosAutores(tx, atividades);
+  return atividades.map((a) => ({
+    id: a.id,
+    titulo: a.titulo,
+    detalhe: a.descricao,
+    em: a.createdAt,
+    por: autorDoHistorico(a.createdBy, a.descricao, nomes),
+    pendente: !a.concluida,
+  }));
 }
 
 /**

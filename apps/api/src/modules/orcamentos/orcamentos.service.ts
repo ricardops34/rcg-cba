@@ -45,10 +45,17 @@ import {
   orcamentoExigeAutorizacao,
   orcamentosQueExigemAutorizacao,
   historicoDescontoOrcamento,
+  historicoOrcamento,
   registrarAtividadeOrcamento,
 } from './registrar-atividade-orcamento';
 import { calcularItensOrcamento } from './calcular-itens-orcamento';
-import { cabecalhoMudou, itensMudaram } from './orcamento-alterado';
+import {
+  cabecalhoMudou,
+  camposAlterados,
+  descreverAlteracao,
+  IGNORADOS_NO_HISTORICO,
+  itensMudaram,
+} from './orcamento-alterado';
 import { resolverTabelaDoOrcamento } from './resolver-tabela-do-orcamento';
 import { montarOrcamentoPdf } from './orcamento-pdf';
 import { proximoNumeroOrcamento } from './proximo-numero-orcamento';
@@ -607,6 +614,14 @@ export class OrcamentosService {
     });
   }
 
+  /** Tudo o que aconteceu com o orçamento, do mais recente ao mais antigo. */
+  historico(empresaId: string, user: AuthenticatedUser, id: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.buscarParaAcao(tx, empresaId, { tipo: 'usuario', user }, id);
+      return historicoOrcamento(tx, empresaId, id);
+    });
+  }
+
   /** Pedidos, liberações e recusas de desconto do orçamento, em ordem. */
   historicoDesconto(empresaId: string, user: AuthenticatedUser, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
@@ -898,10 +913,23 @@ export class OrcamentosService {
             select: { produtoId: true, quantidade: true, vlrUnitario: true },
           })
         : [];
+      const itensAlterados = !!itens && itensMudaram(itensGravados, itens);
+      const tabelaAlterada = tabelaPrecoId !== orcamento.tabelaPrecoId;
       const alterou =
-        (!!itens && itensMudaram(itensGravados, itens)) ||
-        tabelaPrecoId !== orcamento.tabelaPrecoId ||
+        itensAlterados ||
+        tabelaAlterada ||
         cabecalhoMudou(this.limpar(header), orcamento);
+      // O que o histórico registra como alterado (inclui ativo/inativo, que
+      // não derruba a liberação).
+      const camposDoHistorico = [
+        ...(itensAlterados ? ['itens'] : []),
+        ...(tabelaAlterada ? ['tabelaPrecoId'] : []),
+        ...camposAlterados(
+          this.limpar(header),
+          orcamento,
+          IGNORADOS_NO_HISTORICO,
+        ).filter((c) => c !== 'tabelaPrecoId'),
+      ];
       const derrubaDesconto = alterou
         ? {
             descontoSolicitadoEm: null,
@@ -990,6 +1018,18 @@ export class OrcamentosService {
       // uma alteração.
       // Chegar aqui com o status anterior 'aprovado' é impossível (a guarda
       // no topo já recusou), então virar 'aprovado' é sempre transição nova.
+      // Alteração junto com a decisão (o formulário grava tudo de uma vez)
+      // também fica registrada: são dois fatos.
+      if (camposDoHistorico.length > 0) {
+        await registrarAtividadeOrcamento(
+          tx,
+          empresaId,
+          user.id,
+          'alteracao',
+          paraAtividade,
+          descreverAlteracao(camposDoHistorico),
+        );
+      }
       if (header.status === 'aprovado') {
         await registrarAtividadeOrcamento(
           tx,
@@ -997,6 +1037,7 @@ export class OrcamentosService {
           user.id,
           'aprovacao_cliente',
           paraAtividade,
+          'Efetivado no sistema',
         );
       } else if (
         header.status === 'recusado' &&
@@ -1008,14 +1049,7 @@ export class OrcamentosService {
           user.id,
           'recusa_cliente',
           paraAtividade,
-        );
-      } else {
-        await registrarAtividadeOrcamento(
-          tx,
-          empresaId,
-          user.id,
-          'alteracao',
-          paraAtividade,
+          'Recusa registrada no sistema',
         );
       }
 
