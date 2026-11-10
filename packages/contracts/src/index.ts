@@ -131,3 +131,4 @@ export * from "./email-config";
 export * from "./equipamento-comodato";
 export * from "./relatorios";
 export * from "./roteiro";
+export * from "./push";

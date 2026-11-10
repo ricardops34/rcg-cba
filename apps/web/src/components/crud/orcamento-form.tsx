@@ -2772,7 +2772,7 @@ export function OrcamentoFormContent({
 
         <CardFooter
           data-tour="orcamento-acoes"
-          className="grid grid-cols-2 gap-2 max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:border-t max-sm:bg-card sm:flex sm:flex-wrap sm:justify-end"
+          className="grid grid-cols-2 gap-2 max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:border-t max-sm:bg-card max-sm:pb-[max(var(--card-spacing),env(safe-area-inset-bottom))] sm:flex sm:flex-wrap sm:justify-end"
         >
           {/* PDF só depois de salvo — precisa dos itens com produto e do total
               consolidado pelo servidor. */}

@@ -1028,6 +1028,35 @@ container"), confira que ela chegou ao container.
 Conferir: `SELECT parametro, left(conteudo, 11) FROM parametros_empresa WHERE tipo = 'senha' AND conteudo IS NOT NULL`
 deve devolver só `cifrado:v1:`; e o **Enviar e-mail de teste** continua funcionando.
 
+### Chaves do aviso no celular (VAPID) **[escrito em 2026-11-10, não rodado na VPS]**
+
+O aviso no celular (Web Push, plano `docs/planos/2026-11-10-app-celular.md`)
+precisa de um par de chaves VAPID **por stack**. Sem ele nada quebra: a API
+loga `Chaves VAPID ausentes: aviso no celular desligado.` e o Perfil mostra
+"ainda não foi ativado no servidor".
+
+Gerar uma vez, com a imagem nova da API já no ar (a biblioteca vem nela):
+
+```bash
+docker exec $(docker ps -q -f name=<stack>_api | head -1) \
+  node -e "console.log(require('web-push').generateVAPIDKeys())"
+# → VAPID_PUBLIC_KEY=<publicKey>   VAPID_PRIVATE_KEY=<privateKey>
+#   VAPID_SUBJECT=mailto:<e-mail do responsável>
+```
+
+Gravar as três em Stacks → `<stack>` → Env e reimplantar. As variáveis já estão
+no YML do repo; como o do Portainer diverge, confira que chegaram ao container
+(ver "Armadilha: variável do Portainer que não chega ao container").
+
+- **Trocar o par depois** invalida a assinatura de todos os aparelhos: cada
+  pessoa precisa desligar e ligar de novo no Perfil. Guarde junto das outras chaves.
+- A migration `20261110120000_app_celular_sessao_push` marca as notificações
+  existentes como já tratadas — o primeiro envio não dispara o sino antigo.
+
+Conferir: no celular, Perfil › Conta › **App no celular** › ligar o aviso ›
+**Enviar aviso de teste**. No iPhone só funciona com o app instalado pela
+tela inicial (iOS 16.4+).
+
 ## SMS pela iAgente **[a confirmar — escrito em 2026-10-01, sem envio real]**
 
 Plano: `docs/planos/2026-10-01-sms-iagente.md`. As migrations

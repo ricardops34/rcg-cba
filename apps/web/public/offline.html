@@ -1,0 +1,71 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta name="theme-color" content="#1d4ed8" />
+    <title>Sem conexão</title>
+    <style>
+      :root {
+        --fundo: #ffffff;
+        --texto: #0f172a;
+        --suave: #64748b;
+        --borda: #e2e8f0;
+        --acento: #1d4ed8;
+      }
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fundo: #0b1120;
+          --texto: #e2e8f0;
+          --suave: #94a3b8;
+          --borda: #1e293b;
+          --acento: #3b82f6;
+        }
+      }
+      * { box-sizing: border-box; }
+      html, body { height: 100%; margin: 0; }
+      body {
+        background: var(--fundo);
+        color: var(--texto);
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: max(16px, env(safe-area-inset-top)) 16px max(16px, env(safe-area-inset-bottom));
+      }
+      main {
+        max-width: 360px;
+        width: 100%;
+        text-align: center;
+        border: 1px solid var(--borda);
+        border-radius: 16px;
+        padding: 28px 20px;
+      }
+      h1 { font-size: 1.15rem; margin: 12px 0 6px; }
+      p { color: var(--suave); font-size: 0.95rem; line-height: 1.45; margin: 0 0 20px; }
+      button {
+        width: 100%;
+        min-height: 44px;
+        border: 0;
+        border-radius: 10px;
+        background: var(--acento);
+        color: #fff;
+        font-size: 1rem;
+        font-weight: 600;
+      }
+      svg { color: var(--suave); }
+    </style>
+  </head>
+  <body>
+    <main>
+      <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+        <path d="M12 20h.01" /><path d="M8.5 16.43a5 5 0 0 1 7 0" /><path d="M5 12.86a10 10 0 0 1 5.17-2.69" />
+        <path d="M19 12.86a10 10 0 0 0-2-1.43" /><path d="M2 8.82a15 15 0 0 1 4.18-2.65" />
+        <path d="M22 8.82a15 15 0 0 0-11.29-3.76" /><path d="m2 2 20 20" />
+      </svg>
+      <h1>Sem conexão</h1>
+      <p>O sistema precisa de internet para mostrar preço, estoque e pedidos sempre atualizados. Confira o Wi-Fi ou os dados móveis e tente de novo.</p>
+      <button type="button" onclick="location.reload()">Tentar de novo</button>
+    </main>
+  </body>
+</html>

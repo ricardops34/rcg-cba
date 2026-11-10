@@ -108,27 +108,36 @@ não amplia quem vê o quê.
 
 | # | Decisão | Proposta | Resposta |
 |---|---|---|---|
-| D1 | Caminho | **A (PWA completo) agora**; B (Capacitor nas lojas) só se as lojas forem exigência comercial | _pendente_ |
-| D2 | Sessão única com o celular | **Uma sessão de computador + uma de celular** por usuário; um segundo celular derruba o primeiro, como hoje acontece entre computadores | _pendente_ |
-| D3 | Quais avisos viram notificação no celular | Liberação de desconto (para o supervisor), pedido/orçamento liberado ou recusado, agenda do dia, recado da equipe. Mensagem de WhatsApp: **não** no início (volume alto; tem o próprio ícone) | _pendente_ |
-| D4 | Nome e ícone (multicliente) | Um app só, neutro, com a marca da empresa dentro (logo já existe por empresa). Um app por cliente só no caminho B, e cada um custa uma publicação | _pendente_ |
-| D5 | Offline | **Nenhum dado offline** (mantém a decisão do `sw.js`); só a tela de "sem conexão" | _pendente_ |
+| D1 | Caminho | **A (PWA completo) agora**; B (Capacitor nas lojas) só se as lojas forem exigência comercial | **A** (10/11) |
+| D2 | Sessão única com o celular | **Uma sessão de computador + uma de celular** por usuário; um segundo celular derruba o primeiro, como hoje acontece entre computadores | **1 computador + 1 celular** (10/11) |
+| D3 | Quais avisos viram notificação no celular | Liberação de desconto (para o supervisor), pedido/orçamento liberado ou recusado, agenda do dia, recado da equipe. Mensagem de WhatsApp: **não** no início (volume alto; tem o próprio ícone) | **Tudo que vai para o sino**, menos mensagem de WhatsApp; respeita o expediente (10/11) |
+| D4 | Nome e ícone (multicliente) | Um app só, neutro, com a marca da empresa dentro (logo já existe por empresa). Um app por cliente só no caminho B, e cada um custa uma publicação | Proposta adotada por padrão (nome "CRM"); revisitar se for para as lojas |
+| D5 | Offline | **Nenhum dado offline** (mantém a decisão do `sw.js`); só a tela de "sem conexão" | Proposta adotada por padrão |
 
 ## 7. Fases
 
 | Fase | Entrega | Depende de | Situação |
 |---|---|---|---|
-| F1 | Sessão por tipo de aparelho (D2) + testes do guard e do login | D2 | ⬜ |
+| F1 | Sessão por tipo de aparelho (D2) + testes do guard e do login | D2 | ✅ código (10/11) |
 | F2 | Telas do vendedor revisadas e conferidas em aparelho; telas de configuração desligadas | D1–D3 do plano de telas | ⬜ |
-| F3 | Acabamento de app (área segura, sem conexão, versão nova, convite de instalação) | — | ⬜ |
-| F4 | Notificação no celular N1–N7 | D3, chaves VAPID | ⬜ |
+| F3 | Acabamento de app (área segura, sem conexão, versão nova, convite de instalação) | — | ✅ código (10/11) · 📱 conferência pendente |
+| F4 | Notificação no celular N1–N7 | D3, chaves VAPID | ✅ código (10/11) · chaves VAPID na produção pendentes |
 | F5 | Conferência em iPhone e Android instalados, em produção | F1–F4 publicados | ⬜ |
 | F6 | *(se D1 = B)* Capacitor, push nativo, contas e publicação nas lojas | F4, contas | ⬜ |
 
 F1 a F4 são independentes entre si e podem andar em paralelo; F3 é a mais barata e já melhora o
 app que existe hoje.
 
-## 8. Riscos
+## 8. Como ficou (10/11)
+
+- **Sessão** — `sessoes.aparelho` (computador/celular, pelo navegador no login: `common/sessao/aparelho.ts`). O login só encerra a sessão aberta do mesmo tipo. iPad e tablet Android sem "Mobile" contam como computador.
+- **Aviso** — `modules/push`. A notificação continua sendo gravada só por `registrarNotificacao`; um job a cada 20 s lê a fila (`notificacoes.pushEm` nulo), marca e envia. Vai só para aparelho cuja **sessão segue aberta** (sair, ser substituído ou cair no expediente desliga sozinho) e dentro do expediente; aviso com mais de 15 min é descartado. Título genérico por tipo (`push-texto.ts`), corpo "Toque para abrir.", sem dado do fato. Ao entrar de novo, o app religa a assinatura do aparelho para a sessão nova — só se ela já era do mesmo usuário.
+- **Tela** — Perfil › Conta › *App no celular*: instalar, ligar/desligar o aviso neste aparelho, aviso de teste. Faixa de convite no celular fora do app instalado (dispensável).
+- **Acabamento** — `sw.js` com `push`, `notificationclick` e `offline.html` (único arquivo em cache); `viewport-fit=cover` e margem da barra de gestos no conteúdo e no rodapé do orçamento; `/versao` + aviso "Nova versão disponível" no app aberto.
+- **Operação** — variáveis `VAPID_*` nas stacks e passo no runbook ("Chaves do aviso no celular (VAPID)").
+- **Fica para depois** — F2 (telas, depende do plano de telas no celular) e F5 (conferência em iPhone e Android, após publicar).
+
+## 9. Riscos
 
 - **iPhone sem instalar não recebe push.** Quem usa pelo Safari sem "Adicionar à Tela de Início" não é avisado — por isso o convite de instalação (4.3) faz parte da entrega, não é enfeite.
 - **Texto do aviso na tela bloqueada.** Valor de pedido, nome de cliente e desconto ficam visíveis para quem pegar o aparelho. Aviso curto ("Novo pedido de desconto aguardando"), detalhe só dentro do app.

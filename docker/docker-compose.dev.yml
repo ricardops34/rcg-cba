@@ -77,6 +77,11 @@ services:
       # Cifra os parâmetros de tipo senha (SMTP_SENHA, SMS_TOKEN). Chave
       # própria, como as do agente e do WhatsApp.
       PARAMETROS_CRYPTO_KEY: ${PARAMETROS_CRYPTO_KEY:-ZGV2LW9ubHktcGFyYW1ldHJvcy1jcnlwdG8ta2V5ISE=}
+      # Aviso no celular (Web Push). Par VAPID só de desenvolvimento — a
+      # produção gera o seu (runbook, "Chaves do aviso no celular").
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-BDdUuo_qrQPA476YdskObrAGf7OFkokNGGE7gJWuhKykjomTJjcNqO802x1nfoJaQ9Ex8AtR9UrAawxQl9RxGVY}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-301FoeCUjC4q371pDoUogqZ90B7dHS2QX9i8EZyYXjY}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-mailto:dev@localhost}
       # Endereço que a Evolution GO usa para chamar a API de volta. É o nome do
       # serviço na rede do compose: `localhost` aqui apontaria para dentro do
       # container do gateway, e nenhum evento chegaria.

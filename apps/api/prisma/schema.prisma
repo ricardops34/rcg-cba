@@ -310,6 +310,7 @@ model Usuario {
   horarios                    UsuarioHorario[]
   acessos                     AcessoLog[]
   sessoes                     Sessao[]
+  pushAssinaturas             PushAssinatura[]
   notificacoes                Notificacao[]
   whatsappVinculos            WhatsappVinculoFuncionario[]
   whatsappSessoes             WhatsappSessao[]
@@ -932,13 +933,48 @@ model Sessao {
   motivoFim         String?
   ip                String?
   userAgent         String?
+  /**
+   * "computador" ou "celular", deduzido do navegador no login. Sessão única
+   * por tipo de aparelho (decisão de 2026-11-10): o login novo só derruba a
+   * sessão aberta do mesmo tipo — o vendedor fica no computador e no celular.
+   */
+  aparelho          String    @default("computador")
 
-  usuario       Usuario        @relation(fields: [usuarioId], references: [id])
-  refreshTokens RefreshToken[]
+  usuario         Usuario          @relation(fields: [usuarioId], references: [id])
+  refreshTokens   RefreshToken[]
+  pushAssinaturas PushAssinatura[]
 
   @@index([usuarioId, iniciadaEm])
   @@index([usuarioId, encerradaEm])
   @@map("sessoes")
+}
+
+/**
+ * Aparelho que aceitou receber notificação no celular (Web Push).
+ *
+ * Por usuário, sem `empresaId`, como `sessoes`: é o aparelho da pessoa, não um
+ * dado de empresa. O aviso só sai enquanto a sessão de onde a assinatura veio
+ * estiver aberta — sair, ser substituído por outro aparelho ou cair no fim do
+ * expediente desliga o aviso sem passo extra.
+ */
+model PushAssinatura {
+  id         String   @id @default(uuid())
+  usuarioId  String
+  sessaoId   String?
+  /** URL do serviço de push do navegador; identifica o aparelho. */
+  endpoint   String   @unique
+  p256dh     String
+  auth       String
+  userAgent  String?
+  criadaEm   DateTime @default(now())
+  /** Último envio aceito pelo serviço de push. */
+  ultimoEnvioEm DateTime?
+
+  usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
+  sessao  Sessao? @relation(fields: [sessaoId], references: [id], onDelete: SetNull)
+
+  @@index([usuarioId])
+  @@map("push_assinaturas")
 }
 
 enum AcessoEvento {
@@ -5354,6 +5390,12 @@ model Notificacao {
    */
   ocorridaEm DateTime
   lidaEm     DateTime?
+  /**
+   * Quando o envio para o celular tratou esta linha (enviado, ou descartado
+   * por não haver aparelho / estar fora do expediente). Nulo = ainda na fila.
+   * É a fila de saída do Web Push: quem grava a notificação não envia nada.
+   */
+  pushEm     DateTime?
 
   criadaEm     DateTime @default(now())
   atualizadaEm DateTime @updatedAt

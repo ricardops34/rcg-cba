@@ -1,5 +1,9 @@
 import { BadRequestException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { MOTIVO_DESCONECTADO } from '../../common/sessao/sessao-encerrada.exception';
+import {
+  aparelhoDoNavegador,
+  type Aparelho,
+} from '../../common/sessao/aparelho';
 import { HORARIO_TIMEZONE } from '../../common/horario/horario-trabalho';
 import { AcessoEvento } from '@prisma/client';
 import type { AcessoQuery } from '@plataforma/contracts';
@@ -94,6 +98,7 @@ export class AcessosService {
         empresaId: dados.empresaId,
         ip: dados.ip ?? null,
         userAgent: dados.userAgent?.slice(0, 300) ?? null,
+        aparelho: aparelhoDoNavegador(dados.userAgent),
       },
       select: { id: true },
     });
@@ -149,10 +154,11 @@ export class AcessosService {
   /**
    * Encerra sessões abertas e revoga os refresh tokens delas — sem isto a outra
    * ponta renovaria o token e seguiria logada. `manter` é a sessão que fica
-   * (a do login que acabou de acontecer).
+   * (a do login que acabou de acontecer). `aparelho` restringe ao mesmo tipo
+   * — é como o login aplica a sessão única por tipo de aparelho.
    */
   async encerrarSessoes(
-    filtro: { usuarioId: string; manter?: string; sessaoId?: string },
+    filtro: { usuarioId: string; manter?: string; sessaoId?: string; aparelho?: Aparelho },
     motivo: string,
   ) {
     const abertas = await this.prisma.sessao.findMany({
@@ -160,6 +166,7 @@ export class AcessosService {
         usuarioId: filtro.usuarioId,
         encerradaEm: null,
         ...(filtro.sessaoId ? { id: filtro.sessaoId } : {}),
+        ...(filtro.aparelho ? { aparelho: filtro.aparelho } : {}),
         ...(filtro.manter ? { NOT: { id: filtro.manter } } : {}),
       },
       select: { id: true, empresaId: true },

@@ -5,6 +5,7 @@ import { Camera, MessageCircle, ShieldCheck, UserRound } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthStore } from "@/stores/auth-store";
+import { AppCelularCard } from "@/components/perfil/app-celular-card";
 import { AssinaturaWhatsappCard } from "@/components/perfil/assinatura-whatsapp-card";
 import { ChangePasswordForm } from "@/components/perfil/change-password-form";
 import { DadosPessoaisCard } from "@/components/perfil/dados-pessoais-card";
@@ -78,6 +79,7 @@ export default function PerfilPage() {
           )}
           <DadosPessoaisCard />
           <TelaInicialCard />
+          <AppCelularCard />
         </TabsContent>
 
         <TabsContent value="whatsapp" className="space-y-4">

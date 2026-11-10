@@ -48,6 +48,7 @@ import { AgenteModule } from './modules/agente/agente.module';
 import { DemoModule } from './modules/demo/demo.module';
 import { WhatsappModule } from './modules/whatsapp/whatsapp.module';
 import { NotificacoesModule } from './modules/notificacoes/notificacoes.module';
+import { PushModule } from './modules/push/push.module';
 import { InicioModule } from './modules/inicio/inicio.module';
 import { MeusAtendimentosModule } from './modules/meus-atendimentos/meus-atendimentos.module';
 import { AcessosModule } from './modules/acessos/acessos.module';
@@ -157,6 +158,7 @@ import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-econo
     DemoModule,
     WhatsappModule,
     NotificacoesModule,
+    PushModule,
     InicioModule,
     MeusAtendimentosModule,
     PortalClienteModule,
