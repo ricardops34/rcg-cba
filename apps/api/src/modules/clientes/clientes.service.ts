@@ -1690,7 +1690,7 @@ export class ClientesService {
         resolverEscopoVendedores(tx, empresaId, user),
         tx.vendedor.findFirst({
           where: { usuarioId: user.id, empresaId, deletedAt: null },
-          select: { id: true, tipo: true },
+          select: { id: true, tipo: true, atendeOutrasCarteiras: true },
         }),
       ]);
       // uf/municipio (facetas irmãs já selecionadas no filtro) sempre
@@ -1754,6 +1754,10 @@ export class ClientesService {
         restrito: escopo !== null,
         ehVendedorPuro,
         meuVendedorId: vendedorProprio?.id ?? null,
+        // Vê orçamento de qualquer carteira (Vendedor.atendeOutrasCarteiras):
+        // a listagem de orçamentos mostra o filtro rápido Minha/Outras.
+        atendeOutrasCarteiras:
+          escopo !== null && (vendedorProprio?.atendeOutrasCarteiras ?? false),
       };
     });
   }

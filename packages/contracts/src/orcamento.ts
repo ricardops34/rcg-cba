@@ -312,6 +312,9 @@ export const orcamentoSchema = z.object({
   descontoSolicitacaoMotivo: z.string().nullish(),
   descontoRecusadoEm: z.string().datetime().nullish(),
   descontoRecusaMotivo: z.string().nullish(),
+  // Calculado na listagem (não é coluna): algum item no máximo da regra ou
+  // acima, em orçamento aberto. Ver situacaoDescontoOrcamento.
+  exigeAutorizacaoDesconto: z.boolean().optional(),
   // Resposta do cliente e por onde entrou: link, portal ou sistema (vendedor na tela).
   clienteDecisao: z.string().nullish(),
   clienteDecididoEm: z.string().datetime().nullish(),
@@ -380,6 +383,45 @@ export function autorizacaoDescontoSituacao(o: {
   return "nao_solicitada";
 }
 
+/**
+ * Situação do desconto como a listagem mostra e filtra — o que o
+ * supervisor/gerente precisa analisar:
+ *
+ * - `bloqueado` — desconto no máximo da regra ou acima, ninguém pediu liberação;
+ * - `aguardando` — o vendedor pediu e o superior ainda não respondeu;
+ * - `recusado` — o superior recusou e o desconto continua acima do máximo;
+ * - `liberado` — autorizado; PDF, link e efetivação liberados.
+ *
+ * `null` = orçamento sem pendência de desconto. `exige` vem do servidor
+ * (`exigeAutorizacaoDesconto`).
+ */
+export const situacaoDescontoFiltroSchema = z.enum([
+  "bloqueado",
+  "aguardando",
+  "recusado",
+  "liberado",
+]);
+export type SituacaoDesconto = z.infer<typeof situacaoDescontoFiltroSchema>;
+
+export const SITUACAO_DESCONTO_ROTULO: Record<SituacaoDesconto, string> = {
+  bloqueado: "Bloqueado por desconto",
+  aguardando: "Aguardando liberação",
+  recusado: "Desconto recusado",
+  liberado: "Desconto liberado",
+};
+
+export function situacaoDescontoOrcamento(o: {
+  exigeAutorizacaoDesconto?: boolean;
+  descontoSolicitadoEm: string | Date | null;
+  descontoAutorizadoEm: string | Date | null;
+  descontoRecusadoEm?: string | Date | null;
+}): SituacaoDesconto | null {
+  if (o.descontoAutorizadoEm) return "liberado";
+  if (o.descontoSolicitadoEm) return "aguardando";
+  if (!o.exigeAutorizacaoDesconto) return null;
+  return o.descontoRecusadoEm ? "recusado" : "bloqueado";
+}
+
 export const orcamentoQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
   status: statusOrcamentoSchema.optional(),
@@ -419,6 +461,14 @@ export const orcamentoQuerySchema = paginationQuerySchema.extend({
    * ERP).
    */
   situacao: z.enum(["aberto", "vencido", "faturado"]).optional(),
+  /** Trava de desconto — ver situacaoDescontoOrcamento. */
+  desconto: situacaoDescontoFiltroSchema.optional(),
+  /**
+   * Para quem atende outras carteiras: **minha** = a própria hierarquia
+   * (ele e quem está abaixo), **outras** = o resto. Sem efeito para quem não
+   * tem a marca — o escopo já é só a hierarquia, ou a empresa toda.
+   */
+  carteira: z.enum(["minha", "outras"]).optional(),
 });
 export type OrcamentoQuery = z.infer<typeof orcamentoQuerySchema>;
 

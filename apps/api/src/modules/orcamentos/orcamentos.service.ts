@@ -19,6 +19,7 @@ import {
 import {
   combinarFiltroVendedor,
   resolverEscopoOrcamentos,
+  resolverEscopoVendedores,
   type EscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
 import {
@@ -42,9 +43,11 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
 import { criarAtividadeRetorno } from './criar-atividade-retorno';
 import {
   orcamentoExigeAutorizacao,
+  orcamentosQueExigemAutorizacao,
   registrarAtividadeOrcamento,
 } from './registrar-atividade-orcamento';
 import { calcularItensOrcamento } from './calcular-itens-orcamento';
+import { cabecalhoMudou, itensMudaram } from './orcamento-alterado';
 import { resolverTabelaDoOrcamento } from './resolver-tabela-do-orcamento';
 import { montarOrcamentoPdf } from './orcamento-pdf';
 import { proximoNumeroOrcamento } from './proximo-numero-orcamento';
@@ -420,6 +423,33 @@ export class OrcamentosService {
     };
   }
 
+  /**
+   * Filtro "Desconto" da listagem (ver situacaoDescontoOrcamento). Bloqueado e
+   * recusado dependem dos itens contra o máximo da regra — isso vem do SQL de
+   * `orcamentosQueExigemAutorizacao`; aguardando e liberado são só os campos.
+   */
+  private async filtroDesconto(
+    tx: TenantTx,
+    empresaId: string,
+    desconto: OrcamentoQuery['desconto'],
+  ): Promise<Prisma.OrcamentoWhereInput | null> {
+    if (!desconto) return null;
+    if (desconto === 'liberado') return { descontoAutorizadoEm: { not: null } };
+    if (desconto === 'aguardando') {
+      return {
+        descontoSolicitadoEm: { not: null },
+        descontoAutorizadoEm: null,
+      };
+    }
+    const exigem = await orcamentosQueExigemAutorizacao(tx, empresaId);
+    return {
+      id: { in: [...exigem] },
+      descontoSolicitadoEm: null,
+      descontoAutorizadoEm: null,
+      descontoRecusadoEm: desconto === 'recusado' ? { not: null } : null,
+    };
+  }
+
   findAll(
     empresaId: string,
     user: AuthenticatedUser,
@@ -434,6 +464,29 @@ export class OrcamentosService {
         : await resolverEscopoOrcamentos(tx, empresaId, user);
       const numeroBuscado = query.search ? numeroDeBusca(query.search) : null;
       const situacaoWhere = this.filtroSituacao(query.situacao);
+      const descontoWhere = await this.filtroDesconto(
+        tx,
+        empresaId,
+        query.desconto,
+      );
+      // Minha/Outras carteiras: só muda algo para quem enxerga além da própria
+      // hierarquia (atende outras carteiras). Admin e carteira completa não
+      // têm hierarquia própria a separar — o filtro não se aplica.
+      let carteiraWhere: Prisma.OrcamentoWhereInput | null = null;
+      if (query.carteira && escopo === null && !opcoes.ignorarEscopo) {
+        const hierarquia = await resolverEscopoVendedores(tx, empresaId, user);
+        if (hierarquia) {
+          carteiraWhere = {
+            vendedorId:
+              query.carteira === 'minha'
+                ? { in: hierarquia }
+                : { notIn: hierarquia },
+          };
+        }
+      }
+      const filtrosE = [situacaoWhere, descontoWhere, carteiraWhere].filter(
+        (f): f is NonNullable<typeof f> => f !== null,
+      );
       const where = {
         empresaId,
         deletedAt: null,
@@ -474,7 +527,7 @@ export class OrcamentosService {
               },
             }
           : {}),
-        ...(situacaoWhere ? { AND: [situacaoWhere] } : {}),
+        ...(filtrosE.length ? { AND: filtrosE } : {}),
         ...(query.validadeInicio || query.validadeFim
           ? {
               dataValidade: {
@@ -508,8 +561,17 @@ export class OrcamentosService {
         tx.orcamento.count({ where }),
       ]);
       const oculta = await this.comissaoOcultaParaTodos(empresaId);
+      // Etiqueta de desconto por linha: a mesma regra da trava, só para a página.
+      const exigem = await orcamentosQueExigemAutorizacao(
+        tx,
+        empresaId,
+        data.map((o) => o.id),
+      );
       return buildPaginatedResult(
-        data.map((o) => ocultarComissaoDosItens(o, user, oculta)),
+        data.map((o) => ({
+          ...ocultarComissaoDosItens(o, user, oculta),
+          exigeAutorizacaoDesconto: exigem.has(o.id),
+        })),
         total,
         query,
       );
@@ -819,6 +881,29 @@ export class OrcamentosService {
           uf: input.prospectUf ?? orcamento.prospectUf,
         },
       );
+      // Qualquer alteração de fato derruba o pedido/liberação de desconto: ela
+      // foi dada para o orçamento como estava (ver orcamento-alterado.ts).
+      const itensGravados = itens
+        ? await tx.orcamentoItem.findMany({
+            where: { orcamentoId: id },
+            select: { produtoId: true, quantidade: true, vlrUnitario: true },
+          })
+        : [];
+      const alterou =
+        (!!itens && itensMudaram(itensGravados, itens)) ||
+        tabelaPrecoId !== orcamento.tabelaPrecoId ||
+        cabecalhoMudou(this.limpar(header), orcamento);
+      const derrubaDesconto = alterou
+        ? {
+            descontoSolicitadoEm: null,
+            descontoSolicitadoPor: null,
+            descontoSolicitacaoMotivo: null,
+            descontoAutorizadoEm: null,
+            descontoAutorizadoPor: null,
+            descontoJustificativa: null,
+          }
+        : {};
+
       let itensUpdate: Record<string, unknown> = {};
       if (itens) {
         await tx.orcamentoItem.deleteMany({ where: { orcamentoId: id } });
@@ -838,15 +923,6 @@ export class OrcamentosService {
         itensUpdate = {
           vlrTotal,
           itens: { create: itensData },
-          // Mexeu nos itens, a autorização de desconto anterior não vale mais:
-          // ela foi dada para aqueles preços. Volta à estaca zero, e o vendedor
-          // solicita de novo se o novo desconto ainda passar do máximo.
-          descontoSolicitadoEm: null,
-          descontoSolicitadoPor: null,
-          descontoSolicitacaoMotivo: null,
-          descontoAutorizadoEm: null,
-          descontoAutorizadoPor: null,
-          descontoJustificativa: null,
         };
       }
 
@@ -863,6 +939,7 @@ export class OrcamentosService {
           tabelaPrecoId,
           updatedBy: user.id,
           ...itensUpdate,
+          ...derrubaDesconto,
           ...((header.status === 'aprovado' || header.status === 'recusado') &&
           header.status !== orcamento.status
             ? {

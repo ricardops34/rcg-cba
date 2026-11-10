@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { numeroOrcamento } from '@plataforma/contracts';
 import type { TenantTx } from '../../common/prisma/prisma.service';
 import {
@@ -204,4 +205,33 @@ export async function orcamentoExigeAutorizacao(
       i.regraDesconto != null &&
       i.percDesconto >= i.regraDesconto.percDescontoMaximo,
   );
+}
+
+/**
+ * A mesma regra de `orcamentoExigeAutorizacao`, em lote e no banco: ids dos
+ * orçamentos com algum item no máximo da regra ou acima. Serve à listagem
+ * (etiqueta e filtro "Desconto"), onde testar um a um não escala.
+ *
+ * Só orçamentos em aberto (rascunho/enviado): aprovado já passou pela trava e
+ * vencido/recusado não vão a lugar nenhum. `ids` restringe a uma página.
+ */
+export async function orcamentosQueExigemAutorizacao(
+  tx: TenantTx,
+  empresaId: string,
+  ids?: string[],
+): Promise<Set<string>> {
+  if (ids && ids.length === 0) return new Set();
+  const linhas = await tx.$queryRaw<{ id: string }[]>`
+    SELECT DISTINCT o."id"
+    FROM "orcamentos" o
+    JOIN "orcamento_itens" i ON i."orcamentoId" = o."id"
+    JOIN "regras_desconto" r ON r."id" = i."regraDescontoId"
+    WHERE o."empresaId" = ${empresaId}
+      AND o."deletedAt" IS NULL
+      AND o."status" IN ('rascunho', 'enviado')
+      AND i."percDesconto" > 0
+      AND i."percDesconto" >= r."percDescontoMaximo"
+      ${ids ? Prisma.sql`AND o."id" IN (${Prisma.join(ids)})` : Prisma.empty}
+  `;
+  return new Set(linhas.map((l) => l.id));
 }
