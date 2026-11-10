@@ -63,8 +63,9 @@ não há nenhum.
 2. **Telas do dia a dia do vendedor revisadas no aparelho.** Do plano de telas: Posição de Cliente,
    Estoque, Produtos, Lista de Orçamentos, Atividades, Oportunidades (kanban), Clientes, Títulos.
    Depende da decisão D3 daquele plano (prioridade), que segue pendente.
-3. **Telas de configuração desligadas no celular** (Estrutura, Perfis, Integração, Campos, E-mail,
-   Agente IA) — decisão D1/D2 do plano de telas, pendente. Sem isso o menu do app fica poluído.
+3. ~~Telas de configuração desligadas no celular~~ — **resolvido em 10/11:** o módulo Administração
+   inteiro fica fora do celular, em todas as empresas (o catálogo é o teto; a empresa não religa).
+   No celular ficam Comercial, CRM, Gerencial, Consultas, Cadastros e Relatórios, conforme o perfil.
 
 ### 4.2 Notificação no celular (o principal ganho)
 

@@ -54,6 +54,10 @@ export const MODULOS = [
     nome: 'Administração',
     icone: 'settings',
     ordem: 1,
+    // Fora do celular por decisão de 2026-11-10: no celular ficam os módulos
+    // de vendedor, supervisor, gerente, administrativo e diretor. A empresa não
+    // consegue religar (o catálogo é o teto — ver `noCelular` em estrutura).
+    disponivelTelaPequena: false,
   },
   { id: MODULO.comercial, nome: 'Comercial', icone: 'briefcase', ordem: 2 },
   { id: MODULO.crm, nome: 'CRM', icone: 'handshake', ordem: 3 },
@@ -952,7 +956,13 @@ export async function sincronizarEstrutura(prisma: PrismaClient) {
     await prisma.modulo.upsert({
       where: { id: m.id },
       create: m,
-      update: { nome: m.nome, icone: m.icone, ordem: m.ordem },
+      update: {
+        nome: m.nome,
+        icone: m.icone,
+        ordem: m.ordem,
+        // Como nos menus: o catálogo é a fonte da marcação de celular.
+        disponivelTelaPequena: m.disponivelTelaPequena ?? true,
+      },
     });
     if (!antes) criados.modulos += 1;
   }

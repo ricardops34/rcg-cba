@@ -687,6 +687,13 @@ campos que o script não toca — entre eles o `ativo` (o liga/desliga de módul
 menu e rotina) e as rotinas, cujo upsert é `update: {}`. Mudança de organização
 que precisa durar entra no `catalogo-sistema.ts`.
 
+**Celular:** o script regrava também o `disponivelTelaPequena` de módulo e de menu
+(o de módulo desde 2026-11-10). E o catálogo é o **teto**: a marcação por empresa
+(interruptor *Celular* na Estrutura) só tira do celular, nunca põe o que o
+catálogo deixou fora. É assim que o módulo **Administração** fica fora do celular
+em todas as empresas (decisão de 2026-11-10) — o interruptor dele aparece
+travado. **[verificado em dev, 2026-11-10]**
+
 **Migration que concede permissão:** filtre por `perfis."sistemaBase" = true`, e
 não pelo nome do perfil — ver "Migration que concede permissão" em
 `apps/api/prisma/migrations/README.md`. O molde antigo, que casava

@@ -129,18 +129,29 @@ function CelularSwitch({
   id,
   nome,
   checked,
+  catalogo = true,
 }: {
   tipo: NivelEstrutura;
   id: string;
   nome: string;
   checked: boolean;
+  /**
+   * O que o catálogo permite. Fora do catálogo (ex.: Administração), a empresa
+   * não consegue pôr no celular — a API ignora o ajuste (`noCelular`).
+   */
+  catalogo?: boolean;
 }) {
   const alternar = useContext(CelularContext);
   return (
     <SwitchDeLinha
       rotulo="Celular"
       checked={checked}
-      label={`Mostrar "${nome}" no celular desta empresa`}
+      disabled={!catalogo}
+      label={
+        catalogo
+          ? `Mostrar "${nome}" no celular desta empresa`
+          : `"${nome}" não está disponível no celular`
+      }
       onCheckedChange={(value) => alternar(tipo, id, nome, value)}
     />
   );
@@ -766,6 +777,7 @@ function ModuloRow({
             id={modulo.id}
             nome={modulo.nome}
             checked={modulo.telaPequenaNaEmpresa}
+            catalogo={modulo.disponivelTelaPequena}
           />
           {podeCatalogo && (
             <>
@@ -1006,6 +1018,7 @@ function MenuRow({
             id={menu.id}
             nome={menu.nome}
             checked={menu.telaPequenaNaEmpresa}
+            catalogo={menu.disponivelTelaPequena}
           />
           {podeCatalogo && (
             <>
@@ -1167,6 +1180,7 @@ function RotinaRow({
           id={rotina.id}
           nome={rotina.nome}
           checked={rotina.telaPequenaNaEmpresa}
+          catalogo={rotina.disponivelTelaPequena}
         />
         {podeCatalogo && (
           <>
@@ -1220,11 +1234,13 @@ function SwitchDeLinha({
   checked,
   label,
   onCheckedChange,
+  disabled = false,
 }: {
   rotulo: string;
   checked: boolean;
   label: string;
   onCheckedChange: (checked: boolean) => void;
+  disabled?: boolean;
 }) {
   return (
     <label
@@ -1233,7 +1249,12 @@ function SwitchDeLinha({
       onClick={(event) => event.stopPropagation()}
     >
       <span>{rotulo}</span>
-      <Switch checked={checked} onCheckedChange={onCheckedChange} aria-label={label} />
+      <Switch
+        checked={checked}
+        disabled={disabled}
+        onCheckedChange={onCheckedChange}
+        aria-label={label}
+      />
     </label>
   );
 }

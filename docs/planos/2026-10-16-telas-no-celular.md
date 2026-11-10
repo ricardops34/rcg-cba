@@ -26,8 +26,8 @@ Legenda: ⬜ não revisada · 🔎 revisada, com pendência · ✅ ajustada (có
 
 | # | Decisão | Proposta | Resposta |
 |---|---------|----------|----------|
-| D1 | Quais telas **não** devem existir no celular | Estrutura, Perfis (matriz de permissões), Integração, Campos do Cliente, Campos do Produto, E-mail, Agente IA — são telas de configuração densas | _pendente_ |
-| D2 | Onde registrar "desligado no celular" | Pela tela Estrutura (por empresa) *ou* no catálogo (vale para todos) | _pendente_ |
+| D1 | Quais telas **não** devem existir no celular | Estrutura, Perfis (matriz de permissões), Integração, Campos do Cliente, Campos do Produto, E-mail, Agente IA — são telas de configuração densas | **Decidido 10/11: o módulo Administração inteiro fica fora do celular.** No celular só os módulos de vendedor, supervisor, gerente, administrativo e diretor (Comercial, CRM, Gerencial, Consultas, Cadastros, Relatórios), cada um conforme o perfil. *Campos do Produto* está em Cadastros e segue no celular — confirmar |
+| D2 | Onde registrar "desligado no celular" | Pela tela Estrutura (por empresa) *ou* no catálogo (vale para todos) | **No catálogo, como teto** (10/11): a empresa só tira do celular, não põe o que o catálogo deixou fora. Implementado (`noCelular` em `estrutura.service.ts`, Administração com `disponivelTelaPequena: false`) |
 | D3 | Prioridade de revisão | Primeiro o que o vendedor usa na rua: Posição de Cliente, Estoque, Produtos, Orçamentos, Agenda, Atividades, Oportunidades | _pendente_ |
 
 ## 4. Alavancas — componentes compartilhados
@@ -61,24 +61,24 @@ Colunas: *Tipo* = como a tela é construída (lista usa EntityTable; consulta e 
 
 | Módulo | Tela | Rota | Tipo | Linhas | Celular hoje | Situação | Proposta | Feito |
 |--------|------|------|------|-------:|--------------|----------|----------|-------|
-| Administração | Grupo Econômico | `/admin/grupo-economico` | Tela própria | 2 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | Empresas | `/admin/empresas` | Lista (EntityTable) | 245 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | Usuários | `/admin/usuarios` | Lista (EntityTable) | 361 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | Perfis | `/admin/perfis` | Lista (EntityTable) | 361 | ligado | ⬜ Não revisada | Desligar no celular (a confirmar) |  |
-| Administração | Estrutura de Menu | `/admin/estrutura` | Tela própria | 1609 | ligado | ⬜ Não revisada | Desligar no celular (a confirmar) |  |
-| Administração | Integração | `/admin/integracao` | Lista (EntityTable) | 828 | ligado | ⬜ Não revisada | Desligar no celular (a confirmar) |  |
-| Administração | Campos do Cliente | `/admin/clientes-config` | Tela própria | 382 | ligado | ⬜ Não revisada | Desligar no celular (a confirmar) |  |
-| Administração | Parâmetros | `/admin/parametros` | Lista (EntityTable) | 286 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | Acessos | `/admin/acessos` | Lista (EntityTable) | 720 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | Backups | `/admin/backups` | Tela própria | 61 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | Liberação de Suporte | `/admin/suporte-acesso` | Tela própria | 320 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | Feriados | `/admin/feriados` | Lista (EntityTable) | 210 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | SMS | `/admin/sms` | Tela própria | 313 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | E-mail | `/admin/email` | Tela própria | 1304 | ligado | ⬜ Não revisada | Desligar no celular (a confirmar) |  |
-| Administração | WhatsApp | `/admin/whatsapp` | Tela própria | 828 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | Comunicados | `/admin/comunicados` | Lista (EntityTable) | 496 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | Contas Bancárias | `/admin/contas-bancarias` | Lista (EntityTable) | 735 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Administração | Agente IA | `/admin/agente` | Tela própria | 1514 | ligado | ⬜ Não revisada | Desligar no celular (a confirmar) |  |
+| Administração | Grupo Econômico | `/admin/grupo-economico` | Tela própria | 2 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Empresas | `/admin/empresas` | Lista (EntityTable) | 245 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Usuários | `/admin/usuarios` | Lista (EntityTable) | 361 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Perfis | `/admin/perfis` | Lista (EntityTable) | 361 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Estrutura de Menu | `/admin/estrutura` | Tela própria | 1609 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Integração | `/admin/integracao` | Lista (EntityTable) | 828 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Campos do Cliente | `/admin/clientes-config` | Tela própria | 382 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Parâmetros | `/admin/parametros` | Lista (EntityTable) | 286 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Acessos | `/admin/acessos` | Lista (EntityTable) | 720 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Backups | `/admin/backups` | Tela própria | 61 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Liberação de Suporte | `/admin/suporte-acesso` | Tela própria | 320 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Feriados | `/admin/feriados` | Lista (EntityTable) | 210 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | SMS | `/admin/sms` | Tela própria | 313 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | E-mail | `/admin/email` | Tela própria | 1304 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | WhatsApp | `/admin/whatsapp` | Tela própria | 828 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Comunicados | `/admin/comunicados` | Lista (EntityTable) | 496 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Contas Bancárias | `/admin/contas-bancarias` | Lista (EntityTable) | 735 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
+| Administração | Agente IA | `/admin/agente` | Tela própria | 1514 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
 | Comercial | Dashboard | `/comercial/dashboard` | Tela própria | 348 | ligado | ✅ Ajustada | Manter — revisar | Cartões 2 colunas (d90ceef) |
 | Comercial | Produtos | `/comercial/produtos` | Lista (EntityTable) | 222 | ligado | ⬜ Não revisada | Manter — revisar |  |
 | Comercial | Posição de Cliente | `/comercial/posicao-cliente` | Lista (EntityTable) | 757 | ligado | ⬜ Não revisada | Manter — revisar |  |
