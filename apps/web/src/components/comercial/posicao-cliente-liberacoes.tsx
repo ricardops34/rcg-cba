@@ -115,32 +115,54 @@ export function LiberacoesDesconto({ clienteId }: { clienteId: string }) {
               {o.descontoSolicitacaoMotivo}
             </p>
           )}
-          <Table className="text-xs">
-            <TableHeader>
-              <TableRow>
-                <TableHead>Produto</TableHead>
-                <TableHead className="text-right">Qtd</TableHead>
-                <TableHead className="text-right">Tabela</TableHead>
-                <TableHead className="text-right">Unitário</TableHead>
-                <TableHead className="text-right">Desconto</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {o.itens.map((i) => (
-                <TableRow key={i.id}>
-                  <TableCell>
-                    {i.produto.codigoErp} — {i.produto.descricao}
-                  </TableCell>
-                  <TableCell className="text-right">{i.quantidade}</TableCell>
-                  <TableCell className="text-right">{i.vlrTabela != null ? moeda(i.vlrTabela) : "—"}</TableCell>
-                  <TableCell className="text-right">{moeda(i.vlrUnitario)}</TableCell>
-                  <TableCell className="text-right">
+          {/* Celular: um item por linha, sem rolagem lateral. A tabela de cinco
+              colunas fica para a tela larga. */}
+          <ul className="divide-y rounded-md border text-xs md:hidden">
+            {o.itens.map((i) => (
+              <li key={i.id} className="space-y-1 px-3 py-2">
+                <p className="font-medium break-words">
+                  {i.produto.codigoErp} — {i.produto.descricao}
+                </p>
+                <p className="flex flex-wrap gap-x-3 gap-y-0.5 text-muted-foreground tabular-nums">
+                  <span>Qtd {i.quantidade}</span>
+                  <span>Tabela {i.vlrTabela != null ? moeda(i.vlrTabela) : "—"}</span>
+                  <span>Unit. {moeda(i.vlrUnitario)}</span>
+                  <span className="font-medium text-foreground">
+                    Desc.{" "}
                     {i.percDesconto != null ? `${i.percDesconto.toLocaleString("pt-BR")}%` : "—"}
-                  </TableCell>
+                  </span>
+                </p>
+              </li>
+            ))}
+          </ul>
+          <div className="max-md:hidden">
+            <Table className="text-xs">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Produto</TableHead>
+                  <TableHead className="text-right">Qtd</TableHead>
+                  <TableHead className="text-right">Tabela</TableHead>
+                  <TableHead className="text-right">Unitário</TableHead>
+                  <TableHead className="text-right">Desconto</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
+              </TableHeader>
+              <TableBody>
+                {o.itens.map((i) => (
+                  <TableRow key={i.id}>
+                    <TableCell>
+                      {i.produto.codigoErp} — {i.produto.descricao}
+                    </TableCell>
+                    <TableCell className="text-right">{i.quantidade}</TableCell>
+                    <TableCell className="text-right">{i.vlrTabela != null ? moeda(i.vlrTabela) : "—"}</TableCell>
+                    <TableCell className="text-right">{moeda(i.vlrUnitario)}</TableCell>
+                    <TableCell className="text-right">
+                      {i.percDesconto != null ? `${i.percDesconto.toLocaleString("pt-BR")}%` : "—"}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
         </div>
       ))}
 

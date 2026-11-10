@@ -81,7 +81,7 @@ Colunas: *Tipo* = como a tela é construída (lista usa EntityTable; consulta e 
 | Administração | Agente IA | `/admin/agente` | Tela própria | 1514 | desligado | ⛔ Desligada no celular | Módulo fora do celular (10/11) |  |
 | Comercial | Dashboard | `/comercial/dashboard` | Tela própria | 348 | ligado | ✅ Ajustada | Manter — revisar | Cartões 2 colunas (d90ceef) |
 | Comercial | Produtos | `/comercial/produtos` | Lista (EntityTable) | 222 | ligado | ⬜ Não revisada | Manter — revisar |  |
-| Comercial | Posição de Cliente | `/comercial/posicao-cliente` | Lista (EntityTable) | 757 | ligado | ⬜ Não revisada | Manter — revisar |  |
+| Comercial | Posição de Cliente | `/comercial/posicao-cliente` | Lista (EntityTable) | 757 | ligado | ✅ Ajustada | Manter | Revisada 10/11: lista em cartões, abas roláveis, notas/devoluções/títulos/mix/equipamentos já em cartões; liberação de desconto passou a lista no celular |
 | Comercial | Estoque | `/comercial/estoque` | Lista (EntityTable) | 244 | ligado | ⬜ Não revisada | Manter — revisar |  |
 | Comercial | Conversas | `/comercial/atendimento` | Tela própria | 1825 | ligado | ✅ Ajustada | Manter — revisar | Diálogos com margem, popover, 2ª via/DANFE, orçamento, fichas, nova conversa (7a36f05, 33862de, 512bd4c) |
 | Comercial | Meus Atendimentos | `/comercial/meus-atendimentos` | Tela própria | 456 | ligado | ⬜ Não revisada | Manter — revisar |  |
