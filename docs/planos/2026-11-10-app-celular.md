@@ -210,7 +210,7 @@ O dia é a data civil no fuso da empresa (o mesmo do horário de trabalho), não
 | Sincronizou 11/11 às 07:30, está offline às 16:00 do dia 11/11 | **Sim** |
 | Sincronizou 10/11 às 17:00, está offline às 08:00 do dia 11/11 (15 h depois) | **Não** — virou o dia |
 | Gerou orçamento offline 10/11 às 17:00 sem sincronizar; dia 11/11, ainda offline | **Não** — o orçamento fica trancado (só leitura) até ficar online ou sincronizar no dia 11/11 |
-| Mesmo caso, dia 11/11 com rede | Sincroniza: o orçamento de 10/11 sobe e é revalidado com o preço e o estoque do dia 11/11. Depois disso pode ser alterado normalmente |
+| Mesmo caso, dia 11/11 com rede | Sincroniza: o orçamento de 10/11 sobe como rascunho, revalidado com o preço e o estoque do dia 11/11. Envio ou aprovação feitos offline no dia 10/11 **não são executados** (chegaram em outro dia, pela data do servidor) e o vendedor refaz online. Depois disso pode ser alterado normalmente |
 
 Consequências:
 
@@ -223,15 +223,26 @@ Consequências:
 - **Acesso é código, também aqui.** O app bloqueia na tela, mas o bloqueio que vale é o do servidor.
   - Cada sincronismo devolve um **comprovante emitido e assinado pelo servidor** com a data do dia.
   - Todo item de orçamento na fila leva esse comprovante.
-  - No envio, o servidor recusa a operação de orçamento cujo comprovante seja de um dia diferente
-    do dia informado para a operação. Também recusa a que diz ter sido feita depois de chegar ao
+  - **Vale a data do servidor (decisão de 10/11).** O relógio do celular não entra em decisão
+    nenhuma. A data de cada operação é a do servidor no momento em que ela chega. No envio, o
+    servidor compara o dia de chegada com o dia do comprovante, e só executa a operação de
+    orçamento se os dois forem o mesmo dia.
+  - Com isso fecha a brecha do relógio atrasado: o dia do comprovante e o dia de chegada são
+    ambos do servidor, e nada do aparelho é usado para decidir.
+  - **Chegou em outro dia:** feito offline no dia 10/11 com o comprovante de 10/11, mas só chegou
+    no dia 11/11. Proposta:
+    - o conteúdo do orçamento **não se perde**: sobe como rascunho, revalidado com o preço e o
+      estoque do dia 11/11;
+    - **envio e aprovação pendentes não são executados**: o vendedor, que nessa hora já está
+      online, confere e refaz.
+
+    Isso cumpre a regra: no dia 11/11 nada acontece no orçamento sem sincronismo do dia 11/11.
+  - O app também tranca a tela pelo relógio do celular, só para avisar antes de o vendedor
+    perder trabalho. Quem adianta ou atrasa o relógio engana apenas o aviso; quem decide é o
     servidor.
-  - **Limite conhecido:** a hora da operação vem do relógio do celular, e quem atrasa o relógio
-    consegue declarar um dia falso. Mesmo assim, ele não consegue usar a base de um dia em outro
-    sem um comprovante daquele dia, porque o comprovante é emitido pelo servidor. E a revalidação
-    de preço, desconto e estoque no envio continua valendo.
-- **Envio e aprovação feitos offline** ficam registrados com a hora do aparelho e a hora em que o
-  servidor de fato executou. No histórico do orçamento aparecem os dois.
+- **Datas no histórico:** criação, alteração, envio e aprovação são gravados com a **data do
+  servidor** em que foram aceitos. A hora informada pelo celular fica só como informação ("feito
+  offline, segundo o aparelho, às 17:02"), sem efeito em regra, prazo ou relatório.
 
 ### 9.4 O que acontece com o que foi feito offline
 
@@ -250,8 +261,8 @@ mexer no aparelho só consegue mandar para a fila o que o servidor vai recusar.
   - estoque insuficiente, produto inativo, cliente bloqueado ou fora da carteira → o item ou o
     orçamento volta com o motivo, sem gravar;
   - fora do expediente → decisão O5.
-- **Atividade e visita:** a hora registrada é a do aparelho, guardada junto com a hora de chegada
-  ao servidor. Se a mesma atividade foi alterada no servidor nesse meio tempo, vale a mais recente
+- **Atividade e visita:** vale a data do servidor na chegada, como no orçamento. A hora informada
+  pelo aparelho fica só como informação. Se a mesma atividade foi alterada no servidor nesse meio tempo, vale a mais recente
   e o vendedor é avisado.
 - **Resultado visível:** tela "Pendências de envio" com cada item (enviado / recusado com motivo /
   aguardando). Item recusado não some: fica para o vendedor corrigir ou descartar.
