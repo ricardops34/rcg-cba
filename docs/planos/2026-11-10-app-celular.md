@@ -31,7 +31,8 @@ não há nenhum.
 > **Revisto em 10/11:** o usuário pediu **trabalho offline com sincronismo obrigatório** (seção 9).
 > Offline é possível no PWA, mas no iPhone o armazenamento do navegador é mais frágil e não há
 > sincronização em segundo plano. Isso pesa a favor do caminho B (Capacitor, banco local
-> nativo). A escolha está na decisão O6.
+> nativo). Decidido em O6: a equipe usa os dois sistemas, e o offline vai em partes. Começa no app
+> instalado e passa para o Capacitor na parte 4 (seção 9.8).
 
 ## 3. O que já temos
 
@@ -305,24 +306,36 @@ mexer no aparelho só consegue mandar para a fila o que o servidor vai recusar.
 | O3 | Preço mudou entre o offline e o envio | Recalcula com o preço atual e marca os itens alterados para o vendedor conferir | _pendente_ |
 | O4 | Orçamento feito offline, ao sincronizar | Vira rascunho que o vendedor confirma (não segue sozinho para liberação ou ERP) | _pendente_ |
 | O5 | Feito offline fora do expediente | Servidor aceita e marca "feito fora do horário" para a supervisão (o trabalho já foi feito; recusar só perde o pedido) | _pendente_ |
-| O6 | PWA ou Capacitor para o offline | **Se a equipe usa principalmente Android: PWA.** Se tem muito iPhone: offline já no Capacitor (caminho B), pela persistência e pelo armazenamento cifrado | _pendente_ — preciso saber a proporção de iPhone e Android na equipe |
+| O6 | PWA ou Capacitor para o offline | **Se a equipe usa principalmente Android: PWA.** Se tem muito iPhone: offline já no Capacitor (caminho B), pela persistência e pelo armazenamento cifrado | **Os dois (10/11), em partes:** partes 1–3 no app instalado (mesmo código para iPhone e Android); parte 4 leva para o Capacitor, que resolve os limites do iPhone (9.8) |
 | O7 | Pedido offline com estoque insuficiente no envio | Grava o orçamento e marca os itens sem estoque, em vez de recusar o orçamento inteiro | _pendente_ |
 
-### 9.8 Fases do offline
+### 9.8 Partes do offline (decisão de 10/11: iPhone e Android, em partes)
 
-| Fase | Entrega | Depende de | Situação |
-|---|---|---|---|
-| OF1 | Levantamento: integração apaga fisicamente? grava sem `updatedAt`? Volume da maior carteira (clientes, produtos, preços) | — | ⬜ |
-| OF2 | API de carga incremental e de envio idempotente, com escopo e revalidação; comprovante de sincronismo do dia e recusa de operação de orçamento fora do dia (9.3a); testes | O1, O3–O5, O7 | ⬜ |
-| OF3 | Banco local, casca em cache e motor de sincronismo (S1–S7), faixa de idade dos dados, tela de pendências | O2, O6 | ⬜ |
-| OF4 | Consultas offline: clientes, produtos, preço, estoque, agenda | OF3 | ⬜ |
-| OF5 | Orçamento e atividade offline, com fila e retorno do servidor | OF2, OF4 | ⬜ |
-| OF6 | Apagar dados do aparelho pela administração; parâmetros de prazo | OF3 | ⬜ |
-| OF7 | Conferência em aparelho, sem sinal de verdade (modo avião), inclusive o vencimento dos prazos | OF1–OF6 | ⬜ |
+A equipe usa **iPhone e Android**. O offline vai ser feito **em partes**. Cada parte entrega algo
+usável nos dois sistemas e é conferida em aparelho real, em modo avião, antes da seguinte.
 
-É a maior frente deste plano: é a única que mexe em telas que já funcionam (OF4 e OF5). Ela
-depende de F2 (telas do vendedor revisadas no celular), porque não compensa tornar offline uma
-tela que ainda não está boa no celular.
+**Base técnica:** o código do offline é escrito uma vez, nas telas web, com banco local
+(IndexedDB). Ele roda igual no app instalado (PWA) e, mais tarde, dentro da casca do Capacitor:
+nada do que for feito nas partes 1 a 3 é refeito na parte 4. O PWA no iPhone tem limites. O
+sistema pode apagar a base local quando o aparelho fica sem espaço, e só sincroniza com o app
+aberto. As partes 1 a 3 convivem com isso: a carga do dia recompõe a base. A parte 4 resolve
+esses limites.
+
+| Parte | Entrega | Valor para o vendedor | Depende de | Situação |
+|---|---|---|---|---|
+| **0. Levantamento** | A integração apaga linha fisicamente? Grava sem `updatedAt`? Volume da maior carteira (clientes, produtos, preços, estoque) e quanto ocupa no aparelho | — (evita surpresa nas outras) | — | ⬜ |
+| **1. Consulta offline** | Banco local; casca do app em cache; carga do dia e carga incremental (S1, S2, S3, S5); faixa "Offline · dados de HH:MM"; consulta de clientes da carteira, produtos, preço, estoque e agenda **só leitura**; apagar a base no logout e na troca de usuário | Consulta cliente, preço e estoque sem sinal | Parte 0; O1 (escopo); prazos de O2; F2 nas telas envolvidas | ⬜ |
+| **2. Orçamento offline: gerar e alterar** | Fila de envio idempotente; comprovante de sincronismo do dia; **regra do mesmo dia pela data do servidor** (9.3a); revalidação no envio (preço, desconto, estoque, cliente); tela "Pendências de envio"; aviso antes de sair com fila (S6) | Monta o pedido no cliente sem sinal | Parte 1; O3, O4, O7 e o caso "chegou em outro dia" | ⬜ |
+| **3. Orçamento offline: enviar e aprovar; atividade e visita** | Envio e aprovação na fila, executados só no sincronismo do mesmo dia; atividade, visita e anotação offline (S4); sessão substituída ou desconectada (S7); "apagar dados deste aparelho" em Acessos | Fecha o atendimento inteiro sem sinal | Parte 2; O5 | ⬜ |
+| **4. Casca nativa (Capacitor) para iPhone e Android** | O mesmo app dentro de um app nativo: base local persistente e cifrada, biometria para abrir offline, sincronização em segundo plano onde o sistema deixa, push nativo. Publicação nas lojas | Offline confiável no iPhone; app nas lojas | Parte 3; contas das lojas e Mac (seção 4.4); é a F6 deste plano | ⬜ |
+
+A ordem vai do menor risco para o maior. A parte 1 só lê, e não há como um pedido sair errado.
+A parte 2 grava, mas nada sai do sistema. A parte 3 é a primeira em que uma ação feita offline
+chega ao ERP ou ao cliente, e por isso fica para quando as duas primeiras estiverem conferidas na
+rua.
+
+Todo o offline depende de F2 (telas do vendedor revisadas no celular): não compensa tornar
+offline uma tela que ainda não está boa no celular.
 
 ## 10. Riscos
 
