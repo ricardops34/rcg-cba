@@ -202,10 +202,11 @@ export class OrcamentosController {
   }
 
   @ApiOperation({
-    summary: 'Recusar o pedido de autorização de desconto',
+    summary: 'Recusar o desconto do orçamento',
     description:
-      'Devolve o pedido ao vendedor com o motivo (obrigatório), conclui a pendência da agenda ' +
-      'e avisa o vendedor no sino. Requer orcamentos.aprovar.',
+      'Recusa o desconto acima do máximo, com ou sem pedido do vendedor: grava o motivo ' +
+      '(obrigatório), desfaz o pedido se houver, conclui a pendência da agenda e avisa o ' +
+      'vendedor no sino. Requer orcamentos.aprovar.',
   })
   @RequirePermission('orcamentos', 'aprovar')
   @Post(':id/recusar-desconto')

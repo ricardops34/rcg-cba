@@ -1621,7 +1621,9 @@ export function OrcamentoFormContent({
                   Autorizar desconto
                 </Button>
               )}
-              {registro && situacaoAutorizacao === "pendente" && podeAutorizarDesconto && (
+              {/* Mesma condição do Autorizar: quem pode liberar pode recusar,
+                  com ou sem pedido do vendedor. */}
+              {registro && situacaoAutorizacao !== "autorizada" && podeAutorizarDesconto && (
                 <Button
                   type="button"
                   variant="outline"

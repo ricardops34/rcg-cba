@@ -1286,9 +1286,13 @@ export class OrcamentosService {
           'O desconto deste orçamento já está autorizado',
         );
       }
-      if (!orcamento.descontoSolicitadoEm) {
+      // Quem pode autorizar pode recusar, com ou sem pedido do vendedor
+      // (decisão do usuário, 2026-11-10): o gerente que acha o orçamento em
+      // "Bloqueados por desconto" decide ali mesmo. A trava é a mesma do
+      // autorizar — só há o que recusar se o desconto passou do máximo.
+      if (!(await orcamentoExigeAutorizacao(tx, id))) {
         throw new ConflictException(
-          'Não há pedido de autorização de desconto para recusar',
+          'Nenhum item deste orçamento tem desconto igual ou acima do máximo da regra',
         );
       }
 
