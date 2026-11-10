@@ -16,6 +16,7 @@ import { AvisoPersonificacao } from "@/components/layout/aviso-personificacao";
 import { TourProvider } from "@/components/tour/tour-provider";
 import { RegistroUsoRotina } from "@/components/layout/registro-uso-rotina";
 import { AppCelularLogado } from "@/components/layout/app-celular-logado";
+import { FaixaAtivarAvisos } from "@/components/layout/faixa-ativar-avisos";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Mural de atalhos", subtitle: "Acesso rápido e comunicados" },
@@ -89,6 +90,7 @@ export default function AppShellLayout({
           <AvisoSuportePlataforma />
           <AvisoPersonificacao />
           <AppCelularLogado />
+          <FaixaAtivarAvisos />
 
           <div className="flex min-h-0 flex-1">
             <AppSidebar collapsed={collapsed} />

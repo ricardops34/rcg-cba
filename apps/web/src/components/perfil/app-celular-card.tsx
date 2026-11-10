@@ -2,17 +2,15 @@
 
 import { useEffect, useState, useSyncExternalStore } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { BellRing, Download, Smartphone } from "lucide-react";
+import { BellRing, Check, Download, Smartphone } from "lucide-react";
 import { toast } from "sonner";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useIsMobile } from "@/hooks/use-mobile";
 import {
   assinarInstalacao,
   assinaturaAtual,
-  desligarPush,
   ehIos,
   estaInstalado,
   instalar,
@@ -59,20 +57,19 @@ export function AppCelularCard() {
       .catch(() => setLigado(false));
   }, []);
 
-  async function alternar(valor: boolean) {
+  // Só ativar: os avisos são função importante do sistema e não têm opção de
+  // desligar (decisão do usuário, 2026-11-10). Bloquear nas configurações do
+  // navegador continua possível — isso não depende de nós, e a faixa do topo
+  // (FaixaAtivarAvisos) cobra a liberação.
+  async function ativar() {
     if (!config?.chavePublica) return;
     setOcupado(true);
     try {
-      if (valor) {
-        await ligarPush(config.chavePublica);
-        toast.success("Aviso ligado neste aparelho.");
-      } else {
-        await desligarPush();
-        toast.success("Aviso desligado neste aparelho.");
-      }
-      setLigado(valor);
+      await ligarPush(config.chavePublica);
+      toast.success(celular ? "Notificações do celular ativadas." : "Notificações do navegador ativadas.");
+      setLigado(true);
     } catch (erro) {
-      toast.error(erro instanceof Error ? erro.message : "Não foi possível alterar o aviso.");
+      toast.error(erro instanceof Error ? erro.message : "Não foi possível ativar as notificações.");
       setMotivo(motivoSemPush());
     } finally {
       setOcupado(false);
@@ -83,8 +80,8 @@ export function AppCelularCard() {
     setOcupado(true);
     try {
       const enviados = await testarPush();
-      if (enviados > 0) toast.success("Aviso de teste enviado. Ele chega em alguns segundos.");
-      else toast.warning("Nenhum aparelho apto recebeu. Desligue e ligue o aviso de novo.");
+      if (enviados > 0) toast.success("Notificação de teste enviada. Ela chega em alguns segundos.");
+      else toast.warning("A notificação de teste não chegou a nenhum aparelho. Recarregue a página e tente de novo.");
     } catch {
       toast.error("Não foi possível enviar o teste.");
     } finally {
@@ -112,7 +109,7 @@ export function AppCelularCard() {
           ) : (
             <BellRing className="size-4 text-primary" />
           )}
-          {celular ? "App no celular" : "Avisos neste navegador"}
+          {celular ? "App no celular" : "Notificações do navegador"}
         </CardTitle>
       </CardHeader>
       <CardContent className="space-y-5">
@@ -147,36 +144,47 @@ export function AppCelularCard() {
               computador o título do cartão já diz o que é. */}
           {celular && (
             <h3 className="flex items-center gap-2 text-sm font-medium">
-              <BellRing className="size-4 text-muted-foreground" /> Avisos
+              <BellRing className="size-4 text-muted-foreground" /> Notificações do celular
             </h3>
           )}
           {isLoading || ligado === null ? (
             <Skeleton className="h-10 w-full" />
           ) : semAviso ? (
             <p className="text-sm text-muted-foreground">
-              Os avisos no celular ainda não estão disponíveis.
+              As notificações do celular ainda não estão disponíveis.
             </p>
           ) : motivo && !ligado ? (
             <p className="text-sm text-muted-foreground">{motivo}</p>
           ) : (
             <>
-              <label className="flex min-h-11 items-center justify-between gap-3">
-                <span className="text-sm">
-                  {celular
-                    ? "Receber os avisos do sino neste aparelho"
-                    : "Receber os avisos do sino neste navegador, mesmo com o sistema em outra aba"}
-                  <span className="block text-xs text-muted-foreground">
-                    Desconto a liberar, orçamento aprovado, agenda, recados e o resto do sino.
-                    Mensagem de WhatsApp não entra.
-                  </span>
-                </span>
-                <Switch
-                  checked={ligado}
+              <div className="space-y-1">
+                <p className="text-sm">
+                  {ligado ? (
+                    <span className="flex items-center gap-1.5 font-medium text-success">
+                      <Check className="size-4" /> Notificações{" "}
+                      {celular ? "do celular" : "do navegador"} ativas
+                    </span>
+                  ) : celular ? (
+                    "Ative para receber os avisos do sino como notificação do celular."
+                  ) : (
+                    "Ative para receber os avisos do sino como notificação do navegador, mesmo com o sistema em outra aba."
+                  )}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  Desconto a liberar, orçamento aprovado, agenda, recados e o resto do sino.
+                  Mensagem de WhatsApp não entra.
+                </p>
+              </div>
+              {!ligado && (
+                <Button
+                  type="button"
+                  size="sm"
                   disabled={ocupado}
-                  onCheckedChange={(v) => void alternar(v)}
-                  aria-label="Receber avisos neste aparelho"
-                />
-              </label>
+                  onClick={() => void ativar()}
+                >
+                  Ativar notificações
+                </Button>
+              )}
               {ligado && (
                 <Button
                   type="button"
@@ -185,12 +193,12 @@ export function AppCelularCard() {
                   disabled={ocupado}
                   onClick={() => void teste()}
                 >
-                  Enviar aviso de teste
+                  Enviar notificação de teste
                 </Button>
               )}
               <p className="text-xs text-muted-foreground">
-                O aviso para quando você sai do sistema neste aparelho ou fora do seu horário de
-                trabalho, e volta sozinho quando você entra de novo.
+                As notificações param quando você sai do sistema neste aparelho ou fora do seu horário
+                de trabalho, e voltam sozinhas quando você entra de novo.
               </p>
             </>
           )}

@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Smartphone, X } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { useIsMobile } from "@/hooks/use-mobile";
-import { estaInstalado, religarPush } from "@/lib/app-celular";
+import { useQuery } from "@tanstack/react-query";
+import { ehIos, estaInstalado, obterConfigPush, religarPush } from "@/lib/app-celular";
 
 const CHAVE_CONVITE = "plataforma-convite-app-dispensado";
 
@@ -23,6 +24,14 @@ export function AppCelularLogado() {
   const personificando = useAuthStore((s) => Boolean(s.user?.personificacao));
   const isMobile = useIsMobile();
   const [convite, setConvite] = useState(false);
+  // No iPhone, com o aviso no ar, quem convida a instalar é a FaixaAtivarAvisos
+  // (que não se dispensa): duas faixas dizendo a mesma coisa só confundem.
+  const { data: config } = useQuery({
+    queryKey: ["push", "config"],
+    queryFn: obterConfigPush,
+    staleTime: 5 * 60_000,
+  });
+  const faixaCobreIos = ehIos() && Boolean(config?.chavePublica);
 
   useEffect(() => {
     if (!usuarioId || personificando) return;
@@ -30,7 +39,7 @@ export function AppCelularLogado() {
   }, [usuarioId, personificando]);
 
   useEffect(() => {
-    if (!isMobile || estaInstalado()) {
+    if (!isMobile || estaInstalado() || faixaCobreIos) {
       setConvite(false);
       return;
     }
@@ -39,7 +48,7 @@ export function AppCelularLogado() {
     } catch {
       setConvite(true);
     }
-  }, [isMobile]);
+  }, [isMobile, faixaCobreIos]);
 
   if (!convite || personificando) return null;
 
