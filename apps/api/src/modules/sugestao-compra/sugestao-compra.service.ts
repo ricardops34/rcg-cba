@@ -125,6 +125,15 @@ const NIVEL_CNAE: Record<number, keyof typeof PESO_NIVEL_CNAE | undefined> = {
  */
 const TETO_VIZINHO = 0.2;
 
+/**
+ * Quantos clientes que compraram no período o nível de CNAE precisa ter para
+ * servir de ramo (ver `clientesDoMesmoRamo`). Abaixo disso, sobe um degrau
+ * (subclasse → classe → grupo). Cinco porque o produto sugerido precisa ser
+ * comprado por pelo menos dois da referência: com um ou dois clientes, a
+ * sugestão vira o hábito de uma loja, não o padrão do ramo.
+ */
+const MIN_PARES_RAMO = 5;
+
 interface LinhaSemelhante {
   clienteId: string;
   razaoSocial: string;
@@ -267,10 +276,15 @@ export class SugestaoCompraService {
           alvo.cnpjCpf,
         );
         if (inelegivel) return vazio(inelegivel);
-        const ramo = await this.clientesDoMesmoRamo(tx, empresaId, clienteId);
+        const ramo = await this.clientesDoMesmoRamo(
+          tx,
+          empresaId,
+          clienteId,
+          desde,
+        );
         if (!ramo || ramo.pares.length === 0) {
           return vazio(
-            'Nenhum outro cliente ativo do mesmo ramo (CNAE principal) para comparar.',
+            'Nenhum outro cliente ativo do mesmo ramo, nem da mesma classe ou grupo de atividade (CNAE principal), para comparar.',
           );
         }
 
@@ -694,13 +708,26 @@ export class SugestaoCompraService {
    * Os clientes do mesmo ramo do cliente — a única base de comparação da
    * sugestão (gravada ou ao vivo). O ramo é o CNAE principal (sem principal
    * marcado, todos os CNAEs dele); do mesmo ramo é o cliente ativo da base
-   * inteira cujo CNAE principal é um desses. null quando o cliente não tem
-   * CNAE: sem atividade, não há com quem comparar.
+   * inteira cujo CNAE principal cai no mesmo nível do código.
+   *
+   * **Em degraus** (decisão do usuário, 2026-11-11 — amplia a de 2026-10-07,
+   * que era só a subclasse exata): mesma subclasse (7 dígitos) → mesma
+   * classe (5) → mesmo grupo (3), parando no primeiro nível com pelo menos
+   * `MIN_PARES_RAMO` clientes que compraram no período. Muita subclasse tem
+   * zero ou um cliente, e a regra exata deixava esses clientes sem sugestão.
+   * Nenhum nível chega ao mínimo: fica o mais amplo que tiver alguém que
+   * comprou. A divisão (2 dígitos) não entra — junta negócios que não compram
+   * a mesma coisa (ver `PESO_NIVEL_CNAE`). O rótulo diz o nível usado, para o
+   * motivo gravado não vender "mesmo ramo" quando foi o grupo.
+   *
+   * null quando o cliente não tem CNAE: sem atividade, não há com quem
+   * comparar.
    */
   private async clientesDoMesmoRamo(
     tx: TenantTx,
     empresaId: string,
     clienteId: string,
+    desde: Date,
   ): Promise<{ pares: string[]; rotulo: string } | null> {
     const vinculos = await tx.clienteCnae.findMany({
       where: { empresaId, clienteId, deletedAt: null },
@@ -712,27 +739,88 @@ export class SugestaoCompraService {
     });
     const principais = vinculos.filter((v) => v.principal);
     const doRamo = principais.length > 0 ? principais : vinculos;
-    if (doRamo.length === 0) return null;
+    const codigosAlvo = doRamo
+      .map((v) => (v.cnae.codigoErp ?? '').replace(/\D/g, ''))
+      .filter((c) => c.length === 7);
+    if (doRamo.length === 0 || codigosAlvo.length === 0) return null;
 
-    const pares = await tx.$queryRaw<{ clienteId: string }[]>(Prisma.sql`
-      SELECT DISTINCT cc."clienteId"
+    // Uma consulta só, no nível mais amplo (grupo); os degraus se resolvem
+    // aqui, pelo prefixo do código. `comprou` usa a mesma definição de venda
+    // do resto do cálculo.
+    const grupos = [...new Set(codigosAlvo.map((c) => c.slice(0, 3)))];
+    const candidatos = await tx.$queryRaw<
+      { clienteId: string; codigo: string; comprou: boolean }[]
+    >(Prisma.sql`
+      SELECT cc."clienteId", k."codigoErp" AS "codigo",
+             EXISTS (
+               SELECT 1
+               FROM "notas_saida_itens" i
+               JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+               WHERE i."empresaId" = ${empresaId}
+                 AND i."clienteId" = cc."clienteId"
+                 AND i."produtoId" IS NOT NULL
+                 AND i."deletedAt" IS NULL
+                 AND i."ativo" = true
+                 AND i."dtEmissao" >= ${desde}
+                 AND ${NOTA_DE_VENDA}
+             ) AS "comprou"
       FROM "cliente_cnaes" cc
+      JOIN "cnaes" k ON k."id" = cc."cnaeId"
       JOIN "clientes" c ON c."id" = cc."clienteId"
            AND c."deletedAt" IS NULL AND c."ativo" = true
       WHERE cc."empresaId" = ${empresaId}
         AND cc."deletedAt" IS NULL
         AND cc."principal" = true
-        AND cc."cnaeId" IN (${Prisma.join(doRamo.map((v) => v.cnaeId))})
         AND cc."clienteId" <> ${clienteId}
+        AND left(k."codigoErp", 3) IN (${Prisma.join(grupos)})
     `);
 
-    const { codigoErp, descricao } = doRamo[0].cnae;
-    const codigo = codigoErp ?? '';
-    const rotulo =
-      codigo.length === 7
-        ? `${codigo.slice(0, 4)}-${codigo[4]}/${codigo.slice(5)} ${descricao}`
-        : descricao;
-    return { pares: pares.map((p) => p.clienteId), rotulo };
+    const codigo = codigosAlvo[0];
+    const descricao =
+      doRamo.find((v) => (v.cnae.codigoErp ?? '').replace(/\D/g, '') === codigo)
+        ?.cnae.descricao ?? '';
+    const degraus = [
+      {
+        digitos: 7,
+        rotulo: `do mesmo ramo (${codigo.slice(0, 4)}-${codigo[4]}/${codigo.slice(5)} ${descricao})`,
+      },
+      {
+        digitos: 5,
+        rotulo: `da mesma classe de atividade (CNAE ${codigo.slice(0, 4)}-${codigo[4]})`,
+      },
+      {
+        digitos: 3,
+        rotulo: `do mesmo grupo de atividade (CNAE ${codigo.slice(0, 2)}.${codigo[2]})`,
+      },
+    ];
+
+    // Nenhum nível chegando ao mínimo: vale o mais amplo com alguém que
+    // comprou; sem comprador em nível nenhum, o primeiro que tiver algum
+    // cliente (o cálculo então cai no vazio pelo motivo certo).
+    let maisAmploComCompra: { pares: string[]; rotulo: string } | null = null;
+    let primeiroComPares: { pares: string[]; rotulo: string } | null = null;
+    for (const degrau of degraus) {
+      const prefixos = new Set(
+        codigosAlvo.map((c) => c.slice(0, degrau.digitos)),
+      );
+      const doNivel = candidatos.filter((p) =>
+        prefixos.has((p.codigo ?? '').slice(0, degrau.digitos)),
+      );
+      const compradores = new Set(
+        doNivel.filter((p) => p.comprou).map((p) => p.clienteId),
+      ).size;
+      const atual = {
+        pares: [...new Set(doNivel.map((p) => p.clienteId))],
+        rotulo: degrau.rotulo,
+      };
+      if (compradores >= MIN_PARES_RAMO) return atual;
+      if (compradores > 0) maisAmploComCompra = atual;
+      if (!primeiroComPares && atual.pares.length > 0) primeiroComPares = atual;
+    }
+    return (
+      maisAmploComCompra ??
+      primeiroComPares ?? { pares: [], rotulo: degraus[0].rotulo }
+    );
   }
 
   /**
@@ -768,8 +856,10 @@ export class SugestaoCompraService {
    *
    * 1. O ramo do cliente é o CNAE principal (sem principal marcado, todos os
    *    CNAEs dele); os do mesmo ramo são os clientes ativos da base inteira
-   *    cujo CNAE principal é um desses — o resultado são produtos, não
-   *    clientes, e o ramo diz mais com a base toda do que com uma carteira.
+   *    cujo CNAE principal é um desses — em degraus, subclasse → classe →
+   *    grupo, quando o nível exato tem poucos clientes (2026-11-11, ver
+   *    `clientesDoMesmoRamo`). O resultado são produtos, não clientes, e o
+   *    ramo diz mais com a base toda do que com uma carteira.
    * 2. Dentro do ramo, os K que compram mais parecido (Jaccard das cestas).
    * 3. O que eles compram e este não, por quantos deles compram.
    *
@@ -787,7 +877,12 @@ export class SugestaoCompraService {
     queryPadrao: SugestaoCompraQuery,
     loteId: string,
   ): Promise<Prisma.SugestaoCompraGeradaCreateManyInput[]> {
-    const ramo = await this.clientesDoMesmoRamo(tx, empresaId, clienteId);
+    const ramo = await this.clientesDoMesmoRamo(
+      tx,
+      empresaId,
+      clienteId,
+      desde,
+    );
     if (!ramo || ramo.pares.length === 0) return [];
     const pares = ramo.pares.map((clienteId) => ({ clienteId }));
 
@@ -878,8 +973,8 @@ export class SugestaoCompraService {
       ordem: i + 1,
       score: Math.round((p.clientes / total) * 100) / 100,
       motivo: porCompra
-        ? `${p.clientes} de ${total} clientes do mesmo ramo (${ramoTexto}) com compras parecidas compram este produto`
-        : `${p.clientes} de ${total} clientes do mesmo ramo (${ramoTexto}) compram este produto`,
+        ? `${p.clientes} de ${total} clientes ${ramoTexto} com compras parecidas compram este produto`
+        : `${p.clientes} de ${total} clientes ${ramoTexto} compram este produto`,
       loteId,
     }));
   }

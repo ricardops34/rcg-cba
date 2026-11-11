@@ -11,10 +11,14 @@ vendedor.
 - [x] Diagnóstico só leitura: [`sugestao-compra-diagnostico.sql`](sugestao-compra-diagnostico.sql),
       testado na base de dev (2 s).
 - [ ] **Rodar o diagnóstico na produção** — a base de dev não serve: a RCG está
-      lá sem nenhum CNAE gravado (cópia de 30/09, antes da carga de CNAE). O
-      acesso `psql` à VPS ainda não está no runbook; pedir o comando ao usuário.
-- [ ] Decisões abaixo (D1–D3).
-- [ ] Implementar o que for decidido; recalcular o lote.
+      lá sem nenhum CNAE gravado (cópia de 30/09, antes da carga de CNAE).
+      O usuário roda e manda o resultado (decisão de 2026-11-11).
+- [x] **D1 decidido (2026-11-11): ampliar em degraus.** Implementado em
+      `clientesDoMesmoRamo`, com `sugestao-compra-ramo.spec.ts` (7 cenários).
+      Não testado com dados reais (dev sem CNAE da RCG). Commitado, não publicado.
+- [ ] Depois de publicar: **recalcular o lote** (Sugestão de compra →
+      Calcular), senão nada muda para quem já estava sem sugestão.
+- [ ] D2 e D3: decidir com o resultado do diagnóstico.
 
 ## Por que um cliente com CNAE fica sem sugestão (pelo código)
 
@@ -41,11 +45,13 @@ ganhariam pares se a comparação fosse por classe (5 dígitos) ou grupo (3).
 
 ## Decisões pendentes
 
-- **D1 — Afrouxar o ramo em degraus?** Proposta: subclasse → classe → grupo
-  (→ divisão), parando no primeiro nível com pelo menos N pares que compraram
-  no período; o motivo gravado diz o nível ("clientes da mesma classe de
-  atividade…"). Mexe na decisão de 2026-10-07 ("só o mesmo CNAE"), por isso
-  precisa do usuário.
+- **D1 — Afrouxar o ramo em degraus? → SIM (2026-11-11).** Subclasse (7
+  dígitos) → classe (5) → grupo (3), parando no primeiro nível com pelo menos
+  5 clientes (`MIN_PARES_RAMO`) que compraram no período. Nenhum chega a 5:
+  vale o mais amplo com algum comprador. Divisão (2) fica de fora. O motivo
+  gravado diz o nível: "… clientes da mesma classe de atividade (CNAE
+  5611-2) compram este produto". Amplia a decisão de 2026-10-07 ("só o
+  mesmo CNAE"). Vale também para a consulta ao vivo (tela e assistente).
 - **D2 — CNAE secundário do par conta?** Hoje só o principal do par.
 - **D3 — Lote em blocos.** Gravar por cliente (ou por bloco) em vez de uma
   transação única, para um lote longo não perder tudo. Técnico; depende do
