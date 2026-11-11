@@ -1132,7 +1132,12 @@ export function OrcamentoFormContent({
 
   // Sugestão de compra já calculada para o cliente — mesma leitura da aba
   // Sugestão da Posição de Cliente (mesma queryKey, reaproveita o cache).
-  const podeVerSugestao = useAuthStore((s) => s.hasPermission)("sugestao-compra", "visualizar");
+  // A aba é para todo vendedor descobrir o que oferecer ao cliente: basta ter
+  // acesso ao orçamento, sem a tela de Sugestão de compra (Gerencial).
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const podeVerSugestao =
+    hasPermission("sugestao-compra", "visualizar") ||
+    hasPermission("orcamentos", "visualizar");
   const sugestaoQuery = useQuery({
     queryKey: ["sugestao-compra", "calculada", clienteId],
     queryFn: () =>

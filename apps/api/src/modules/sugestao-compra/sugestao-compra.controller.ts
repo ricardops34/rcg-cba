@@ -95,12 +95,17 @@ export class SugestaoCompraController {
     description:
       'O que está gravado em `sugestoes_compra` para o cliente — não recalcula nada. É o que a ' +
       'ação "Visualizar" da listagem e a aba de Sugestão na Posição de Cliente mostram. ' +
-      'Requer sugestao-compra.visualizar; o cliente precisa estar no escopo do usuário. Com ' +
+      'Requer sugestao-compra.visualizar ou orcamentos.visualizar — a aba Sugestão do ' +
+      'orçamento é para todo vendedor descobrir o que oferecer ao cliente, sem precisar da ' +
+      'tela de Sugestão de compra; o cliente precisa estar no escopo do usuário. Com ' +
       '`?paraOrcamento=true` (aba Sugestão do orçamento) vale o escopo do orçamento: vendedor ' +
       'que atende outras carteiras vê a sugestão de qualquer cliente.',
   })
   @ApiResponse({ status: 200, schema: { example: SUGESTAO_COMPRA_CALCULADA_EXAMPLE } })
-  @RequirePermission('sugestao-compra', 'visualizar')
+  @RequirePermission('sugestao-compra', 'visualizar', [
+    'orcamentos',
+    'visualizar',
+  ])
   @Get('cliente/:clienteId/calculada')
   calculadaDoCliente(
     @Param('clienteId') clienteId: string,
