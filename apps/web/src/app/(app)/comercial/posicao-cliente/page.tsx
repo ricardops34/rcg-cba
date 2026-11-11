@@ -40,6 +40,7 @@ import { IconeWhatsapp } from "@/components/ui/icone-whatsapp";
 import { useAtendimentoDisponivel } from "@/components/whatsapp/atendimento-cliente-janela";
 import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import { FieldLabel } from "@/components/ui/field";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -129,6 +130,12 @@ export default function PosicaoClientePage() {
   const [carteira, setCarteira] = useEstadoDaTela<SimNaoTodos>(
     "posicao-cliente:carteira",
     "todos",
+  );
+  // Ramo por prefixo do código CNAE, principal ou secundário (ver
+  // listagemPosicao na API) — o mesmo filtro da listagem de Clientes.
+  const [cnae, setCnae] = useEstadoDaTela<string | undefined>(
+    "posicao-cliente:cnae",
+    undefined,
   );
   const [diasSemComprar, setDiasSemComprar] = useEstadoDaTela<number | undefined>(
     "posicao-cliente:dias",
@@ -250,6 +257,8 @@ export default function PosicaoClientePage() {
       ...(temTituloVencido !== undefined ? { temTituloVencido } : {}),
       ...(produtoId ? { produtoId } : {}),
       ...(comodatoSemConsumo ? { comodatoSemConsumo } : {}),
+      // A API pede de 2 a 7 dígitos: com 1 só, ainda não filtra.
+      ...(cnae && cnae.length >= 2 ? { cnae } : {}),
     });
 
   // Volta ao mesmo ponto da lista. Quem rola é o <main> do layout, e numa
@@ -279,7 +288,8 @@ export default function PosicaoClientePage() {
     diasSemComprar !== undefined ||
     temTituloVencido !== undefined ||
     !!produtoId ||
-    !!comodatoSemConsumo;
+    !!comodatoSemConsumo ||
+    !!cnae;
 
   const limparFiltros = () => {
     setComodatoSemConsumo(undefined);
@@ -291,6 +301,7 @@ export default function PosicaoClientePage() {
     setDiasSemComprar(undefined);
     setTemTituloVencido(undefined);
     setProdutoId(undefined);
+    setCnae(undefined);
     setPage(1);
   };
 
@@ -593,6 +604,23 @@ export default function PosicaoClientePage() {
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+
+              {/* Prefixo do código: "56" pega alimentação inteira, "5611" o
+                  food service, "5611201" só restaurantes. Procura no CNAE
+                  principal e nos secundários. */}
+              <div className="space-y-2">
+                <FieldLabel>Ramo (CNAE principal ou secundário)</FieldLabel>
+                <Input
+                  value={cnae ?? ""}
+                  placeholder="2 a 7 dígitos, ex.: 5611"
+                  inputMode="numeric"
+                  onChange={(e) => {
+                    const so = e.target.value.replace(/\D/g, "").slice(0, 7);
+                    setCnae(so || undefined);
+                    setPage(1);
+                  }}
+                />
               </div>
 
               {mostrarFiltroVendedor && (

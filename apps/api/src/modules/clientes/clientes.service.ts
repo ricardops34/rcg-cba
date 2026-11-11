@@ -1509,6 +1509,18 @@ export class ClientesService {
              AND n."tipo" = 'N' AND n."condicaoPagamentoId" IS NOT NULL
         )`);
       }
+      // Ramo por prefixo do código CNAE, principal ou secundário (basta um
+      // bater) — mesma regra do filtro da listagem de Clientes. Vínculo
+      // excluído não conta.
+      if (query.cnae) {
+        condicoes.push(Prisma.sql`c."id" IN (
+          SELECT cc."clienteId"
+            FROM "cliente_cnaes" cc
+            JOIN "cnaes" k ON k."id" = cc."cnaeId"
+           WHERE cc."empresaId" = ${empresaId} AND cc."deletedAt" IS NULL
+             AND k."codigoErp" LIKE ${`${query.cnae}%`}
+        )`);
+      }
       if (query.bloqueado !== undefined) {
         const bloqueadoExpr = Prisma.sql`(c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio"))`;
         condicoes.push(

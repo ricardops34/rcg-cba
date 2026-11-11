@@ -70,6 +70,16 @@ export const posicaoClienteListQuerySchema = paginationQuerySchema.extend({
   comodatoBaixado: booleanQueryParam,
   /** Está com algum equipamento em comodato (saldo > 0), cadastrado ou não. */
   comodatoEmPoder: booleanQueryParam,
+  /**
+   * Ramo de atividade, por **prefixo** do código CNAE — o mesmo filtro da
+   * listagem de Clientes. Vale o principal e os secundários: basta um bater.
+   */
+  cnae: z
+    .string()
+    .trim()
+    .regex(/^\d{2,7}$/, "Informe de 2 a 7 dígitos do código CNAE")
+    .optional()
+    .describe("Prefixo do código CNAE (2 a 7 dígitos), principal ou secundário"),
 });
 export type PosicaoClienteListQuery = z.infer<typeof posicaoClienteListQuerySchema>;
 
