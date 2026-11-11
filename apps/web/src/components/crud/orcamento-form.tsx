@@ -1118,10 +1118,13 @@ export function OrcamentoFormContent({
   const opcoesOportunidade = oportunidadesQuery.data?.data ?? [];
 
   // Mix de produtos já comprados pelo cliente — alimenta a aba "Mix" (adicionar
-  // ao orçamento) e a coluna "Última venda" da aba Itens.
+  // ao orçamento) e a coluna "Última venda" da aba Itens. `paraOrcamento`:
+  // segue o escopo do orçamento — vendedor que atende outras carteiras orça
+  // cliente fora da própria carteira e precisa ver o mix dele.
   const mixQuery = useQuery({
     queryKey: ["clientes", clienteId, "mix"],
-    queryFn: () => apiFetch<PosicaoClienteMix[]>(`/clientes/${clienteId}/mix`),
+    queryFn: () =>
+      apiFetch<PosicaoClienteMix[]>(`/clientes/${clienteId}/mix?paraOrcamento=true`),
     enabled: !!clienteId,
   });
   const mix = mixQuery.data ?? [];
@@ -1133,7 +1136,9 @@ export function OrcamentoFormContent({
   const sugestaoQuery = useQuery({
     queryKey: ["sugestao-compra", "calculada", clienteId],
     queryFn: () =>
-      apiFetch<SugestaoCompraCalculada>(`/sugestao-compra/cliente/${clienteId}/calculada`),
+      apiFetch<SugestaoCompraCalculada>(
+        `/sugestao-compra/cliente/${clienteId}/calculada?paraOrcamento=true`,
+      ),
     enabled: !!clienteId && podeVerSugestao,
   });
   const sugestoes = sugestaoQuery.data?.itens ?? [];

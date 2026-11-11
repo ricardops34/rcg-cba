@@ -991,9 +991,18 @@ export class ClientesService {
    * usado pela aba "Mix" do formulário de Orçamento (adicionar item usando
    * valores/% da última venda).
    */
-  async mix(empresaId: string, user: AuthenticatedUser, clienteId: string) {
+  async mix(
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+    paraOrcamento = false,
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // `paraOrcamento`: dentro do orçamento vale o escopo do orçamento — quem
+      // "atende outras carteiras" pode orçar o cliente, então vê o mix dele.
+      const escopo = paraOrcamento
+        ? await resolverEscopoOrcamentos(tx, empresaId, user)
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const filtroEscopo = escopo ? { vendedorId: { in: escopo } } : {};
       const cliente = await tx.cliente.findFirst({
         where: { id: clienteId, empresaId, deletedAt: null, ...filtroEscopo },
