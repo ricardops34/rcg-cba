@@ -542,7 +542,7 @@ export default function PosicaoClientePage() {
                   )}
                 </div>
                 <p className="text-xs text-muted-foreground">
-                  Clientes que já compraram este produto em nota de venda.
+                  Clientes que já compraram este produto.
                 </p>
               </div>
 
