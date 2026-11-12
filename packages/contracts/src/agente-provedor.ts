@@ -90,14 +90,18 @@ export const PROVEDORES: Record<ProvedorIa, ProvedorInfo> = {
     aceitaTemperatura: false,
     autenticacao: "oauth",
     /**
-     * Conferidos um a um contra o backend (2026-08-24, revisado em
-     * 2026-11-12: `gpt-5.5` passou a ser recusado com conta ChatGPT —
-     * "model is not supported when using Codex with a ChatGPT account" —
-     * e saiu da lista). Os nomes da API pública (`gpt-5`, `gpt-5.1-codex`,
-     * …) também são recusados: com conta ChatGPT o backend só aceita estes.
-     * A lista de referência do CLI fica em `~/.codex/models_cache.json`.
+     * O backend não documenta nem versiona essa lista — ela já mudou duas
+     * vezes sem aviso (2026-11-12: `gpt-5.5` e depois `gpt-5.4-mini` passaram
+     * a ser recusados com conta ChatGPT, "model is not supported when using
+     * Codex with a ChatGPT account"). Confiável mesmo: só `gpt-5.6-sol`
+     * (testado e em uso). Os outros `gpt-5.6-*` ficam porque são a mesma
+     * geração, mas qualquer um pode cair de uma hora para outra — se um 400
+     * desses aparecer de novo, tire o modelo daqui. `gpt-5.4`/`gpt-5.4-mini`
+     * saíram por serem de geração anterior, igual o `gpt-5.5` que já caiu.
+     * Os nomes da API pública (`gpt-5`, `gpt-5.1-codex`, …) são recusados do
+     * mesmo jeito. Lista de referência do CLI: `~/.codex/models_cache.json`.
      */
-    modelos: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-5.4", "gpt-5.4-mini"],
+    modelos: ["gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna"],
     advertencia:
       "O Codex autentica com o login da assinatura ChatGPT, não com chave de API. " +
       "O endpoint usado é privado e não documentado pela OpenAI, e o uso da assinatura " +
