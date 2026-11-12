@@ -1708,6 +1708,8 @@ export function OrcamentoFormContent({
                       tabIndex={-1}
                       className="cursor-default bg-muted/50"
                       value={
+                        clienteSelecionadoQuery.data?.vendedor?.nomeReduzido ||
+                        clienteSelecionadoQuery.data?.vendedor?.nome ||
                         opcoesVendedor.find((v) => v.id === vendedorId)?.nomeReduzido ||
                         opcoesVendedor.find((v) => v.id === vendedorId)?.nome ||
                         "—"
