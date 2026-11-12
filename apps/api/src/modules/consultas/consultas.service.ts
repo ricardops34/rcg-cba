@@ -16,9 +16,15 @@ import type {
   ConsultaVendasCategoriaQuery,
   ConsultaVendasCategoriaResultado,
   ConsultaVendasClienteQuery,
+  ConsultaVendasCnaeDetalheLinha,
+  ConsultaVendasCnaeDetalheQuery,
+  ConsultaVendasCnaeDetalheResultado,
+  ConsultaVendasCnaeQuery,
+  ConsultaVendasCnaeResultado,
   ConsultaVendasColuna,
   ConsultaVendasLinha,
   ConsultaVendasNoCategoria,
+  ConsultaVendasNoCnae,
   ConsultaVendasProdutoQuery,
   ConsultaVendasResultado,
   ConsultaVendasVendedorQuery,
@@ -29,6 +35,8 @@ import {
   PARAMETRO_BASE_VENDEDOR,
   SEM_CATEGORIA_ID,
   SEM_CATEGORIA_LABEL,
+  SEM_CNAE_ID,
+  SEM_CNAE_LABEL,
   SEM_SUBCATEGORIA_ID,
   SEM_SUBCATEGORIA_LABEL,
   colunasDoPeriodo,
@@ -60,6 +68,23 @@ interface LinhaArvore {
   subCategoriaId: string | null;
   subCategoriaCodigo: string | null;
   subCategoriaDescricao: string | null;
+  produtoId: string;
+  produtoCodigo: string | null;
+  produtoDescricao: string;
+  ano: number;
+  mes: number;
+  valor: number;
+}
+
+/**
+ * Linha crua da consulta por CNAE: uma por (cnae, produto, ano, mês). O CNAE
+ * vem de LEFT JOIN em cliente_cnaes/cnaes (é do cliente, não do produto) —
+ * nulo quando o cliente não tem CNAE cadastrado.
+ */
+interface LinhaArvoreCnae {
+  cnaeId: string | null;
+  cnaeCodigo: string | null;
+  cnaeDescricao: string | null;
   produtoId: string;
   produtoCodigo: string | null;
   produtoDescricao: string;
@@ -701,6 +726,278 @@ export class ConsultasService {
       total: no.total,
       media: this.mediaMesesComMovimento(no.valores, no.total),
     };
+  }
+
+  /**
+   * Vendas do período por CNAE do cliente → produto.
+   *
+   * O CNAE não é do produto — é do cliente (`cliente_cnaes`), e um cliente
+   * pode ter vários (principal e secundários). O LEFT JOIN por isso faz a
+   * venda "fanout": a mesma linha de item entra uma vez por CNAE vinculado ao
+   * cliente que comprou, e soma em cada um — decisão de 2026-11-12, mesmo
+   * critério do filtro "Ramo" da Posição de Cliente. O total geral desta
+   * consulta por isso pode superar o da consulta por produto no mesmo
+   * período: não é bug, é a mesma venda contando em mais de um ramo.
+   *
+   * Cliente sem CNAE cadastrado (ou só com vínculos excluídos) cai em
+   * "(Sem CNAE)" em vez de sumir — mesmo racional de "(Sem categoria)".
+   */
+  async vendasPorCnae(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: ConsultaVendasCnaeQuery,
+  ): Promise<ConsultaVendasCnaeResultado> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const base = await this.baseVendedor(empresaId, tx, query.baseVendedor);
+      const colunaVendedor =
+        base === 'cliente'
+          ? Prisma.sql`c."vendedorId"`
+          : Prisma.sql`i."vendedorId"`;
+
+      const condicoes: Prisma.Sql[] = [
+        Prisma.sql`i."empresaId" = ${empresaId}`,
+        ...this.condicaoPeriodo(Prisma.sql`i`, query),
+        ...(await this.condicoesDeVenda(tx, empresaId)),
+        ...this.condicaoEscopoClientes(escopo),
+        ...this.condicaoFiltroVendedor(
+          colunaVendedor,
+          escopo,
+          query.vendedorIds,
+        ),
+      ];
+      if (query.cnaeId) {
+        condicoes.push(Prisma.sql`k."id" = ${query.cnaeId}`);
+      }
+
+      const agregadas = await tx.$queryRaw<LinhaArvoreCnae[]>(Prisma.sql`
+        SELECT
+          k."id"          AS "cnaeId",
+          k."codigoErp"   AS "cnaeCodigo",
+          k."descricao"   AS "cnaeDescricao",
+          p."id"          AS "produtoId",
+          p."codigoErp"   AS "produtoCodigo",
+          p."descricao"   AS "produtoDescricao",
+          i."ano"         AS "ano",
+          i."mes"         AS "mes",
+          SUM(i."vlrTotal")::float8 AS "valor"
+        FROM "notas_saida_itens" i
+        JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+        JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
+        JOIN "produtos" p ON p."id" = i."produtoId" AND p."deletedAt" IS NULL
+        LEFT JOIN "cliente_cnaes" cc ON cc."clienteId" = c."id" AND cc."deletedAt" IS NULL
+        LEFT JOIN "cnaes" k ON k."id" = cc."cnaeId" AND k."deletedAt" IS NULL
+        WHERE ${Prisma.join(condicoes, ' AND ')}
+        GROUP BY
+          k."id", k."codigoErp", k."descricao",
+          p."id", p."codigoErp", p."descricao",
+          i."ano", i."mes"
+      `);
+
+      const cabecalho = this.cabecalho(query, base);
+      const cnae = query.cnaeId
+        ? await tx.cnae.findFirst({
+            where: { id: query.cnaeId, deletedAt: null },
+            select: { id: true, descricao: true },
+          })
+        : null;
+
+      return {
+        ...cabecalho,
+        vendedores: await this.vendedoresRef(tx, empresaId, query.vendedorIds),
+        categoria: null,
+        cnae,
+        ...this.montarArvoreCnae(agregadas, cabecalho.colunas),
+      };
+    });
+  }
+
+  /**
+   * Pivota e aninha as linhas cruas em CNAE → produto. Mesma técnica de
+   * `montarArvore`, um nível a menos.
+   */
+  private montarArvoreCnae(
+    agregadas: LinhaArvoreCnae[],
+    colunas: ConsultaVendasColuna[],
+  ): {
+    linhas: ConsultaVendasNoCnae[];
+    totais: number[];
+    total: number;
+    media: number;
+  } {
+    const indicePorMes = new Map(
+      colunas.map((c, i) => [emMeses(c.ano, c.mes), i]),
+    );
+    const raiz = new Map<string, NoEmMontagem>();
+    const totais = Array<number>(colunas.length).fill(0);
+
+    const obter = (
+      onde: Map<string, NoEmMontagem>,
+      id: string,
+      codigo: string | null,
+      descricao: string,
+    ): NoEmMontagem => {
+      let no = onde.get(id);
+      if (!no) {
+        no = {
+          id,
+          codigo,
+          descricao,
+          valores: Array<number>(colunas.length).fill(0),
+          total: 0,
+          filhos: new Map(),
+        };
+        onde.set(id, no);
+      }
+      return no;
+    };
+
+    for (const linha of agregadas) {
+      const indice = indicePorMes.get(emMeses(linha.ano, linha.mes));
+      if (indice === undefined) continue;
+      const valor = Number(linha.valor);
+
+      const cnae = obter(
+        raiz,
+        linha.cnaeId ?? SEM_CNAE_ID,
+        linha.cnaeCodigo,
+        linha.cnaeDescricao ?? SEM_CNAE_LABEL,
+      );
+      const produto = obter(
+        cnae.filhos,
+        linha.produtoId,
+        linha.produtoCodigo,
+        linha.produtoDescricao,
+      );
+
+      for (const no of [cnae, produto]) {
+        no.valores[indice] += valor;
+        no.total += valor;
+      }
+      totais[indice] += valor;
+    }
+
+    const total = totais.reduce((acc, v) => acc + v, 0);
+    return {
+      linhas: this.fecharNivel(raiz).map((cnae) => ({
+        ...this.folha(cnae),
+        filhos: this.fecharNivel(cnae.filhos).map((prod) => this.folha(prod)),
+      })),
+      totais,
+      total,
+      media: this.mediaMesesComMovimento(totais, total),
+    };
+  }
+
+  /**
+   * Drill-down de uma célula (CNAE + produto) da consulta acima: a lista
+   * crua de cliente/nota por trás do total. `cnaeId` aceita o sentinela
+   * SEM_CNAE_ID — vira "o cliente não tem nenhum vínculo ativo em
+   * cliente_cnaes", checado por NOT EXISTS em vez de join, porque um JOIN
+   * duplicaria a linha do item por vínculo de CNAE do cliente (o mesmo
+   * fanout que a árvore quer, mas que aqui exibiria a mesma nota repetida).
+   */
+  async detalheVendasPorCnae(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: ConsultaVendasCnaeDetalheQuery,
+  ): Promise<ConsultaVendasCnaeDetalheResultado> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const base = await this.baseVendedor(empresaId, tx, query.baseVendedor);
+      const colunaVendedor =
+        base === 'cliente'
+          ? Prisma.sql`c."vendedorId"`
+          : Prisma.sql`i."vendedorId"`;
+
+      const condicaoCnae =
+        query.cnaeId === SEM_CNAE_ID
+          ? Prisma.sql`NOT EXISTS (
+              SELECT 1 FROM "cliente_cnaes" cc
+              WHERE cc."clienteId" = c."id" AND cc."deletedAt" IS NULL
+            )`
+          : Prisma.sql`EXISTS (
+              SELECT 1 FROM "cliente_cnaes" cc
+              WHERE cc."clienteId" = c."id" AND cc."deletedAt" IS NULL
+                AND cc."cnaeId" = ${query.cnaeId}
+            )`;
+
+      const condicoes: Prisma.Sql[] = [
+        Prisma.sql`i."empresaId" = ${empresaId}`,
+        Prisma.sql`i."produtoId" = ${query.produtoId}`,
+        condicaoCnae,
+        ...this.condicaoPeriodo(Prisma.sql`i`, query),
+        ...(await this.condicoesDeVenda(tx, empresaId)),
+        ...this.condicaoEscopoClientes(escopo),
+        ...this.condicaoFiltroVendedor(
+          colunaVendedor,
+          escopo,
+          query.vendedorIds,
+        ),
+      ];
+
+      const linhas = await tx.$queryRaw<
+        {
+          clienteId: string;
+          clienteCodigo: string | null;
+          clienteNome: string;
+          notaSaidaId: string;
+          notaFiscal: string | null;
+          emissao: Date;
+          quantidade: number;
+          vlrItem: number;
+        }[]
+      >(Prisma.sql`
+        SELECT
+          c."id"          AS "clienteId",
+          c."codigoErp"   AS "clienteCodigo",
+          c."razaoSocial" AS "clienteNome",
+          n."id"          AS "notaSaidaId",
+          n."numero"      AS "notaFiscal",
+          n."dtEmissao"   AS "emissao",
+          i."quantidade"::float8 AS "quantidade",
+          i."vlrTotal"::float8   AS "vlrItem"
+        FROM "notas_saida_itens" i
+        JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+        JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
+        WHERE ${Prisma.join(condicoes, ' AND ')}
+        ORDER BY n."dtEmissao" DESC, n."numero" DESC
+      `);
+
+      const [produto, cnae] = await Promise.all([
+        tx.produto.findFirst({
+          where: { id: query.produtoId, empresaId, deletedAt: null },
+          select: { id: true, descricao: true },
+        }),
+        query.cnaeId === SEM_CNAE_ID
+          ? Promise.resolve({ id: SEM_CNAE_ID, descricao: SEM_CNAE_LABEL })
+          : tx.cnae.findFirst({
+              where: { id: query.cnaeId, deletedAt: null },
+              select: { id: true, descricao: true },
+            }),
+      ]);
+
+      const linhasResposta: ConsultaVendasCnaeDetalheLinha[] = linhas.map(
+        (l) => ({
+          clienteId: l.clienteId,
+          clienteCodigo: l.clienteCodigo,
+          clienteNome: l.clienteNome,
+          notaSaidaId: l.notaSaidaId,
+          notaFiscal: l.notaFiscal,
+          emissao: l.emissao.toISOString(),
+          quantidade: Number(l.quantidade),
+          vlrItem: Number(l.vlrItem),
+        }),
+      );
+
+      return {
+        cnae: cnae ?? { id: query.cnaeId, descricao: SEM_CNAE_LABEL },
+        produto: produto ?? { id: query.produtoId, descricao: '—' },
+        linhas: linhasResposta,
+        quantidadeTotal: linhasResposta.reduce((s, l) => s + l.quantidade, 0),
+        total: linhasResposta.reduce((s, l) => s + l.vlrItem, 0),
+      };
+    });
   }
 
   /**

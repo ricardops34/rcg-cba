@@ -8,6 +8,8 @@ import {
 import {
   CONSULTA_EVOLUCAO_RESULTADO_EXAMPLE,
   CONSULTA_VENDAS_CATEGORIA_RESULTADO_EXAMPLE,
+  CONSULTA_VENDAS_CNAE_DETALHE_RESULTADO_EXAMPLE,
+  CONSULTA_VENDAS_CNAE_RESULTADO_EXAMPLE,
   CONSULTA_VENDAS_RESULTADO_EXAMPLE,
 } from '@plataforma/contracts';
 import { ConsultasService } from './consultas.service';
@@ -15,6 +17,8 @@ import {
   ConsultaEvolucaoQueryDto,
   ConsultaVendasCategoriaQueryDto,
   ConsultaVendasClienteQueryDto,
+  ConsultaVendasCnaeDetalheQueryDto,
+  ConsultaVendasCnaeQueryDto,
   ConsultaVendasProdutoQueryDto,
   ConsultaVendasVendedorQueryDto,
 } from './dto/consulta.dto';
@@ -131,6 +135,52 @@ export class ConsultasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.vendasPorCategoria(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Vendas do período por CNAE do cliente e produto',
+    description:
+      'Mesma apuração das outras consultas, com as linhas em árvore de dois níveis: o CNAE ' +
+      'do CLIENTE (principal ou secundário — ver cliente_cnaes) e, dentro dele, o produto. Uma ' +
+      'venda entra em tantos nós de CNAE quanto o cliente tiver vinculado, então o total geral ' +
+      'pode superar o da consulta por produto no mesmo período (soma com repetição, de ' +
+      'propósito). Cliente sem CNAE cadastrado cai em "(Sem CNAE)" em vez de sair do ' +
+      'relatório. Filtro opcional `cnaeId`. Restrita à carteira de clientes que o usuário ' +
+      'alcança. Requer consulta-vendas-cnae.visualizar.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: CONSULTA_VENDAS_CNAE_RESULTADO_EXAMPLE },
+  })
+  @RequirePermission('consulta-vendas-cnae', 'visualizar')
+  @Get('vendas-cnae')
+  vendasPorCnae(
+    @Query() query: ConsultaVendasCnaeQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.vendasPorCnae(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Detalhe por cliente/nota de uma célula CNAE × produto',
+    description:
+      'Drill-down da consulta por CNAE: lista crua (cliente, nota, emissão, quantidade, ' +
+      'valor) por trás do total de um nó CNAE + produto no período. `cnaeId` aceita o ' +
+      'sentinela "sem-cnae" (o nó "(Sem CNAE)" da árvore). Mesmos filtros de vendedor/base e ' +
+      'mesma restrição de carteira da consulta por CNAE. Requer ' +
+      'consulta-vendas-cnae.visualizar.',
+  })
+  @ApiResponse({
+    status: 200,
+    schema: { example: CONSULTA_VENDAS_CNAE_DETALHE_RESULTADO_EXAMPLE },
+  })
+  @RequirePermission('consulta-vendas-cnae', 'visualizar')
+  @Get('vendas-cnae/detalhe')
+  detalheVendasPorCnae(
+    @Query() query: ConsultaVendasCnaeDetalheQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.detalheVendasPorCnae(user.empresaAtivaId, user, query);
   }
 
   @ApiOperation({

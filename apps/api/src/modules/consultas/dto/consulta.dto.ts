@@ -3,6 +3,8 @@ import {
   consultaEvolucaoQuerySchema,
   consultaVendasCategoriaQuerySchema,
   consultaVendasClienteQuerySchema,
+  consultaVendasCnaeDetalheQuerySchema,
+  consultaVendasCnaeQuerySchema,
   consultaVendasProdutoQuerySchema,
   consultaVendasVendedorQuerySchema,
 } from '@plataforma/contracts';
@@ -18,6 +20,12 @@ export class ConsultaVendasProdutoQueryDto extends createZodDto(
 ) {}
 export class ConsultaVendasCategoriaQueryDto extends createZodDto(
   consultaVendasCategoriaQuerySchema,
+) {}
+export class ConsultaVendasCnaeQueryDto extends createZodDto(
+  consultaVendasCnaeQuerySchema,
+) {}
+export class ConsultaVendasCnaeDetalheQueryDto extends createZodDto(
+  consultaVendasCnaeDetalheQuerySchema,
 ) {}
 export class ConsultaEvolucaoQueryDto extends createZodDto(
   consultaEvolucaoQuerySchema,

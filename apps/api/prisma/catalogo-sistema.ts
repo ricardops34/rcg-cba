@@ -647,6 +647,17 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'consulta-vendas-categoria',
     moduloId: MODULO.consultas,
   },
+  // A mesma apuração, agrupada em árvore (CNAE do cliente → produto). O CNAE
+  // é vínculo do cliente (cliente_cnaes), não do produto — ver
+  // ConsultasService.vendasPorCnae.
+  {
+    id: 'seed-menu-consulta-vendas-cnae',
+    nome: 'Vendas por CNAE',
+    rota: '/consultas/vendas-cnae',
+    icone: 'tags',
+    codigo: 'consulta-vendas-cnae',
+    moduloId: MODULO.consultas,
+  },
   {
     id: 'seed-menu-consulta-vendas-vendedor',
     nome: 'Vendas por Vendedor',
@@ -844,6 +855,7 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   'consulta-vendas-cliente': ['visualizar'],
   'consulta-vendas-produto': ['visualizar'],
   'consulta-vendas-categoria': ['visualizar'],
+  'consulta-vendas-cnae': ['visualizar'],
 };
 
 /**
@@ -930,6 +942,7 @@ export const ADMINISTRATIVO_PERMISSOES: Record<string, Acao[]> = {
   'consulta-vendas-cliente': ['visualizar'],
   'consulta-vendas-produto': ['visualizar'],
   'consulta-vendas-categoria': ['visualizar'],
+  'consulta-vendas-cnae': ['visualizar'],
   'consulta-vendas-vendedor': ['visualizar'],
   'consulta-evolucao': ['visualizar'],
   // Sem cadastro de Vendedor, o escopo do Administrativo já é "sem

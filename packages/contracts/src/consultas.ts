@@ -468,6 +468,146 @@ export type ConsultaVendasCategoriaResultado = z.infer<
   typeof consultaVendasCategoriaResultadoSchema
 >;
 
+// ------------------------------------------------------------------
+// Vendas por CNAE — mesma tabela pivô, árvore de dois níveis (CNAE →
+// produto). O CNAE é do CLIENTE (cliente_cnaes), não do produto: uma venda
+// entra em tantos CNAEs quanto o cliente tiver vinculado (principal e
+// secundários somam juntos, decisão de 2026-11-12) — o total geral desta
+// consulta por isso pode superar o da consulta por produto no mesmo
+// período, e é esperado.
+// ------------------------------------------------------------------
+
+/** Cliente sem CNAE cadastrado cai aqui, em vez de sumir do relatório. */
+export const SEM_CNAE_ID = "sem-cnae";
+export const SEM_CNAE_LABEL = "(Sem CNAE)";
+
+export const consultaVendasCnaeQuerySchema = z
+  .object({
+    ...periodoFields,
+    vendedorIds: vendedorIdsSchema,
+    baseVendedor: baseVendedorSchema.optional(),
+    /** Recorta um CNAE; a árvore então nasce só com ele. */
+    cnaeId: z.string().uuid().optional(),
+  })
+  .superRefine(validarPeriodo);
+export type ConsultaVendasCnaeQuery = z.infer<
+  typeof consultaVendasCnaeQuerySchema
+>;
+
+/** Nível 2: o produto. Folha, não expande — mesmo formato da consulta por categoria. */
+export const consultaVendasNoProdutoCnaeSchema = noBaseSchema;
+export type ConsultaVendasNoProdutoCnae = z.infer<
+  typeof consultaVendasNoProdutoCnaeSchema
+>;
+
+/** Nível 1: o CNAE raiz, com os produtos vendidos a clientes dele. */
+export const consultaVendasNoCnaeSchema = noBaseSchema.extend({
+  filhos: z.array(consultaVendasNoProdutoCnaeSchema),
+});
+export type ConsultaVendasNoCnae = z.infer<typeof consultaVendasNoCnaeSchema>;
+
+export const consultaVendasCnaeResultadoSchema =
+  consultaVendasResultadoSchema.extend({
+    cnae: z.object({ id: z.string().uuid(), descricao: z.string() }).nullable(),
+    linhas: z.array(consultaVendasNoCnaeSchema),
+  });
+export type ConsultaVendasCnaeResultado = z.infer<
+  typeof consultaVendasCnaeResultadoSchema
+>;
+
+/**
+ * Drill-down de uma célula (CNAE + produto) para o detalhe por cliente/nota
+ * — o "dropdown para navegar" pedido pelo usuário: a árvore some até o
+ * produto, e daqui para baixo é a lista crua que compõe aquele total.
+ */
+export const consultaVendasCnaeDetalheQuerySchema = z
+  .object({
+    ...periodoFields,
+    vendedorIds: vendedorIdsSchema,
+    baseVendedor: baseVendedorSchema.optional(),
+    /** SEM_CNAE_ID vale aqui — é o nó "(Sem CNAE)" da árvore. */
+    cnaeId: z.string().min(1),
+    produtoId: z.string().uuid(),
+  })
+  .superRefine(validarPeriodo);
+export type ConsultaVendasCnaeDetalheQuery = z.infer<
+  typeof consultaVendasCnaeDetalheQuerySchema
+>;
+
+export const consultaVendasCnaeDetalheLinhaSchema = z.object({
+  clienteId: z.string().uuid(),
+  clienteCodigo: z.string().nullable(),
+  clienteNome: z.string(),
+  notaSaidaId: z.string().uuid(),
+  notaFiscal: z.string().nullable(),
+  emissao: z.string().datetime(),
+  quantidade: z.number(),
+  vlrItem: z.number(),
+});
+export type ConsultaVendasCnaeDetalheLinha = z.infer<
+  typeof consultaVendasCnaeDetalheLinhaSchema
+>;
+
+export const consultaVendasCnaeDetalheResultadoSchema = z.object({
+  cnae: z.object({ id: z.string(), descricao: z.string() }),
+  produto: z.object({ id: z.string().uuid(), descricao: z.string() }),
+  linhas: z.array(consultaVendasCnaeDetalheLinhaSchema),
+  quantidadeTotal: z.number(),
+  total: z.number(),
+});
+export type ConsultaVendasCnaeDetalheResultado = z.infer<
+  typeof consultaVendasCnaeDetalheResultadoSchema
+>;
+
+export const CONSULTA_VENDAS_CNAE_RESULTADO_EXAMPLE: ConsultaVendasCnaeResultado =
+  {
+    ...CONSULTA_VENDAS_RESULTADO_EXAMPLE,
+    cnae: null,
+    linhas: [
+      {
+        id: "d1e2f3a4-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+        codigo: "4729602",
+        descricao: "Comércio varejista de produtos alimentícios",
+        valores: [1200.5, 0, 980, 4963.25],
+        total: 7143.75,
+        media: 2381.25,
+        filhos: [
+          {
+            id: "c3d4e5f6-7a8b-4c9d-0e1f-2a3b4c5d6e7f",
+            codigo: "PRD-0042",
+            descricao: "RAÇÃO CÃO ADULTO 15KG",
+            valores: [1200.5, 0, 980, 4963.25],
+            total: 7143.75,
+            media: 2381.25,
+          },
+        ],
+      },
+    ],
+  };
+
+export const CONSULTA_VENDAS_CNAE_DETALHE_RESULTADO_EXAMPLE: ConsultaVendasCnaeDetalheResultado =
+  {
+    cnae: {
+      id: "d1e2f3a4-5b6c-4d7e-8f9a-0b1c2d3e4f5a",
+      descricao: "Comércio varejista de produtos alimentícios",
+    },
+    produto: { id: "c3d4e5f6-7a8b-4c9d-0e1f-2a3b4c5d6e7f", descricao: "RAÇÃO CÃO ADULTO 15KG" },
+    linhas: [
+      {
+        clienteId: "5f6a7b8c-9d0e-4f1a-8b2c-3d4e5f6a7b8c",
+        clienteCodigo: "004417",
+        clienteNome: "MERCADO ANDRADE LTDA",
+        notaSaidaId: "a1b2c3d4-5e6f-4a7b-8c9d-0e1f2a3b4c5d",
+        notaFiscal: "000123456",
+        emissao: "2026-07-28T00:00:00.000Z",
+        quantidade: 10,
+        vlrItem: 1200.5,
+      },
+    ],
+    quantidadeTotal: 10,
+    total: 1200.5,
+  };
+
 export const CONSULTA_VENDAS_CATEGORIA_RESULTADO_EXAMPLE: ConsultaVendasCategoriaResultado =
   {
     ...CONSULTA_VENDAS_RESULTADO_EXAMPLE,
