@@ -785,6 +785,7 @@ export class ConsultasService {
         JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
         JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
         JOIN "produtos" p ON p."id" = i."produtoId" AND p."deletedAt" IS NULL
+        LEFT JOIN "categorias" cat ON cat."id" = p."categoriaId"
         LEFT JOIN "cliente_cnaes" cc ON cc."clienteId" = c."id" AND cc."deletedAt" IS NULL
         LEFT JOIN "cnaes" k ON k."id" = cc."cnaeId" AND k."deletedAt" IS NULL
         WHERE ${Prisma.join(condicoes, ' AND ')}
@@ -960,6 +961,8 @@ export class ConsultasService {
         FROM "notas_saida_itens" i
         JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
         JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
+        JOIN "produtos" p ON p."id" = i."produtoId" AND p."deletedAt" IS NULL
+        LEFT JOIN "categorias" cat ON cat."id" = p."categoriaId"
         WHERE ${Prisma.join(condicoes, ' AND ')}
         ORDER BY n."dtEmissao" DESC, n."numero" DESC
       `);
