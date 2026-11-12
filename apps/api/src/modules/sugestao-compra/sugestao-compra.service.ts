@@ -11,7 +11,10 @@ import {
   PrismaService,
   type TenantTx,
 } from '../../common/prisma/prisma.service';
-import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
+import {
+  resolverEscopoOrcamentos,
+  resolverEscopoVendedores,
+} from '../../common/escopo/escopo-vendedores';
 import { condicaoBuscaTermosSql } from '../../common/busca/termos-busca';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 import {
@@ -504,9 +507,14 @@ export class SugestaoCompraService {
     empresaId: string,
     user: AuthenticatedUser,
     clienteId: string,
+    paraOrcamento = false,
   ): Promise<SugestaoCompraCalculada> {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // `paraOrcamento`: a aba Sugestão do orçamento segue o escopo do
+      // orçamento (quem "atende outras carteiras" orça qualquer cliente).
+      const escopo = paraOrcamento
+        ? await resolverEscopoOrcamentos(tx, empresaId, user)
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const cliente = await tx.cliente.findFirst({
         where: {
           id: clienteId,

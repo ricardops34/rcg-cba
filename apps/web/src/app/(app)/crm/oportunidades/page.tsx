@@ -1,5 +1,6 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -66,7 +67,7 @@ export default function OportunidadesPage() {
   const urlFiltros = useFiltrosUrl();
   const [search, setSearch] = useState(() => urlFiltros.texto("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useState("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [status, setStatus] = useState<StatusFilterValue>("ativos");

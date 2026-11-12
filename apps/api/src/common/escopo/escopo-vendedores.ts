@@ -83,12 +83,24 @@ export async function resolverEscopoDoUsuario(
   // via a empresa toda (decisão de 30/09/2026: só Administrador e
   // Administrativo veem tudo).
   if (!vendedor) return [];
+  return arvoreDoVendedor(tx, empresaId, vendedor.id);
+}
 
+/**
+ * O vendedor e toda a árvore abaixo dele (ver resolverEscopoDoUsuario). Separado
+ * para quem precisa da árvore mesmo sem restrição de carteira — o filtro
+ * "Minha equipe" do Administrador com vendedor vinculado, por exemplo.
+ */
+export async function arvoreDoVendedor(
+  tx: TenantTx,
+  empresaId: string,
+  vendedorId: string,
+): Promise<string[]> {
   const linhas = await tx.$queryRaw<{ id: string }[]>`
     WITH RECURSIVE time_do_vendedor AS (
       SELECT v."id"
       FROM "vendedores" v
-      WHERE v."id" = ${vendedor.id}
+      WHERE v."id" = ${vendedorId}
         AND v."empresaId" = ${empresaId}
         AND v."deletedAt" IS NULL
       UNION
@@ -104,17 +116,13 @@ export async function resolverEscopoDoUsuario(
 }
 
 /**
- * Combina o escopo com o filtro ?vendedorId= da query sem deixar o filtro
- * sobrescrever a restrição: um vendedorId fora do escopo força resultado
- * vazio em vez de vazar carteiras de fora do time.
- */
-/**
  * Este vendedor pode atender e usar as ferramentas do WhatsApp (2ª via de
  * título, XML, boleto, orçamento) para cliente de carteira alheia?
  *
  * Permissão por vendedor (`Vendedor.atendeOutrasCarteiras`), não por perfil —
- * decisão de 2026-10-14. Vale só dentro do atendimento de WhatsApp
- * (`WhatsappAcoesService`); nenhuma outra tela olha este campo.
+ * decisão de 2026-10-14. Vale no atendimento de WhatsApp
+ * (`WhatsappAcoesService`) e, desde 2026-11-06, na rotina de orçamentos
+ * (`resolverEscopoOrcamentos`); nenhuma outra tela olha este campo.
  */
 export async function podeAtenderOutraCarteira(
   tx: TenantTx,
@@ -129,6 +137,35 @@ export async function podeAtenderOutraCarteira(
   return vendedor?.atendeOutrasCarteiras ?? false;
 }
 
+/**
+ * Escopo da rotina de orçamentos (e da escolha do cliente dentro dela).
+ *
+ * Decisão de 2026-11-06: o "atende clientes de outras carteiras" do vendedor
+ * deixou de valer só no WhatsApp e passou a liberar também o orçamento — quem
+ * tem a marca lista, abre, cria e edita orçamento de qualquer cliente da
+ * empresa. É a mesma permissão por vendedor, não por perfil: sem a marca, vale
+ * o escopo hierárquico de sempre. Fora dos orçamentos (clientes, notas,
+ * títulos) o escopo não muda.
+ */
+export async function resolverEscopoOrcamentos(
+  tx: TenantTx,
+  empresaId: string,
+  user: AuthenticatedUser,
+): Promise<EscopoVendedores> {
+  const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+  if (escopo === null) return null; // já enxerga a carteira inteira
+  const vendedor = await tx.vendedor.findFirst({
+    where: { usuarioId: user.id, empresaId, deletedAt: null },
+    select: { atendeOutrasCarteiras: true },
+  });
+  return vendedor?.atendeOutrasCarteiras ? null : escopo;
+}
+
+/**
+ * Combina o escopo com o filtro ?vendedorId= da query sem deixar o filtro
+ * sobrescrever a restrição: um vendedorId fora do escopo força resultado
+ * vazio em vez de vazar carteiras de fora do time.
+ */
 export function combinarFiltroVendedor(escopo: EscopoVendedores, vendedorIdQuery?: string) {
   if (escopo === null) return vendedorIdQuery ? { vendedorId: vendedorIdQuery } : {};
   if (!vendedorIdQuery) return { vendedorId: { in: escopo } };

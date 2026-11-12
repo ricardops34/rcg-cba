@@ -1,5 +1,6 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
@@ -40,7 +41,7 @@ export default function ProdutosPage() {
   );
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useState("descricao");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   // Abre nos ativos: é o catálogo que se vende. Os demais seguem a um clique.

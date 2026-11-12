@@ -9,6 +9,7 @@ import {
   Query,
   UseGuards,
 } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import {
   ApiBearerAuth,
   ApiOperation,
@@ -20,6 +21,7 @@ import { CepsService } from './ceps.service';
 import { CepCreateDto, CepQueryDto, CepUpdateDto } from './dto/cep.dto';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { PlatformAdminGuard } from '../../../common/guards/platform-admin.guard';
 import { RequirePermission } from '../../../common/decorators/require-permission.decorator';
 import { ApiPaginationQuery } from '../../../common/decorators/api-pagination-query.decorator';
 import {
@@ -58,6 +60,8 @@ export class CepsController {
       'só exige login, sem permissão de módulo.',
   })
   @ApiResponse({ status: 200, schema: { example: CONSULTA_CEP_EXAMPLE } })
+  // Cada consulta que não está no cache sai para o ViaCEP, que bloqueia abuso por IP.
+  @Throttle({ default: { limit: 30, ttl: 60_000 } })
   @Get('consulta/:cep')
   consultar(@Param('cep') cep: string) {
     return this.service.consultar(cep);
@@ -71,6 +75,7 @@ export class CepsController {
   }
 
   @ApiOperation({ summary: 'Cadastrar CEP', description: 'Requer ceps.cadastrar.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('ceps', 'cadastrar')
   @Post()
   create(@Body() dto: CepCreateDto, @CurrentUser() user: AuthenticatedUser) {
@@ -78,6 +83,7 @@ export class CepsController {
   }
 
   @ApiOperation({ summary: 'Editar CEP', description: 'Requer ceps.editar.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('ceps', 'editar')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: CepUpdateDto, @CurrentUser() user: AuthenticatedUser) {
@@ -85,6 +91,7 @@ export class CepsController {
   }
 
   @ApiOperation({ summary: 'Excluir CEP (soft delete)', description: 'Requer ceps.excluir.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('ceps', 'excluir')
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {

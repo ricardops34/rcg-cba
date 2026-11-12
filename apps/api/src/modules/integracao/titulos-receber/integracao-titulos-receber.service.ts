@@ -474,9 +474,9 @@ export class IntegracaoTitulosReceberService {
   /**
    * Conta de cobrança pela descrição cadastrada — o ERP não conhece o uuid.
    *
-   * Falhar com 404 quando a descrição não bate é proposital: aceitar em
-   * silêncio deixaria o título apontando para a conta padrão, e a 2ª via sairia
-   * com o convênio errado — um boleto que o banco não reconhece.
+   * Quando nenhuma conta bate, ela é cadastrada na hora com o que o título
+   * trouxe (banco, agência, conta, carteira e dados do boleto). Decisão do
+   * usuário em 06/11/2026: manter assim, não responder 404.
    */
   private async resolverContaBancaria(
     tx: TenantTx,

@@ -14,7 +14,7 @@ export const MOTIVO_DESCONECTADO = 'desconectado';
 
 const MENSAGENS: Record<string, string> = {
   [MOTIVO_NOVO_ACESSO]:
-    'Sua sessão foi encerrada porque houve um novo acesso com este usuário em outro navegador ou computador.',
+    'Sua sessão foi encerrada porque houve um novo acesso com este usuário em outro aparelho do mesmo tipo (outro computador ou outro celular).',
   [MOTIVO_DESCONECTADO]: 'Sua sessão foi encerrada pela administração.',
 };
 

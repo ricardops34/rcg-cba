@@ -1,5 +1,6 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
@@ -91,7 +92,7 @@ export default function IntegracaoPage() {
   const [search, setSearch] = useState("");
   const [endpointSearch, setEndpointSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
 
   const queryClient = useQueryClient();
 

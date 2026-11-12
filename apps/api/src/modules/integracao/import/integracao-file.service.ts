@@ -13,7 +13,6 @@ import { IntegracaoNotasSaidaService } from '../notas-saida/integracao-notas-sai
 import { IntegracaoNotasEntradaService } from '../notas-entrada/integracao-notas-entrada.service';
 import { IntegracaoTitulosReceberService } from '../titulos-receber/integracao-titulos-receber.service';
 import { IntegracaoObjetivosService } from '../objetivos/integracao-objetivos.service';
-import { IntegracaoOrcamentosService } from '../orcamentos/integracao-orcamentos.service';
 import { IntegracaoCargasService } from '../cargas/integracao-cargas.service';
 import { EntidadesCarga } from '../cargas/entidades-carga';
 import { INTEGRACAO_CARGA_ENTIDADES, type IntegracaoCargaEntidade } from '@plataforma/contracts';
@@ -53,7 +52,6 @@ export class IntegracaoFileService {
     private readonly notasEntradaService: IntegracaoNotasEntradaService,
     private readonly titulosReceberService: IntegracaoTitulosReceberService,
     private readonly objetivosService: IntegracaoObjetivosService,
-    private readonly orcamentosService: IntegracaoOrcamentosService,
     private readonly cargas: IntegracaoCargasService,
     private readonly entidades: EntidadesCarga,
   ) {}
@@ -140,50 +138,6 @@ export class IntegracaoFileService {
     resultado.erros.sort((x, y) => x.linha - y.linha);
 
     return resultado;
-  }
-
-  /**
-   * Exporta pendências da Plataforma para um arquivo TXT formatado em JSON Lines.
-   */
-  async exportarArquivo(empresaId: string): Promise<string> {
-    const pendentesOrc = await this.orcamentosService.findAllPendentes(empresaId, {
-      page: 1,
-      pageSize: 500,
-      sortOrder: 'asc',
-    });
-    const clientesRes = await this.clientesService.findAll(empresaId, {
-      page: 1,
-      pageSize: 500,
-      sortOrder: 'asc',
-    });
-
-    const linhas: string[] = [];
-
-    const orcData = pendentesOrc?.data ?? [];
-    for (const orc of orcData) {
-      linhas.push(
-        JSON.stringify({
-          entidade: 'orcamentos-pendentes',
-          verbo: 'POST',
-          chave: (orc as any).id || (orc as any).chave,
-          payload: orc,
-        }),
-      );
-    }
-
-    const cliData = clientesRes?.data ?? [];
-    for (const cli of cliData) {
-      linhas.push(
-        JSON.stringify({
-          entidade: 'clientes-alteracoes',
-          verbo: 'POST',
-          chave: (cli as any).chave || (cli as any).id,
-          payload: cli,
-        }),
-      );
-    }
-
-    return linhas.join('\n');
   }
 
   /** O nome da entidade como o monitor de endpoints a conhece. */

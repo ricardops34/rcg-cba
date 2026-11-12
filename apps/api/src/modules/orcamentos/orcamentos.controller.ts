@@ -202,10 +202,11 @@ export class OrcamentosController {
   }
 
   @ApiOperation({
-    summary: 'Recusar o pedido de autorização de desconto',
+    summary: 'Recusar o desconto do orçamento',
     description:
-      'Devolve o pedido ao vendedor com o motivo (obrigatório), conclui a pendência da agenda ' +
-      'e avisa o vendedor no sino. Requer orcamentos.aprovar.',
+      'Recusa o desconto acima do máximo, com ou sem pedido do vendedor: grava o motivo ' +
+      '(obrigatório), desfaz o pedido se houver, conclui a pendência da agenda e avisa o ' +
+      'vendedor no sino. Requer orcamentos.aprovar.',
   })
   @RequirePermission('orcamentos', 'aprovar')
   @Post(':id/recusar-desconto')
@@ -220,6 +221,34 @@ export class OrcamentosController {
       id,
       dto.justificativa,
     );
+  }
+
+  @ApiOperation({
+    summary: 'Histórico completo do orçamento',
+    description:
+      'Tudo o que aconteceu com o orçamento, do mais recente ao mais antigo: cadastro, ' +
+      'alterações (com os campos alterados), PDF, envio, link, decisão, autorização de ' +
+      'desconto e retornos — com quem fez e quando. Requer orcamentos.visualizar.',
+  })
+  @RequirePermission('orcamentos', 'visualizar')
+  @Get(':id/historico')
+  historico(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.historico(user.empresaAtivaId, user, id);
+  }
+
+  @ApiOperation({
+    summary: 'Histórico da autorização de desconto',
+    description:
+      'Cada pedido, liberação e recusa de desconto do orçamento, em ordem: quem fez, quando e ' +
+      'a justificativa. Requer orcamentos.visualizar.',
+  })
+  @RequirePermission('orcamentos', 'visualizar')
+  @Get(':id/historico-desconto')
+  historicoDesconto(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.historicoDesconto(user.empresaAtivaId, user, id);
   }
 
   @ApiOperation({

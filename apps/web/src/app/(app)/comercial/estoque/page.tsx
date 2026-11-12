@@ -1,5 +1,6 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type {
@@ -34,7 +35,7 @@ const quantidade = (v: number) =>
 export default function EstoquePage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useState("descricao");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [armazemId, setArmazemId] = useState<string | undefined>(undefined);

@@ -40,6 +40,7 @@ import { resolverCliente } from '../common/resolver-cliente';
 import { criarFilhos, sincronizarFilhos } from '../common/sincronizar-filhos';
 import { ParametrosService } from '../../parametros/parametros.service';
 import { resolverRegraDesconto } from '../common/resolver-regra-desconto';
+import { HORARIO_TIMEZONE } from '../../../common/horario/horario-trabalho';
 
 const INCLUDE = {
   cliente: { select: { chave: true } },
@@ -56,6 +57,27 @@ type OrcamentoComRelacoes = Prisma.OrcamentoGetPayload<{
   include: typeof INCLUDE;
 }>;
 
+/**
+ * "dd/mm/aaaa hh:mm" no fuso da plataforma. O ERP grava o texto como está:
+ * converter de UTC no AdvPL é frágil, então a hora já sai local daqui.
+ */
+function dataHoraLocal(data: Date): string {
+  const p = Object.fromEntries(
+    new Intl.DateTimeFormat('pt-BR', {
+      timeZone: HORARIO_TIMEZONE,
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hourCycle: 'h23',
+    })
+      .formatToParts(data)
+      .map((x) => [x.type, x.value]),
+  );
+  return `${p.day}/${p.month}/${p.year} ${p.hour}:${p.minute}`;
+}
+
 @Injectable()
 export class IntegracaoOrcamentosService {
   constructor(
@@ -63,7 +85,41 @@ export class IntegracaoOrcamentosService {
     private readonly parametros: ParametrosService,
   ) {}
 
-  private paraLeitura(row: OrcamentoComRelacoes): IntegracaoOrcamento {
+  /**
+   * `paraLeitura` de várias linhas, com o nome de quem autorizou o desconto
+   * buscado de uma vez (o orçamento guarda só o id do usuário).
+   */
+  private async ler(
+    tx: TenantTx,
+    rows: OrcamentoComRelacoes[],
+  ): Promise<IntegracaoOrcamento[]> {
+    const ids = [
+      ...new Set(
+        rows
+          .filter((r) => r.descontoAutorizadoEm)
+          .flatMap((r) => [r.descontoAutorizadoPor, r.descontoSolicitadoPor])
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    const usuarios = ids.length
+      ? await tx.usuario.findMany({
+          where: { id: { in: ids } },
+          select: { id: true, nome: true },
+        })
+      : [];
+    const nomes = new Map(usuarios.map((u) => [u.id, u.nome]));
+    return rows.map((r) => this.paraLeitura(r, nomes));
+  }
+
+  private paraLeitura(
+    row: OrcamentoComRelacoes,
+    nomes: Map<string, string>,
+  ): IntegracaoOrcamento {
+    // Autorização de desconto vigente: vai para o pedido no ERP (C5_XOBSVEN,
+    // decisão do usuário 2026-11-10 — quem, quando e por quê). Só a vigente:
+    // mexer nos itens derruba a liberação, e a de uma liberação que caiu não
+    // descreve este pedido.
+    const autorizadoEm = row.descontoAutorizadoEm;
     return {
       id: row.id,
       chave: row.chave ?? '',
@@ -76,6 +132,21 @@ export class IntegracaoOrcamentosService {
       dataValidade: row.dataValidade,
       dataRetorno: row.dataRetorno,
       observacao: row.observacao,
+      // O pedido do vendedor sobrevive à autorização (só a recusa o apaga);
+      // nulo quando o superior liberou sem pedido.
+      descontoSolicitadoPor:
+        autorizadoEm && row.descontoSolicitadoPor
+          ? (nomes.get(row.descontoSolicitadoPor) ?? null)
+          : null,
+      descontoSolicitacaoMotivo: autorizadoEm
+        ? row.descontoSolicitacaoMotivo
+        : null,
+      descontoAutorizadoPor:
+        autorizadoEm && row.descontoAutorizadoPor
+          ? (nomes.get(row.descontoAutorizadoPor) ?? null)
+          : null,
+      descontoAutorizadoEm: autorizadoEm ? dataHoraLocal(autorizadoEm) : null,
+      descontoJustificativa: autorizadoEm ? row.descontoJustificativa : null,
       ativo: row.ativo,
       itens: row.itens.map((item) => ({
         id: item.id,
@@ -113,7 +184,7 @@ export class IntegracaoOrcamentosService {
         tx.orcamento.count({ where }),
       ]);
       return buildPaginatedResult(
-        data.map((r) => this.paraLeitura(r)),
+        await this.ler(tx, data),
         total,
         query,
       );
@@ -130,7 +201,7 @@ export class IntegracaoOrcamentosService {
         include: INCLUDE,
       });
       if (!row) throw new NotFoundException('Orçamento não encontrado');
-      return this.paraLeitura(row);
+      return (await this.ler(tx, [row]))[0];
     });
   }
 
@@ -165,7 +236,7 @@ export class IntegracaoOrcamentosService {
         tx.orcamento.count({ where }),
       ]);
       return buildPaginatedResult(
-        data.map((r) => this.paraLeitura(r)),
+        await this.ler(tx, data),
         total,
         query,
       );
@@ -243,7 +314,7 @@ export class IntegracaoOrcamentosService {
         where: { id },
         include: INCLUDE,
       });
-      return this.paraLeitura(atualizado);
+      return (await this.ler(tx, [atualizado]))[0];
     });
   }
 
@@ -280,7 +351,7 @@ export class IntegracaoOrcamentosService {
         },
         include: INCLUDE,
       });
-      return this.paraLeitura(atualizado);
+      return (await this.ler(tx, [atualizado]))[0];
     });
   }
 
@@ -492,7 +563,7 @@ export class IntegracaoOrcamentosService {
         });
       }
 
-      return { registro: this.paraLeitura(criado), decisao };
+      return { registro: (await this.ler(tx, [criado]))[0], decisao };
     });
   }
 
@@ -616,7 +687,7 @@ export class IntegracaoOrcamentosService {
         });
       }
 
-      return this.paraLeitura(atualizado);
+      return (await this.ler(tx, [atualizado]))[0];
     });
   }
 

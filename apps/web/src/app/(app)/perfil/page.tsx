@@ -5,18 +5,23 @@ import { Camera, MessageCircle, ShieldCheck, UserRound } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthStore } from "@/stores/auth-store";
+import { AppCelularCard } from "@/components/perfil/app-celular-card";
 import { AssinaturaWhatsappCard } from "@/components/perfil/assinatura-whatsapp-card";
 import { ChangePasswordForm } from "@/components/perfil/change-password-form";
 import { DadosPessoaisCard } from "@/components/perfil/dados-pessoais-card";
 import { IdentidadeHeader } from "@/components/perfil/identidade-header";
 import { ProfilePhoto } from "@/components/perfil/profile-photo";
 import { TelaInicialCard } from "@/components/perfil/tela-inicial-card";
+import { TamanhoPaginaCard } from "@/components/perfil/tamanho-pagina-card";
 import { TermosAceitosCard } from "@/components/perfil/termos-aceitos-card";
 import { UsarFotoNoWhatsapp } from "@/components/perfil/usar-foto-no-whatsapp";
 import { WhatsappPareamentoCard } from "@/components/perfil/whatsapp-pareamento-card";
 
 const ABAS = ["conta", "whatsapp", "seguranca"] as const;
 type Aba = (typeof ABAS)[number];
+
+/** Duas colunas a partir do computador; cada coluna empilha os seus cartões. */
+const GRADE = "grid items-start gap-4 lg:grid-cols-2";
 
 /**
  * Meu perfil, em três abas — a tela era uma pilha longa de cartões, cada um
@@ -43,7 +48,7 @@ export default function PerfilPage() {
   const trocar = (valor: string) => window.location.replace(`#${valor}`);
 
   return (
-    <div className="mx-auto w-full max-w-3xl space-y-4">
+    <div className="mx-auto w-full max-w-6xl space-y-4">
       <IdentidadeHeader />
 
       <Tabs value={aba} onValueChange={trocar} className="gap-4">
@@ -59,36 +64,54 @@ export default function PerfilPage() {
           </TabsTrigger>
         </TabsList>
 
-        <TabsContent value="conta" className="space-y-4">
-          {user && (
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <Camera className="size-4 text-primary" />
-                  Foto
-                </CardTitle>
-              </CardHeader>
-              <CardContent>
-                <ProfilePhoto user={user} />
-                <p className="mt-2 text-xs text-muted-foreground">
-                  A foto vale assim que você a escolhe.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-          <DadosPessoaisCard />
-          <TelaInicialCard />
+        {/* No computador, duas colunas por aba — numa coluna só a tela virava
+            uma pilha estreita no meio de muito espaço vazio. No celular, uma
+            coluna, na mesma ordem. Na Conta: à esquerda o que é seu (foto,
+            dados), à direita as preferências. */}
+        <TabsContent value="conta" className={GRADE}>
+          <div className="space-y-4">
+            {user && (
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Camera className="size-4 text-primary" />
+                    Foto
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <ProfilePhoto user={user} />
+                  <p className="mt-2 text-xs text-muted-foreground">
+                    A foto vale assim que você a escolhe.
+                  </p>
+                </CardContent>
+              </Card>
+            )}
+            <DadosPessoaisCard />
+          </div>
+          <div className="space-y-4">
+            <TelaInicialCard />
+            <TamanhoPaginaCard />
+            <AppCelularCard />
+          </div>
         </TabsContent>
 
-        <TabsContent value="whatsapp" className="space-y-4">
-          <AssinaturaWhatsappCard />
-          <WhatsappPareamentoCard />
-          <UsarFotoNoWhatsapp />
+        <TabsContent value="whatsapp" className={GRADE}>
+          <div className="space-y-4">
+            <AssinaturaWhatsappCard />
+            <UsarFotoNoWhatsapp />
+          </div>
+          <div className="space-y-4">
+            <WhatsappPareamentoCard />
+          </div>
         </TabsContent>
 
-        <TabsContent value="seguranca" className="space-y-4">
-          <ChangePasswordForm />
-          <TermosAceitosCard />
+        <TabsContent value="seguranca" className={GRADE}>
+          <div className="space-y-4">
+            <ChangePasswordForm />
+          </div>
+          <div className="space-y-4">
+            <TermosAceitosCard />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

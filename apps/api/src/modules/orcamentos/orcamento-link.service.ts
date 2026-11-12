@@ -8,7 +8,7 @@ import {
   PrismaService,
   type TenantTx,
 } from '../../common/prisma/prisma.service';
-import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
+import { resolverEscopoOrcamentos } from '../../common/escopo/escopo-vendedores';
 import { diaLocal } from '../../common/horario/expediente';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import {
@@ -364,7 +364,7 @@ export class OrcamentoLinkService {
     user: AuthenticatedUser,
     id: string,
   ) {
-    const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+    const escopo = await resolverEscopoOrcamentos(tx, empresaId, user);
     const orc = await tx.orcamento.findFirst({
       where: {
         id,

@@ -247,11 +247,29 @@ export default function DashboardGerencialPage() {
       return proximo;
     });
 
-  const soma = {
+  const somaLinhas = {
     positivacaoObjetivo: linhas.reduce((acc, l) => acc + l.positivacaoObjetivo, 0),
     positivacaoRealizado: linhas.reduce((acc, l) => acc + l.positivacaoRealizado, 0),
     objetivo: linhas.reduce((acc, l) => acc + l.objetivo, 0),
     realizado: linhas.reduce((acc, l) => acc + l.realizado, 0),
+  };
+  // Os cartões somam a operação inteira; a tabela só traz cadastros do tipo
+  // Vendedor com `usaDashboard`. O que sobra vira a linha "Demais", para o
+  // rodapé fechar com o cartão em vez de parecer um erro de soma.
+  const demais = data
+    ? {
+        positivacaoRealizado: Math.max(
+          0,
+          data.resumo.clientesPositivados - somaLinhas.positivacaoRealizado,
+        ),
+        realizado: Math.round((data.resumo.realizado - somaLinhas.realizado) * 100) / 100,
+      }
+    : { positivacaoRealizado: 0, realizado: 0 };
+  const temDemais = demais.realizado !== 0 || demais.positivacaoRealizado > 0;
+  const soma = {
+    ...somaLinhas,
+    positivacaoRealizado: somaLinhas.positivacaoRealizado + demais.positivacaoRealizado,
+    realizado: Math.round((somaLinhas.realizado + demais.realizado) * 100) / 100,
   };
   // % do total: a razão entre as somas, não a média dos percentuais de cada
   // vendedor — quem tem meta maior pesa mais, como na leitura da diretoria.
@@ -582,6 +600,30 @@ export default function DashboardGerencialPage() {
                       </Fragment>
                     );
                   })}
+                  {temDemais && (
+                    <TableRow>
+                      <TableCell
+                        className="sticky left-0 z-10 bg-card font-medium text-muted-foreground"
+                        title="Vendas lançadas em cadastros que não são do tipo Vendedor (ex.: Superior com carteira própria). Entram no cartão Realizado."
+                      >
+                        Demais (fora do acompanhamento)
+                      </TableCell>
+                      {mostrarValores && <TableCell />}
+                      {mostrarValores && (
+                        <TableCell className="text-right tabular-nums">
+                          {inteiro(demais.positivacaoRealizado)}
+                        </TableCell>
+                      )}
+                      <TableCell />
+                      {mostrarValores && <TableCell />}
+                      {mostrarValores && (
+                        <TableCell className="text-right tabular-nums">
+                          {moeda(demais.realizado)}
+                        </TableCell>
+                      )}
+                      <TableCell />
+                    </TableRow>
+                  )}
                 </TableBody>
                 <TableFooter>
                   <TableRow>

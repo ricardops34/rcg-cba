@@ -143,7 +143,7 @@ export class ClientesController {
       'Carteira de clientes com colunas de venda calculadas ao vivo: venda dos últimos 30 dias, ' +
       'venda média (últimos 90 dias ÷ 3), diferença entre as duas, dias desde a última compra, ' +
       'comodato em aberto e bloqueio. Aceita os filtros de clientes.visualizar (busca, ativo, uf, ' +
-      'vendedorId, carteira) mais diasSemComprar (filtro rápido) e bloqueado. Requer posicao-cliente.visualizar.',
+      'vendedorId, carteira) mais diasSemComprar (filtro rápido), produtoId (já comprou o produto em nota de venda) e bloqueado. Requer posicao-cliente.visualizar.',
   })
   @ApiPaginationQuery()
   @RequirePermission('posicao-cliente', 'visualizar')
@@ -216,8 +216,17 @@ export class ClientesController {
     'visualizar',
   ])
   @Get(':id')
-  findOne(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.findOne(user.empresaAtivaId, user, id);
+  findOne(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('paraOrcamento') paraOrcamento?: string,
+  ) {
+    return this.service.findOne(
+      user.empresaAtivaId,
+      user,
+      id,
+      paraOrcamento === 'true',
+    );
   }
 
   @ApiOperation({
@@ -239,15 +248,25 @@ export class ClientesController {
       'Produtos já comprados pelo cliente (código, descrição, última compra, preço/desconto da ' +
       'compra mais recente, preço vigente na tabela de preço do cliente) — usado pela aba "Mix" ' +
       'do formulário de Orçamento. Requer clientes.visualizar ou posicao-cliente.visualizar ' +
-      '(orçamento aberto a partir da Posição de Cliente).',
+      '(orçamento aberto a partir da Posição de Cliente). Com `?paraOrcamento=true` segue o ' +
+      'escopo do orçamento (vendedor que atende outras carteiras vê o mix de qualquer cliente).',
   })
   @RequirePermission('clientes', 'visualizar', [
     'posicao-cliente',
     'visualizar',
   ])
   @Get(':id/mix')
-  mix(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {
-    return this.service.mix(user.empresaAtivaId, user, id);
+  mix(
+    @Param('id') id: string,
+    @CurrentUser() user: AuthenticatedUser,
+    @Query('paraOrcamento') paraOrcamento?: string,
+  ) {
+    return this.service.mix(
+      user.empresaAtivaId,
+      user,
+      id,
+      paraOrcamento === 'true',
+    );
   }
 
   @ApiOperation({

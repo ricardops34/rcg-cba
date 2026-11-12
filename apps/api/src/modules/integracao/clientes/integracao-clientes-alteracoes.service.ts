@@ -1,9 +1,13 @@
 import {
+  BadRequestException,
   ConflictException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import type { PaginationQuery } from '@plataforma/contracts';
+import type {
+  IntegracaoClienteAplicada,
+  PaginationQuery,
+} from '@plataforma/contracts';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import {
   buildPaginatedResult,
@@ -42,7 +46,13 @@ export class IntegracaoClientesAlteracoesService {
       const where = {
         empresaId,
         situacao: 'pendente' as const,
-        cliente: { chave: { not: null }, deletedAt: null },
+        cliente: { deletedAt: null },
+        // Inclusão: cliente novo da plataforma, ainda sem chave. Alteração: só do
+        // que já existe no ERP.
+        OR: [
+          { operacao: 'incluir' as const },
+          { operacao: 'alterar' as const, cliente: { chave: { not: null } } },
+        ],
         // Envio sem campo que a SA1 receba sairia vazio, e o BJPLA004 o
         // recusaria a cada ciclo ("sem nenhum campo reconhecido no de-para").
         // Foi o que a carga inicial da fila deixou (migration
@@ -95,7 +105,12 @@ export class IntegracaoClientesAlteracoesService {
         }
         return {
           id: item.id,
+          operacao: item.operacao,
+          // ID da plataforma: o ERP o guarda e o devolve junto da chave/codigoErp
+          // no PATCH .../aplicada de uma inclusão.
+          clienteId: c.id,
           clienteChave: c.chave,
+          codigoErp: c.codigoErp,
           origem: item.alteracao?.origem ?? null,
           aprovadaEm: (
             item.alteracao?.analisadoEm ?? item.criadoEm
@@ -112,16 +127,46 @@ export class IntegracaoClientesAlteracoesService {
    * estava enviado, porque o ERP reenvia a confirmação depois de uma queda de
    * rede (ver "Idempotência" no PLANO.md da integração).
    */
-  marcarAplicada(empresaId: string, id: string) {
+  marcarAplicada(
+    empresaId: string,
+    id: string,
+    retorno: IntegracaoClienteAplicada = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const item = await tx.clienteEnvioErp.findFirst({
         where: { id, empresaId },
-        select: { id: true, situacao: true },
+        select: { id: true, situacao: true, operacao: true, clienteId: true },
       });
       if (!item)
         throw new NotFoundException('Alteração não encontrada na fila');
       if (item.situacao === 'enviado') {
         throw new ConflictException('Alteração já confirmada pelo ERP');
+      }
+      // Inclusão: o ERP devolve o que gravou na SA1. Sem a chave o cliente ficaria
+      // sem vínculo, e a próxima coleta do ERP o criaria em duplicata.
+      if (item.operacao === 'incluir') {
+        if (!retorno.chave || !retorno.codigoErp) {
+          throw new BadRequestException(
+            'Confirmação de inclusão exige chave e codigoErp gravados no ERP',
+          );
+        }
+        const duplicado = await tx.cliente.findFirst({
+          where: {
+            empresaId,
+            chave: retorno.chave,
+            id: { not: item.clienteId },
+          },
+          select: { id: true },
+        });
+        if (duplicado) {
+          throw new ConflictException(
+            `Já existe outro cliente com a chave ${retorno.chave}`,
+          );
+        }
+        await tx.cliente.update({
+          where: { id: item.clienteId },
+          data: { chave: retorno.chave, codigoErp: retorno.codigoErp },
+        });
       }
       const atualizado = await tx.clienteEnvioErp.update({
         where: { id },

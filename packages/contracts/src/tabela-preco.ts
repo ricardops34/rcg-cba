@@ -8,6 +8,7 @@ export const tabelaPrecoSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
   codigoErp: z.string(),
+  chave: z.string().nullable().optional(),
   descricao: z.string(),
   dtInicio: z.string().datetime().nullable(),
   dtFim: z.string().datetime().nullable(),

@@ -14,6 +14,7 @@ import { PaisesService } from './paises.service';
 import { PaisCreateDto, PaisQueryDto, PaisUpdateDto } from './dto/pais.dto';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { PlatformAdminGuard } from '../../../common/guards/platform-admin.guard';
 import { RequirePermission } from '../../../common/decorators/require-permission.decorator';
 import { ApiPaginationQuery } from '../../../common/decorators/api-pagination-query.decorator';
 import {
@@ -49,6 +50,7 @@ export class PaisesController {
   }
 
   @ApiOperation({ summary: 'Cadastrar país', description: 'Requer paises.cadastrar.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('paises', 'cadastrar')
   @Post()
   create(@Body() dto: PaisCreateDto, @CurrentUser() user: AuthenticatedUser) {
@@ -56,6 +58,7 @@ export class PaisesController {
   }
 
   @ApiOperation({ summary: 'Editar país', description: 'Requer paises.editar.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('paises', 'editar')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: PaisUpdateDto, @CurrentUser() user: AuthenticatedUser) {
@@ -63,6 +66,7 @@ export class PaisesController {
   }
 
   @ApiOperation({ summary: 'Excluir país (soft delete)', description: 'Requer paises.excluir.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('paises', 'excluir')
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {

@@ -65,6 +65,9 @@ const PRESERVADOS = [
   'Assinatura',
   'EmpresaSuporteAcesso',
   'EmpresaSuporteLog',
+  // Auditoria de quem entrou como outro usuário: rastro de segurança, nunca dado
+  // de demonstração — limpar a base não pode apagar quem entrou nela.
+  'UsuarioPersonificacaoLog',
   // agente de IA: configuração, credencial e governança
   'AgenteConfig',
   'AgenteCredencial',
@@ -79,6 +82,9 @@ const PRESERVADOS = [
   // para atender mais rápido, não conversa. Mesma família do template — quem
   // pede "limpar a base" não está pedindo para reescrever os atalhos.
   'WhatsappRespostaRapida',
+  // As etiquetas em si (nome e cor) são vocabulário da empresa, como os atalhos;
+  // o que sai é a ligação delas com os contatos (WhatsappContatoEtiqueta).
+  'WhatsappEtiqueta',
   'WhatsappVinculoFuncionario',
   // Portal do Cliente: a configuração, não as credenciais dos clientes
   'PortalClienteConfig',
@@ -105,11 +111,16 @@ const ORDEM_DE_EXCLUSAO = [
   // --- WhatsApp: mensagens e conversas, não o aparelho --------------------
   'WhatsappReacao',
   'WhatsappMensagemAgendada',
+  // Roteiro semanal montado para o vendedor: movimento. O item sai antes do roteiro.
+  'WhatsappRoteiroItem',
+  'WhatsappRoteiro',
   'WhatsappAcaoRegistro',
   'WhatsappMensagem',
   'WhatsappConversa',
   'WhatsappRecadoDestinatario',
   'WhatsappRecadoInterno',
+  // A ligação contato × etiqueta sai antes do contato.
+  'WhatsappContatoEtiqueta',
   'WhatsappContato',
   // Histórico de qual número cada vendedor usou em cada sessão — uso, não o
   // aparelho: a sessão fica, e a próxima conexão abre um período novo.

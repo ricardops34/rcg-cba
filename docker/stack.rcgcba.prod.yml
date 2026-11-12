@@ -58,6 +58,12 @@ services:
       # própria. Sem ela, salvar a senha do e-mail ou o token do SMS é
       # recusado; trocá-la exige regravar os dois pelas telas.
       PARAMETROS_CRYPTO_KEY: ${PARAMETROS_CRYPTO_KEY}
+      # Aviso no celular (Web Push). Par VAPID próprio da stack; sem ele o
+      # recurso fica desligado (o Perfil diz que não foi ativado) e nada quebra.
+      # Trocar o par desliga o aviso de todos os aparelhos até religarem no Perfil.
+      VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-}
+      VAPID_PRIVATE_KEY: ${VAPID_PRIVATE_KEY:-}
+      VAPID_SUBJECT: ${VAPID_SUBJECT:-}
       # Endereço com que a Evolution GO chama a API de volta.
       # Padrão: o domínio da API deste stack (https://<API_HOST>).
       # Se a Evolution GO estiver na mesma VPS/rede Docker: http://rcgcba-api:3001

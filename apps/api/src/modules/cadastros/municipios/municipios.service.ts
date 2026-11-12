@@ -6,6 +6,7 @@ import {
 } from '../../../common/pagination/paginate';
 import type { MunicipioCreate, MunicipioQuery, MunicipioUpdate } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
+import { criarOuReativar, gravarUnico, REATIVAR } from '../unicidade';
 
 const SORT_FIELDS = new Set(['descricao', 'codigoErp', 'codigoIbge', 'ativo', 'createdAt']);
 
@@ -59,18 +60,40 @@ export class MunicipiosService {
   }
 
   async create(user: AuthenticatedUser, input: MunicipioCreate) {
-    return this.prisma.municipio.create({
-      data: { ...(this.limpar(input) as object), createdBy: user.id, updatedBy: user.id } as never,
+    const dados = this.limpar(input);
+    const chave = dados.codigoErp || dados.codigoIbge ? { OR: [...(dados.codigoErp ? [{ codigoErp: dados.codigoErp as string }] : []), ...(dados.codigoIbge ? [{ codigoIbge: dados.codigoIbge as string }] : [])] } : null;
+    return criarOuReativar({
+      achaExcluido: () =>
+        chave
+          ? this.prisma.municipio.findFirst({
+              where: { deletedAt: { not: null }, ...chave },
+              select: { id: true },
+            })
+          : Promise.resolve(null),
+      reativar: (id) =>
+        this.prisma.municipio.update({
+          where: { id },
+          data: { ...(dados as object), ...REATIVAR, updatedBy: user.id } as never,
+        }),
+      criar: () =>
+        this.prisma.municipio.create({
+          data: { ...(dados as object), createdBy: user.id, updatedBy: user.id } as never,
+        }),
+      jaExiste: 'Já existe um município com este código ou código IBGE',
     });
   }
 
   async update(user: AuthenticatedUser, id: string, input: MunicipioUpdate) {
     const municipio = await this.prisma.municipio.findFirst({ where: { id, deletedAt: null } });
     if (!municipio) throw new NotFoundException('Município não encontrado');
-    return this.prisma.municipio.update({
-      where: { id },
-      data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
-    });
+    return gravarUnico(
+      () =>
+        this.prisma.municipio.update({
+          where: { id },
+          data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
+        }),
+      'Já existe um município com este código ou código IBGE',
+    );
   }
 
   async remove(user: AuthenticatedUser, id: string) {

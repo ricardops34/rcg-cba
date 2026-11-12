@@ -7,6 +7,7 @@ export const armazemSchema = z.object({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
   codigoErp: z.string(),
+  chave: z.string().nullable().optional(),
   descricao: z.string(),
   ativo: z.boolean(),
   // Armazém do MV_BJAPI16 no ERP — só o estoque destes conta na plataforma.

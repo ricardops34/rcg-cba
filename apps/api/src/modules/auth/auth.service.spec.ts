@@ -233,13 +233,35 @@ describe('AuthService', () => {
       await service.login({ email: usuarioAtivo.email, senha: '123' }, {});
 
       expect(acessosMock.encerrarSessoes).toHaveBeenCalledWith(
-        { usuarioId: usuarioAtivo.id, manter: 'sessao-1' },
+        { usuarioId: usuarioAtivo.id, manter: 'sessao-1', aparelho: 'computador' },
         'novo_acesso',
       );
       expect(acessosMock.registrar).toHaveBeenCalledWith(
         expect.objectContaining({ evento: 'sessao_substituida' }),
       );
       expect(jwt.signAsync.mock.calls[0][0].sid).toBe('sessao-1');
+    });
+
+    it('sessão única por aparelho: login pelo celular só derruba a sessão de celular', async () => {
+      prisma.usuario.findUnique.mockResolvedValue(usuarioAtivo);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+      prisma.usuarioEmpresa.findFirst.mockResolvedValue(vinculo);
+      prisma.usuarioEmpresa.findUniqueOrThrow.mockResolvedValue(vinculoCompleto);
+      prisma.refreshToken.create.mockResolvedValue({});
+      prisma.usuario.update.mockResolvedValue(usuarioAtivo);
+
+      await service.login(
+        { email: usuarioAtivo.email, senha: '123' },
+        {
+          userAgent:
+            'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 Mobile/15E148',
+        },
+      );
+
+      expect(acessosMock.encerrarSessoes).toHaveBeenCalledWith(
+        { usuarioId: usuarioAtivo.id, manter: 'sessao-1', aparelho: 'celular' },
+        'novo_acesso',
+      );
     });
 
     it('autentica com sucesso e emite access + refresh token', async () => {

@@ -78,10 +78,12 @@ dependem de decisão ou são menores.
 - [x] 1. **4.1** `conferirEndpointsAtivos` dentro de `withTenant` (recebimento e a cada bloco)
 - [x] 2. **4.2** `arquivo/importar`: schema Zod por item, `conferirEndpointsAtivos`, linha inválida em
       `erros`, `case` de `orcamentos`/`pedidos` ou recusa explícita
-- [ ] 3. **4.3** `arquivo/exportar`: exportar a fila `cliente_envios_erp` (ou retirar o endpoint)
+- [x] 3. **4.3** `arquivo/exportar` **retirado** (2026-11-06, decisão do usuário: o envio ao ERP é
+      por API/filas; `codigoErp` é só informativo e a plataforma controla pelo próprio ID).
+      O endpoint exportava os 500 primeiros clientes de qualquer situação, não a fila.
 - [x] 4. **K.1** carga em andamento não confere se a chave foi revogada/expirou/excluída
 - [x] 5. **K.2** `PATCH endpoints/:endpointKey` com DTO Zod (`ativo` obrigatório e booleano)
-- [ ] 6. **4.5** `resolverContaBancaria`: 404 em vez de criar conta
+- [x] 6. **4.5** `resolverContaBancaria`: **mantido como está** (cadastra a conta na hora) — decisão do usuário em 06/11/2026
 - [x] 7. **4.6** `resolverProduto`: sem busca por substring em `estoque` e `tabelas-preco`
 - [x] 8. **4.7** `upsert` de orçamento: recusar `aprovado` e `origem=erp` (e conferir no `remove`)
 - [ ] 9. **4.4** cliente por `PUT`/carga (depende da decisão acima)
@@ -92,7 +94,7 @@ dependem de decisão ou são menores.
       `vendedorChave = "01-"` em cliente, paginação das filas, trava do `vincular`
 - [x] 13. **K.3** auditoria de quem ligou/desligou um endpoint (`updatedBy`) e de `expiraEm` no passado
 - [x] 14. Testes: `ApiKeyGuard`, `arquivo/importar|exportar`, filas de envio, `pedidos`, `estoque`
-- [ ] 15. `tsc` e suíte da API; validar em dev (recriar o container da API, conforme o runbook)
+- [x] 15. (06/11: tsc limpo, suíte 1114/1114; falta validar em dev com o container recriado) `tsc` e suíte da API; validar em dev (recriar o container da API, conforme o runbook)
 
 ## Observações
 
@@ -148,14 +150,14 @@ Achados do módulo `cadastros` (`_reversa_sdd/code-analysis.md`, seção 4.x do 
 
 ### Etapas
 
-- [ ] 26. **C.1/4.1** restringir a escrita das cinco tabelas globais à plataforma (guard, ou tirar
+- [x] 26. (guard feito em 06/11; perfis/catálogo/tela pendentes) **C.1/4.1** restringir a escrita das cinco tabelas globais à plataforma (guard, ou tirar
       `cadastrar`/`editar`/`excluir` dos perfis de empresa por migration, **e** no catálogo para não
       voltar pelo seed)
-- [ ] 27. **4.2** unicidade: conferir antes de criar, 409 claro, e recriar o excluído reativa a linha
+- [x] 27. (feito em 06/11) **4.2** unicidade: conferir antes de criar, 409 claro, e recriar o excluído reativa a linha
       (mesmo padrão do lote de 15/10); CEP excluído volta ao cache
 - [ ] 28. **4.3** regra de desconto: bloquear excluir em uso (ou avisar), trava para padrão e código,
       `chave` na regra criada pela tela
-- [ ] 29. **4.4/C.2** definir quem manda na regra de desconto (ERP × tela)
-- [ ] 30. **4.5** limite próprio para `ceps/consulta` e validade do cache de CEP
-- [ ] 31. **4.6** observações (permissão de relatório em categorias, `limpar` nos campos obrigatórios)
-- [ ] 32. Testes do módulo (regras de desconto, categorias, CEP, unicidade das globais)
+- [x] 29. **4.4/C.2** decidido em 06/11: a tela só edita regra criada nela (regra do ERP, com `chave`, é só leitura)
+- [x] 30. (feito em 06/11) **4.5** limite próprio para `ceps/consulta` e validade do cache de CEP
+- [x] 31. (feito em 06/11) **4.6** observações (permissão de relatório em categorias, `limpar` nos campos obrigatórios)
+- [x] 32. (feito em 06/11, specs em cadastros/) Testes do módulo (regras de desconto, categorias, CEP, unicidade das globais)

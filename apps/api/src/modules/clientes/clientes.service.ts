@@ -13,6 +13,7 @@ import {
 } from '../../common/prisma/prisma.service';
 import {
   combinarFiltroVendedor,
+  resolverEscopoOrcamentos,
   resolverEscopoVendedores,
   type EscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
@@ -37,7 +38,10 @@ import {
 import { podeEmitirBoleto } from '../titulos-receber/boleto-atualizacao';
 import { comFlagXml } from '../notas-saida/nota-flags';
 import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
-import { ClienteAlteracoesService } from './cliente-alteracoes.service';
+import {
+  CAMPOS_ENVIO_ERP,
+  ClienteAlteracoesService,
+} from './cliente-alteracoes.service';
 import { EnriquecimentoService } from './enriquecimento.service';
 import { ClientesReceitaLoteService } from './clientes-receita-lote.service';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
@@ -252,7 +256,11 @@ export class ClientesService {
 
   findAll(empresaId: string, user: AuthenticatedUser, query: ClienteQuery) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // `paraOrcamento`: a escolha do cliente no orçamento segue o escopo do
+      // orçamento (vendedor com "atende outras carteiras" vê a empresa toda).
+      const escopo = query.paraOrcamento
+        ? await resolverEscopoOrcamentos(tx, empresaId, user)
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const where = {
         empresaId,
         deletedAt: null,
@@ -478,9 +486,16 @@ export class ClientesService {
     });
   }
 
-  async findOne(empresaId: string, user: AuthenticatedUser, id: string) {
+  async findOne(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    paraOrcamento = false,
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = paraOrcamento
+        ? await resolverEscopoOrcamentos(tx, empresaId, user)
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const cliente = await tx.cliente.findFirst({
         where: {
           id,
@@ -728,6 +743,16 @@ export class ClientesService {
         } as never,
       });
       await sincronizarContatosErp(tx, empresaId, criado, user.id);
+      // Cliente novo vai ao ERP: a fila leva todos os campos que a SA1 recebe e o
+      // ERP devolve a chave e o codigoErp na confirmação (PATCH .../aplicada).
+      await tx.clienteEnvioErp.create({
+        data: {
+          empresaId,
+          clienteId: criado.id,
+          campos: Object.keys(CAMPOS_ENVIO_ERP),
+          operacao: 'incluir',
+        },
+      });
       return criado;
     });
   }
@@ -966,9 +991,18 @@ export class ClientesService {
    * usado pela aba "Mix" do formulário de Orçamento (adicionar item usando
    * valores/% da última venda).
    */
-  async mix(empresaId: string, user: AuthenticatedUser, clienteId: string) {
+  async mix(
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+    paraOrcamento = false,
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      // `paraOrcamento`: dentro do orçamento vale o escopo do orçamento — quem
+      // "atende outras carteiras" pode orçar o cliente, então vê o mix dele.
+      const escopo = paraOrcamento
+        ? await resolverEscopoOrcamentos(tx, empresaId, user)
+        : await resolverEscopoVendedores(tx, empresaId, user);
       const filtroEscopo = escopo ? { vendedorId: { in: escopo } } : {};
       const cliente = await tx.cliente.findFirst({
         where: { id: clienteId, empresaId, deletedAt: null, ...filtroEscopo },
@@ -1458,6 +1492,23 @@ export class ClientesService {
           Prisma.sql`(COALESCE(u."ultimaData", c."ultimaCompra") IS NULL OR COALESCE(u."ultimaData", c."ultimaCompra") <= now() - (${query.diasSemComprar} * interval '1 day'))`,
         );
       }
+      // "Quem compra este produto?": já comprou em alguma nota de venda — a
+      // mesma regra de NOTA_DE_VENDA_SQL das colunas de venda, lida pelo item.
+      // Conjunto sem correlação com a linha (como comodatoSemConsumoSql): o
+      // Postgres monta a lista de clientes uma vez pelo índice
+      // (empresaId, produtoId) dos itens e só confere a pertença.
+      if (query.produtoId) {
+        condicoes.push(Prisma.sql`c."id" IN (
+          SELECT i."clienteId"
+            FROM "notas_saida_itens" i
+            JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+           WHERE i."empresaId" = ${empresaId} AND i."produtoId" = ${query.produtoId}
+             AND i."clienteId" IS NOT NULL
+             AND i."deletedAt" IS NULL AND i."ativo" = true AND i."comodato" = false
+             AND n."deletedAt" IS NULL AND n."ativo" = true AND n."comodato" = false
+             AND n."tipo" = 'N' AND n."condicaoPagamentoId" IS NOT NULL
+        )`);
+      }
       if (query.bloqueado !== undefined) {
         const bloqueadoExpr = Prisma.sql`(c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio"))`;
         condicoes.push(
@@ -1665,7 +1716,7 @@ export class ClientesService {
         resolverEscopoVendedores(tx, empresaId, user),
         tx.vendedor.findFirst({
           where: { usuarioId: user.id, empresaId, deletedAt: null },
-          select: { id: true, tipo: true },
+          select: { id: true, tipo: true, atendeOutrasCarteiras: true },
         }),
       ]);
       // uf/municipio (facetas irmãs já selecionadas no filtro) sempre
@@ -1729,6 +1780,21 @@ export class ClientesService {
         restrito: escopo !== null,
         ehVendedorPuro,
         meuVendedorId: vendedorProprio?.id ?? null,
+        // Filtro rápido de carteira da listagem de orçamentos: "Minha equipe"
+        // para quem tem gente abaixo; "Outras carteiras" para quem vê além da
+        // própria árvore (Administrador/carteira completa, ou a marca
+        // "atende outras carteiras").
+        temEquipe: vendedorProprio
+          ? (await tx.vendedor.count({
+              where: {
+                empresaId,
+                superiorId: vendedorProprio.id,
+                deletedAt: null,
+              },
+            })) > 0
+          : false,
+        veOutrasCarteiras:
+          escopo === null || (vendedorProprio?.atendeOutrasCarteiras ?? false),
       };
     });
   }

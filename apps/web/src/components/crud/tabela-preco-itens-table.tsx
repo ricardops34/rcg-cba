@@ -1,5 +1,6 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import type { TabelaPrecoItem } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
@@ -18,7 +19,7 @@ export function TabelaPrecoItensTable({ tabelaPrecoId }: { tabelaPrecoId: string
   const resource = `tabelas-preco/${tabelaPrecoId}/itens`;
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10, "tabela-preco-itens");
   const [sortBy, setSortBy] = useState("descricao");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("ativos");

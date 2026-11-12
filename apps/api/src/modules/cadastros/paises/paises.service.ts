@@ -6,6 +6,7 @@ import {
 } from '../../../common/pagination/paginate';
 import type { PaisCreate, PaisQuery, PaisUpdate } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
+import { criarOuReativar, gravarUnico, REATIVAR } from '../unicidade';
 
 const SORT_FIELDS = new Set(['nome', 'sigla', 'codigoErp', 'ativo', 'createdAt']);
 
@@ -52,17 +53,39 @@ export class PaisesService {
   }
 
   async create(user: AuthenticatedUser, input: PaisCreate) {
-    return this.prisma.pais.create({
-      data: { ...(this.limpar(input) as object), createdBy: user.id, updatedBy: user.id } as never,
+    const dados = this.limpar(input);
+    const chave = dados.codigoErp ? { codigoErp: dados.codigoErp as string } : null;
+    return criarOuReativar({
+      achaExcluido: () =>
+        chave
+          ? this.prisma.pais.findFirst({
+              where: { deletedAt: { not: null }, ...chave },
+              select: { id: true },
+            })
+          : Promise.resolve(null),
+      reativar: (id) =>
+        this.prisma.pais.update({
+          where: { id },
+          data: { ...(dados as object), ...REATIVAR, updatedBy: user.id } as never,
+        }),
+      criar: () =>
+        this.prisma.pais.create({
+          data: { ...(dados as object), createdBy: user.id, updatedBy: user.id } as never,
+        }),
+      jaExiste: 'Já existe um país com este código',
     });
   }
 
   async update(user: AuthenticatedUser, id: string, input: PaisUpdate) {
     await this.findOne(id);
-    return this.prisma.pais.update({
-      where: { id },
-      data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
-    });
+    return gravarUnico(
+      () =>
+        this.prisma.pais.update({
+          where: { id },
+          data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
+        }),
+      'Já existe um país com este código',
+    );
   }
 
   async remove(user: AuthenticatedUser, id: string) {

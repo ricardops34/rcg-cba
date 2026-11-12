@@ -43,7 +43,7 @@ export class JwtAuthGuard extends AuthGuard('jwt') {
     const user = request.user;
     if (!user) return false;
 
-    // Sessão única por usuário: um novo login em outro navegador ou computador
+    // Sessão única por usuário e tipo de aparelho: um novo login em outro computador (ou outro celular)
     // (ou a administração, em Acessos) encerra esta sessão, e o token de acesso
     // — que vale 15 min — deixa de servir na hora, não só quando vencer. Token
     // emitido antes da sessão existir (sem `sid`) segue até vencer.

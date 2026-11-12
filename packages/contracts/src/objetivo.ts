@@ -148,3 +148,62 @@ export const OBJETIVO_COPIAR_PERIODO_EXAMPLE: ObjetivoCopiarPeriodo = {
   anoDestino: 2026,
   percReajuste: 8,
 };
+
+// ------------------------------------------------------------------
+// Geração de objetivos a partir do realizado
+// ------------------------------------------------------------------
+// Propõe a meta de um mês a partir do que cada vendedor **vendeu** num período
+// anterior (mesma base das Consultas), acrescida de um percentual. Dois modos:
+// "geral" grava só o valor do mês; "categoria" grava também uma linha por
+// categoria, cada uma com o realizado da categoria + o percentual. Com
+// `simular` nada é gravado — a tela mostra a proposta antes de confirmar.
+
+export const OBJETIVO_GERAR_MODOS = ["geral", "categoria"] as const;
+
+export const objetivoGerarSchema = z
+  .object({
+    mesBase: z.coerce.number().int().min(1).max(12),
+    anoBase: z.coerce.number().int().min(2000).max(2100),
+    mesDestino: z.coerce.number().int().min(1).max(12),
+    anoDestino: z.coerce.number().int().min(2000).max(2100),
+    modo: z.enum(OBJETIVO_GERAR_MODOS).default("geral"),
+    percIncremento: z.coerce
+      .number()
+      .min(-100, "A redução não pode passar de 100%")
+      .max(1000)
+      .default(0)
+      .describe("Percentual somado ao realizado do período base; negativo reduz"),
+    simular: z.boolean().default(false).describe("Só calcula a proposta, sem gravar"),
+  })
+  .refine((v) => v.mesBase !== v.mesDestino || v.anoBase !== v.anoDestino, {
+    message: "O período de destino deve ser diferente do período base",
+    path: ["mesDestino"],
+  });
+export type ObjetivoGerar = z.infer<typeof objetivoGerarSchema>;
+
+export const objetivoGerarLinhaSchema = z.object({
+  vendedorId: z.string().uuid(),
+  nome: z.string(),
+  realizadoBase: z.number().describe("Vendido pelo vendedor no período base (líquido)"),
+  valor: z.number().describe("Meta proposta para o mês de destino"),
+  jaExiste: z.boolean().describe("Já tem objetivo no destino — é pulado, nunca sobrescrito"),
+  categorias: z.array(
+    z.object({
+      categoriaId: z.string().uuid(),
+      codigoErp: z.string(),
+      descricao: z.string(),
+      valor: z.number(),
+    }),
+  ),
+});
+export type ObjetivoGerarLinha = z.infer<typeof objetivoGerarLinhaSchema>;
+
+export const objetivoGerarResultadoSchema = z.object({
+  simulado: z.boolean(),
+  gerados: z.number().int().describe("Objetivos criados (0 numa simulação)"),
+  pulados: z.number().int().describe("Vendedores que já tinham objetivo no destino"),
+  totalBase: z.number().describe("Soma do realizado dos vendedores considerados"),
+  totalProposto: z.number().describe("Soma das metas propostas, sem os pulados"),
+  linhas: z.array(objetivoGerarLinhaSchema),
+});
+export type ObjetivoGerarResultado = z.infer<typeof objetivoGerarResultadoSchema>;

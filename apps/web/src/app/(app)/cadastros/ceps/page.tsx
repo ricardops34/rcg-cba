@@ -1,10 +1,12 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Cep, Estado } from "@plataforma/contracts";
+import { useAuthStore } from "@/stores/auth-store";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
@@ -30,9 +32,11 @@ type CepRow = Cep & {
 
 export default function CepsPage() {
   const router = useRouter();
+  const ehAdminPlataforma =
+    useAuthStore((state) => state.user?.administradorPlataforma) ?? false;
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useState("cep");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
@@ -68,7 +72,7 @@ export default function CepsPage() {
     }
   };
 
-  const columns: ColumnDef<CepRow>[] = [
+  const todasColunas: ColumnDef<CepRow>[] = [
     {
       header: "CEP",
       sortKey: "cep",
@@ -110,6 +114,11 @@ export default function CepsPage() {
     },
   ];
 
+  // Catálogo global: só a plataforma altera; as empresas apenas consultam.
+  const columns = ehAdminPlataforma
+    ? todasColunas
+    : todasColunas.filter((c) => c.header !== "");
+
   return (
     <div className="space-y-4">
       <CrudHeader
@@ -120,7 +129,7 @@ export default function CepsPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={() => router.push("/cadastros/ceps/novo")}
+        onCreate={ehAdminPlataforma ? () => router.push("/cadastros/ceps/novo") : undefined}
         createLabel="Novo CEP"
         actions={
           <FiltersPopover

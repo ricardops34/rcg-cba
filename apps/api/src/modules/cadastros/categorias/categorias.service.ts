@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../../common/prisma/prisma.service';
 import {
   buildPaginatedResult,
@@ -25,11 +25,25 @@ const REGRA_DESCONTO_SELECT = {
 };
 
 
+// Para quem só tem permissão de relatório: o suficiente para filtrar por
+// categoria, sem regra de desconto nem o resto do cadastro.
+const NOMES_SELECT = {
+  id: true,
+  codigoErp: true,
+  descricao: true,
+  categoriaPaiId: true,
+  ativo: true,
+};
+
 @Injectable()
 export class CategoriasService {
   constructor(private readonly prisma: PrismaService) {}
 
-  findAll(empresaId: string, query: CategoriaQuery) {
+  findAll(
+    empresaId: string,
+    query: CategoriaQuery,
+    opcoes: { somenteNomes?: boolean } = {},
+  ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const where = {
         empresaId,
@@ -68,15 +82,22 @@ export class CategoriasService {
           ? query.sortBy
           : 'descricao';
       const [data, total] = await Promise.all([
-        tx.categoria.findMany({
-          where,
-          include: {
-            categoriaPai: PAI_SELECT,
-            regraDesconto: REGRA_DESCONTO_SELECT,
-          },
-          ...paginationToSkipTake(query),
-          orderBy: { [sortField]: query.sortOrder },
-        }),
+        opcoes.somenteNomes
+          ? tx.categoria.findMany({
+              where,
+              select: NOMES_SELECT,
+              ...paginationToSkipTake(query),
+              orderBy: { [sortField]: query.sortOrder },
+            })
+          : tx.categoria.findMany({
+              where,
+              include: {
+                categoriaPai: PAI_SELECT,
+                regraDesconto: REGRA_DESCONTO_SELECT,
+              },
+              ...paginationToSkipTake(query),
+              orderBy: { [sortField]: query.sortOrder },
+            }),
         tx.categoria.count({ where }),
       ]);
       return buildPaginatedResult(data, total, query);
@@ -116,9 +137,17 @@ export class CategoriasService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const existe = await tx.categoria.findFirst({
         where: { id, empresaId, deletedAt: null },
-        select: { id: true },
+        select: { id: true, categoriaPaiId: true },
       });
       if (!existe) throw new NotFoundException('Categoria não encontrada');
+
+      // A subcategoria acompanha a categoria pai (a marcação desce dela). Marcá-la
+      // à parte criaria a divergência que a regra acima existe para evitar.
+      if (dto.equipamentoComodato !== undefined && existe.categoriaPaiId) {
+        throw new ConflictException(
+          'Esta é uma subcategoria: a marcação de equipamento de comodato acompanha a categoria pai. Altere na categoria pai.',
+        );
+      }
 
       if (dto.equipamentoComodato !== undefined) {
         await tx.categoria.updateMany({

@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { TAMANHOS_PAGINA } from "@plataforma/contracts";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -15,7 +16,7 @@ export interface PaginacaoProps {
   onPageChange: (page: number) => void;
   onPageSizeChange: (pageSize: number) => void;
   /** Opções do "n / página". */
-  tamanhos?: number[];
+  tamanhos?: readonly number[];
   className?: string;
 }
 
@@ -30,7 +31,7 @@ export function Paginacao({
   totalPages,
   onPageChange,
   onPageSizeChange,
-  tamanhos = [10, 20, 50],
+  tamanhos = TAMANHOS_PAGINA,
   className,
 }: PaginacaoProps) {
   return (

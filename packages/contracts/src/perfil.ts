@@ -1,5 +1,11 @@
 import { z } from "zod";
-import { acaoSchema, auditFieldsSchema, booleanQueryParam, paginationQuerySchema } from "./common";
+import {
+  acaoSchema,
+  auditFieldsSchema,
+  booleanQueryParam,
+  paginationQuerySchema,
+  tamanhoPaginaSchema,
+} from "./common";
 
 export const perfilCreateSchema = z.object({
   nome: z.string().trim().min(2).max(80).describe("Nome do perfil (ex.: Administrador Empresa, Gerente)"),
@@ -20,6 +26,12 @@ export const perfilCreateSchema = z.object({
     .default(false)
     .describe(
       "Vê a carteira de clientes inteira da empresa. Sem isso, o usuário vê só a carteira do Vendedor ligado a ele e a do time abaixo",
+    ),
+  tamanhoPagina: tamanhoPaginaSchema
+    .nullable()
+    .optional()
+    .describe(
+      "Itens por página das listagens para quem tem este perfil (10, 20, 50 ou 100); null = o padrão de cada tela. O usuário pode trocar o seu em Meu perfil",
     ),
 });
 export type PerfilCreate = z.infer<typeof perfilCreateSchema>;

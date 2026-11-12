@@ -548,6 +548,20 @@ export const integracaoClienteSchema = integracaoClienteCreateSchema.extend({
 });
 export type IntegracaoCliente = z.infer<typeof integracaoClienteSchema>;
 
+/**
+ * Corpo do `PATCH /integracao/clientes/alteracoes/:id/aplicada`. Só importa na
+ * **inclusão** (cliente criado na plataforma): o ERP devolve a chave e o código
+ * que gravou na SA1, e a plataforma os guarda no cadastro. Na alteração o corpo
+ * é ignorado. Os dois são validados no serviço, porque dependem da operação do item.
+ */
+export const integracaoClienteAplicadaSchema = z.object({
+  chave: z.string().trim().min(1).max(30).optional(),
+  codigoErp: z.string().trim().min(1).max(60).optional(),
+});
+export type IntegracaoClienteAplicada = z.infer<
+  typeof integracaoClienteAplicadaSchema
+>;
+
 export const integracaoClienteQuerySchema = paginationQuerySchema.extend({
   ativo: booleanQueryParam,
 });
@@ -1980,6 +1994,36 @@ export type IntegracaoOrcamentoUpdate = z.infer<
 export const integracaoOrcamentoSchema = integracaoOrcamentoCreateSchema.extend(
   {
     id: z.string().uuid(),
+    // Só leitura: o ERP grava no pedido (C5_XOBSVEN, junto da observação),
+    // não envia de volta. Preenchidos só com o desconto autorizado agora.
+    descontoSolicitadoPor: z
+      .string()
+      .nullable()
+      .describe(
+        "Nome de quem pediu a liberação do desconto; null sem autorização vigente ou quando o superior liberou sem pedido",
+      ),
+    descontoSolicitacaoMotivo: z
+      .string()
+      .nullable()
+      .describe(
+        "Por que o vendedor pediu o desconto; null sem autorização vigente ou quando o superior liberou sem pedido",
+      ),
+    descontoAutorizadoPor: z
+      .string()
+      .nullable()
+      .describe("Nome de quem liberou o desconto acima do máximo; null sem autorização vigente"),
+    descontoAutorizadoEm: z
+      .string()
+      .nullable()
+      .describe(
+        "Data e hora da liberação, já no horário local da plataforma: dd/mm/aaaa hh:mm; null sem autorização vigente",
+      ),
+    descontoJustificativa: z
+      .string()
+      .nullable()
+      .describe(
+        "Justificativa de quem liberou o desconto acima do máximo; null sem autorização vigente",
+      ),
     ...auditFieldsSchema.shape,
   },
 );
@@ -2054,6 +2098,11 @@ export const INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE: IntegracaoOrcamentoCreate = {
 export const INTEGRACAO_ORCAMENTO_EXAMPLE: IntegracaoOrcamento = {
   ...INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE,
   id: "0d1e2f3a-4b5c-4d6e-7f80-91a2b3c4d5e6",
+  descontoSolicitadoPor: "JOAO",
+  descontoSolicitacaoMotivo: "Cliente comparou com a concorrência e pediu o mesmo preço",
+  descontoAutorizadoPor: "ALEXANDER MARCO DA SILVA VELASQUEZ",
+  descontoAutorizadoEm: "10/11/2026 14:32",
+  descontoJustificativa: "Cliente fechou volume do trimestre",
   createdAt: "2026-08-04T12:00:00.000Z",
   updatedAt: "2026-08-04T12:00:00.000Z",
   createdBy: null,

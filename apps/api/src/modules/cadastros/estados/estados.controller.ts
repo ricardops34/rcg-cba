@@ -14,6 +14,7 @@ import { EstadosService } from './estados.service';
 import { EstadoCreateDto, EstadoQueryDto, EstadoUpdateDto } from './dto/estado.dto';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { PlatformAdminGuard } from '../../../common/guards/platform-admin.guard';
 import { RequirePermission } from '../../../common/decorators/require-permission.decorator';
 import { ApiPaginationQuery } from '../../../common/decorators/api-pagination-query.decorator';
 import {
@@ -49,6 +50,7 @@ export class EstadosController {
   }
 
   @ApiOperation({ summary: 'Cadastrar estado', description: 'Requer estados.cadastrar.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estados', 'cadastrar')
   @Post()
   create(@Body() dto: EstadoCreateDto, @CurrentUser() user: AuthenticatedUser) {
@@ -56,6 +58,7 @@ export class EstadosController {
   }
 
   @ApiOperation({ summary: 'Editar estado', description: 'Requer estados.editar.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estados', 'editar')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: EstadoUpdateDto, @CurrentUser() user: AuthenticatedUser) {
@@ -63,6 +66,7 @@ export class EstadosController {
   }
 
   @ApiOperation({ summary: 'Excluir estado (soft delete)', description: 'Requer estados.excluir.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('estados', 'excluir')
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {

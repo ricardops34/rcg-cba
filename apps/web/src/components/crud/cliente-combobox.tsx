@@ -29,6 +29,7 @@ export function ClienteCombobox({
   vendedorId,
   conversaId,
   paraNovaConversa,
+  paraOrcamento,
 }: {
   value: string | null;
   onChange: (id: string | null) => void;
@@ -51,6 +52,8 @@ export function ClienteCombobox({
   conversaId?: string;
   /** "Nova conversa": a lista vem do atendimento, com a mesma regra de carteira do vínculo. */
   paraNovaConversa?: boolean;
+  /** Rotina de orçamentos: vendedor com "atende outras carteiras" escolhe qualquer cliente. */
+  paraOrcamento?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -61,7 +64,7 @@ export function ClienteCombobox({
       : null;
 
   const { data } = useQuery({
-    queryKey: ["clientes", "combobox", search, vendedorId, conversaId, paraNovaConversa],
+    queryKey: ["clientes", "combobox", search, vendedorId, conversaId, paraNovaConversa, paraOrcamento],
     queryFn: () =>
       urlVinculaveis
         ? apiFetch<{ data: Cliente[] }>(urlVinculaveis, {
@@ -73,6 +76,7 @@ export function ClienteCombobox({
               search: search || undefined,
               ativo: true,
               ...(vendedorId ? { vendedorId } : {}),
+              ...(paraOrcamento ? { paraOrcamento: true } : {}),
             },
           }),
     enabled: open,
@@ -82,9 +86,14 @@ export function ClienteCombobox({
   // Mantém o rótulo do valor selecionado mesmo quando ele não está na página
   // atual de resultados da busca.
   const selecionadoQuery = useQuery({
-    queryKey: ["clientes", value, conversaId, paraNovaConversa],
+    queryKey: ["clientes", value, conversaId, paraNovaConversa, paraOrcamento],
     queryFn: async () => {
-      if (!urlVinculaveis) return apiFetch<Cliente>(`/clientes/${value}`);
+      if (!urlVinculaveis) {
+        return apiFetch<Cliente>(
+          `/clientes/${value}`,
+          paraOrcamento ? { query: { paraOrcamento: true } } : undefined,
+        );
+      }
       const r = await apiFetch<{ data: Cliente[] }>(urlVinculaveis, {
         query: { id: value ?? undefined },
       });

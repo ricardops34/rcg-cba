@@ -22,6 +22,22 @@ const ROTINA_SELECT = {
   disponivelTelaPequena: true,
 } as const;
 
+/**
+ * Se a tela aparece no celular desta empresa.
+ *
+ * O catálogo é o teto: a empresa pode tirar do celular o que o catálogo
+ * oferece, mas não pode pôr o que o catálogo deixou fora. É o caso do módulo
+ * Administração, que não existe no celular (decisão de 2026-11-10: no
+ * celular ficam só os módulos de vendedor, supervisor, gerente,
+ * administrativo e diretor).
+ */
+export function noCelular(
+  catalogo: boolean,
+  daEmpresa: boolean | undefined,
+): boolean {
+  return catalogo && (daEmpresa ?? true);
+}
+
 @Injectable()
 export class EstruturaService {
   constructor(private readonly prisma: PrismaService) {}
@@ -66,7 +82,7 @@ export class EstruturaService {
         .map((rotina) => ({
           ...rotina,
           disponivelTelaPequena:
-            tp.rotinas.get(rotina.id) ?? rotina.disponivelTelaPequena,
+            noCelular(rotina.disponivelTelaPequena, tp.rotinas.get(rotina.id)),
         }));
 
     // A decisão da empresa para o celular sobrepõe a do catálogo.
@@ -75,20 +91,20 @@ export class EstruturaService {
       .map((modulo) => ({
         ...modulo,
         disponivelTelaPequena:
-          tp.modulos.get(modulo.id) ?? modulo.disponivelTelaPequena,
+          noCelular(modulo.disponivelTelaPequena, tp.modulos.get(modulo.id)),
         menus: modulo.menus
           .filter((menu) => !desativados.menus.has(menu.id))
           .map((menu) => ({
             ...menu,
             disponivelTelaPequena:
-              tp.menus.get(menu.id) ?? menu.disponivelTelaPequena,
+              noCelular(menu.disponivelTelaPequena, tp.menus.get(menu.id)),
             rotinas: rotinasDe(menu.rotinas),
             submenus: menu.submenus
               .filter((sub) => !desativados.menus.has(sub.id))
               .map((sub) => ({
                 ...sub,
                 disponivelTelaPequena:
-                  tp.menus.get(sub.id) ?? sub.disponivelTelaPequena,
+                  noCelular(sub.disponivelTelaPequena, tp.menus.get(sub.id)),
                 rotinas: rotinasDe(sub.rotinas),
               })),
           })),
@@ -287,32 +303,32 @@ export class EstruturaService {
       ...modulo,
       ativoNaEmpresa: !desativados.modulos.has(modulo.id),
       telaPequenaNaEmpresa:
-        tp.modulos.get(modulo.id) ?? modulo.disponivelTelaPequena,
+        noCelular(modulo.disponivelTelaPequena, tp.modulos.get(modulo.id)),
       telaPequenaPropria: tp.modulos.get(modulo.id) ?? null,
       menus: modulo.menus.map((menu) => ({
         ...menu,
         ativoNaEmpresa: !desativados.menus.has(menu.id),
         telaPequenaNaEmpresa:
-          tp.menus.get(menu.id) ?? menu.disponivelTelaPequena,
+          noCelular(menu.disponivelTelaPequena, tp.menus.get(menu.id)),
         telaPequenaPropria: tp.menus.get(menu.id) ?? null,
         rotinas: menu.rotinas.map((rotina) => ({
           ...rotina,
           ativoNaEmpresa: !desativados.rotinas.has(rotina.id),
           telaPequenaNaEmpresa:
-            tp.rotinas.get(rotina.id) ?? rotina.disponivelTelaPequena,
+            noCelular(rotina.disponivelTelaPequena, tp.rotinas.get(rotina.id)),
           telaPequenaPropria: tp.rotinas.get(rotina.id) ?? null,
         })),
         submenus: menu.submenus.map((sub) => ({
           ...sub,
           ativoNaEmpresa: !desativados.menus.has(sub.id),
           telaPequenaNaEmpresa:
-            tp.menus.get(sub.id) ?? sub.disponivelTelaPequena,
+            noCelular(sub.disponivelTelaPequena, tp.menus.get(sub.id)),
           telaPequenaPropria: tp.menus.get(sub.id) ?? null,
           rotinas: sub.rotinas.map((rotina) => ({
             ...rotina,
             ativoNaEmpresa: !desativados.rotinas.has(rotina.id),
             telaPequenaNaEmpresa:
-              tp.rotinas.get(rotina.id) ?? rotina.disponivelTelaPequena,
+              noCelular(rotina.disponivelTelaPequena, tp.rotinas.get(rotina.id)),
             telaPequenaPropria: tp.rotinas.get(rotina.id) ?? null,
           })),
         })),

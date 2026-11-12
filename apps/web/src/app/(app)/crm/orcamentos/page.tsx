@@ -1,17 +1,22 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import type { Orcamento, StatusOrcamento } from "@plataforma/contracts";
+import type { Orcamento, SituacaoDesconto, StatusOrcamento } from "@plataforma/contracts";
 import {
   numeroOrcamento,
   podeExcluirOrcamento,
   ORIGEM_VENDA_ROTULO,
+  SITUACAO_DESCONTO_ROTULO,
   SITUACAO_INTEGRACAO_ROTULO,
+  situacaoDescontoOrcamento,
   situacaoIntegracaoOrcamento,
 } from "@plataforma/contracts";
+import { useAuthStore } from "@/stores/auth-store";
+import { QuickFilterButton, QuickFilterGroup } from "@/components/crud/quick-filter-group";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { dataCivilBr } from "@/lib/data";
@@ -69,6 +74,34 @@ import {
 
 type StatusFiltro = "todos" | StatusOrcamento;
 type SituacaoFiltro = "todas" | "aberto" | "vencido" | "faturado";
+type DescontoFiltro = "todos" | SituacaoDesconto;
+type CarteiraFiltro = "minha" | "equipe" | "outras" | "todas";
+
+const CARTEIRA_OPCOES: { value: CarteiraFiltro; label: string }[] = [
+  { value: "minha", label: "Minha carteira" },
+  { value: "equipe", label: "Minha equipe" },
+  { value: "outras", label: "Outras carteiras" },
+  { value: "todas", label: "Todas" },
+];
+
+// Etiqueta da trava de desconto (ver situacaoDescontoOrcamento): o que o
+// supervisor precisa analisar fica em amarelo; recusado em vermelho.
+const DESCONTO_VARIANT: Record<SituacaoDesconto, "warning" | "destructive" | "success"> = {
+  bloqueado: "warning",
+  aguardando: "warning",
+  recusado: "destructive",
+  liberado: "success",
+};
+
+function DescontoBadge({ o }: { o: Orcamento }) {
+  const situacao = situacaoDescontoOrcamento(o);
+  if (!situacao) return null;
+  return (
+    <Badge variant={DESCONTO_VARIANT[situacao]}>
+      {SITUACAO_DESCONTO_ROTULO[situacao]}
+    </Badge>
+  );
+}
 
 /** Datas de um filtro de período (AAAA-MM-DD, como o campo de data entrega). */
 interface Periodo {
@@ -103,12 +136,18 @@ export default function OrcamentosPage() {
   const urlFiltros = useFiltrosUrl();
   const [search, setSearch] = useState(() => urlFiltros.texto("search") ?? "");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useState("createdAt");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [status_, setStatus] = useState<StatusFilterValue>("ativos");
   const [statusOrcamento, setStatusOrcamento] = useState<StatusFiltro>("todos");
   const [situacao, setSituacao] = useState<SituacaoFiltro>("todas");
+  const [desconto, setDesconto] = useState<DescontoFiltro>(
+    () => (urlFiltros.texto("desconto") as DescontoFiltro | undefined) ?? "todos",
+  );
+  // null = o padrão do perfil (ver carteiraPadrao), decidido quando o escopo chega.
+  const [carteiraEscolhida, setCarteira] = useState<CarteiraFiltro | null>(null);
+  const podeLiberarDesconto = useAuthStore((s) => s.hasPermission)("orcamentos", "aprovar");
   const [criado, setCriado] = useState<Periodo>(SEM_PERIODO);
   const [validade, setValidade] = useState<Periodo>(SEM_PERIODO);
   const [retorno, setRetorno] = useState<Periodo>(SEM_PERIODO);
@@ -122,6 +161,25 @@ export default function OrcamentosPage() {
   const mostrarFiltroVendedor = !(
     vendedoresEscopoQuery.data?.ehVendedorPuro ?? false
   );
+  // Filtro rápido de carteira (decisão de 10/11): só para quem tem vendedor
+  // ligado e alguma coisa além da própria carteira para separar.
+  //   vendedor que atende outras carteiras → Minha | Outras | Todas (começa Minha)
+  //   supervisor/gerente                   → Minha | Equipe | Todas (começa Equipe)
+  //   Administrador com vendedor           → Minha | Outras | Todas (começa Todas)
+  const escopoUsuario = vendedoresEscopoQuery.data;
+  const temEquipe = escopoUsuario?.temEquipe ?? false;
+  const veOutras = escopoUsuario?.veOutrasCarteiras ?? false;
+  const carteiraOpcoes = CARTEIRA_OPCOES.filter(
+    (o) => (o.value !== "equipe" || temEquipe) && (o.value !== "outras" || veOutras),
+  );
+  const mostrarFiltroCarteira =
+    !!escopoUsuario?.meuVendedorId && (temEquipe || veOutras);
+  const carteiraPadrao: CarteiraFiltro = !escopoUsuario?.restrito
+    ? "todas"
+    : temEquipe
+      ? "equipe"
+      : "minha";
+  const carteira = mostrarFiltroCarteira ? (carteiraEscolhida ?? carteiraPadrao) : "todas";
 
   const { data, isLoading, isFetching, refetch, error } =
     useResourceList<Orcamento>("orcamentos", {
@@ -133,6 +191,8 @@ export default function OrcamentosPage() {
       ...(status_ !== "todos" ? { ativo: status_ === "ativos" } : {}),
       ...(statusOrcamento !== "todos" ? { status: statusOrcamento } : {}),
       ...(situacao !== "todas" ? { situacao } : {}),
+      ...(desconto !== "todos" ? { desconto } : {}),
+      ...(carteira !== "todas" ? { carteira } : {}),
       ...(criado.de ? { dataInicio: criado.de } : {}),
       // O dia inteiro: "até 15/10" inclui o que foi criado durante o dia 15.
       ...(criado.ate ? { dataFim: `${criado.ate}T23:59:59` } : {}),
@@ -217,11 +277,13 @@ export default function OrcamentosPage() {
   const filtrosAtivos =
     statusOrcamento !== "todos" ||
     situacao !== "todas" ||
+    desconto !== "todos" ||
     !!vendedorId ||
     [criado, validade, retorno].some((p) => p.de || p.ate);
   const limparFiltros = () => {
     setStatusOrcamento("todos");
     setSituacao("todas");
+    setDesconto("todos");
     setCriado(SEM_PERIODO);
     setValidade(SEM_PERIODO);
     setRetorno(SEM_PERIODO);
@@ -350,9 +412,12 @@ export default function OrcamentosPage() {
       header: "Status",
       sortKey: "status",
       cell: (o) => (
-        <Badge variant={STATUS_ORCAMENTO_VARIANT[o.status]}>
-          {STATUS_ORCAMENTO_LABEL[o.status]}
-        </Badge>
+        <div className="flex flex-wrap items-center gap-1">
+          <Badge variant={STATUS_ORCAMENTO_VARIANT[o.status]}>
+            {STATUS_ORCAMENTO_LABEL[o.status]}
+          </Badge>
+          <DescontoBadge o={o} />
+        </div>
       ),
     },
     {
@@ -453,6 +518,29 @@ export default function OrcamentosPage() {
                 </Select>
               </div>
 
+              <div className="space-y-2">
+                <FieldLabel>Desconto</FieldLabel>
+                <Select
+                  value={desconto}
+                  onValueChange={(v) => {
+                    setDesconto(v as DescontoFiltro);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger className="w-full">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="todos">Todos</SelectItem>
+                    {(Object.keys(SITUACAO_DESCONTO_ROTULO) as SituacaoDesconto[]).map((s) => (
+                      <SelectItem key={s} value={s}>
+                        {SITUACAO_DESCONTO_ROTULO[s]}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
               {mostrarFiltroVendedor && (
                 <div className="space-y-2">
                   <FieldLabel>Vendedor</FieldLabel>
@@ -490,13 +578,54 @@ export default function OrcamentosPage() {
         data-tour="orcamentos-filtros"
         className="flex flex-wrap items-center justify-between gap-2"
       >
-        <StatusQuickFilter
-          value={status_}
-          onChange={(v) => {
-            setStatus(v);
-            setPage(1);
-          }}
-        />
+        <div className="flex flex-wrap items-center gap-2">
+          <StatusQuickFilter
+            value={status_}
+            onChange={(v) => {
+              setStatus(v);
+              setPage(1);
+            }}
+          />
+          {mostrarFiltroCarteira && (
+            <QuickFilterGroup>
+              {carteiraOpcoes.map((opt) => (
+                <QuickFilterButton
+                  key={opt.value}
+                  active={carteira === opt.value}
+                  onClick={() => {
+                    setCarteira(opt.value);
+                    setPage(1);
+                  }}
+                >
+                  {opt.label}
+                </QuickFilterButton>
+              ))}
+            </QuickFilterGroup>
+          )}
+          {/* Atalho de quem libera desconto: o que está esperando por ele. */}
+          {podeLiberarDesconto && (
+            <QuickFilterGroup>
+              <QuickFilterButton
+                active={desconto === "aguardando"}
+                onClick={() => {
+                  setDesconto(desconto === "aguardando" ? "todos" : "aguardando");
+                  setPage(1);
+                }}
+              >
+                Aguardando liberação
+              </QuickFilterButton>
+              <QuickFilterButton
+                active={desconto === "bloqueado"}
+                onClick={() => {
+                  setDesconto(desconto === "bloqueado" ? "todos" : "bloqueado");
+                  setPage(1);
+                }}
+              >
+                Bloqueados por desconto
+              </QuickFilterButton>
+            </QuickFilterGroup>
+          )}
+        </div>
       </div>
 
       <div data-tour="orcamentos-lista">
@@ -537,6 +666,7 @@ export default function OrcamentosPage() {
                     <Badge variant={STATUS_ORCAMENTO_VARIANT[o.status]}>
                       {STATUS_ORCAMENTO_LABEL[o.status]}
                     </Badge>
+                    <DescontoBadge o={o} />
                     {indicador && Icone ? (
                       <Icone className={`size-4 ${indicador.cor}`} aria-label={indicador.legenda} />
                     ) : null}

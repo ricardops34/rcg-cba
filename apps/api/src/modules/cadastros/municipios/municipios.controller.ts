@@ -14,6 +14,7 @@ import { MunicipiosService } from './municipios.service';
 import { MunicipioCreateDto, MunicipioQueryDto, MunicipioUpdateDto } from './dto/municipio.dto';
 import { JwtAuthGuard } from '../../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../../common/guards/permissions.guard';
+import { PlatformAdminGuard } from '../../../common/guards/platform-admin.guard';
 import { RequirePermission } from '../../../common/decorators/require-permission.decorator';
 import { ApiPaginationQuery } from '../../../common/decorators/api-pagination-query.decorator';
 import {
@@ -49,6 +50,7 @@ export class MunicipiosController {
   }
 
   @ApiOperation({ summary: 'Cadastrar município', description: 'Requer municipios.cadastrar.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('municipios', 'cadastrar')
   @Post()
   create(@Body() dto: MunicipioCreateDto, @CurrentUser() user: AuthenticatedUser) {
@@ -56,6 +58,7 @@ export class MunicipiosController {
   }
 
   @ApiOperation({ summary: 'Editar município', description: 'Requer municipios.editar.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('municipios', 'editar')
   @Patch(':id')
   update(@Param('id') id: string, @Body() dto: MunicipioUpdateDto, @CurrentUser() user: AuthenticatedUser) {
@@ -63,6 +66,7 @@ export class MunicipiosController {
   }
 
   @ApiOperation({ summary: 'Excluir município (soft delete)', description: 'Requer municipios.excluir.' })
+  @UseGuards(PlatformAdminGuard)
   @RequirePermission('municipios', 'excluir')
   @Delete(':id')
   remove(@Param('id') id: string, @CurrentUser() user: AuthenticatedUser) {

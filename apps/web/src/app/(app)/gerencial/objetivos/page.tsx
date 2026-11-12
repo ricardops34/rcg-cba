@@ -1,5 +1,6 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { toast } from "sonner";
@@ -19,6 +20,7 @@ import {
 } from "@/components/crud/status-quick-filter";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { ObjetivoCopiarDialog } from "@/components/crud/objetivo-copiar-dialog";
+import { ObjetivoGerarDialog } from "@/components/crud/objetivo-gerar-dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { FieldLabel } from "@/components/ui/field";
@@ -35,7 +37,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { Copy, MoreHorizontal, Pencil, Trash2 } from "lucide-react";
+import { Copy, MoreHorizontal, Pencil, Sparkles, Trash2 } from "lucide-react";
 
 const MES_ABREV = [
   "Jan",
@@ -59,7 +61,7 @@ export default function ObjetivosPage() {
   const router = useRouter();
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useState("ano");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
@@ -85,6 +87,7 @@ export default function ObjetivosPage() {
 
   const { remove } = useResourceMutations("objetivos");
   const [copiarAberto, setCopiarAberto] = useState(false);
+  const [gerarAberto, setGerarAberto] = useState(false);
 
   const openEdit = (o: ObjetivoVendedorMes) =>
     router.push(`/gerencial/objetivos/${o.id}`);
@@ -254,6 +257,10 @@ export default function ObjetivosPage() {
               <Copy className="size-4" />
               Copiar período
             </Button>
+            <Button variant="outline" onClick={() => setGerarAberto(true)}>
+              <Sparkles className="size-4" />
+              Gerar pelo realizado
+            </Button>
           </>
         }
       />
@@ -298,6 +305,11 @@ export default function ObjetivosPage() {
         open={copiarAberto}
         onOpenChange={setCopiarAberto}
         onCopiado={() => refetch()}
+      />
+      <ObjetivoGerarDialog
+        open={gerarAberto}
+        onOpenChange={setGerarAberto}
+        onGerado={() => refetch()}
       />
     </div>
   );

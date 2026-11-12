@@ -14,6 +14,7 @@ import {
   vendedorFiltroLabel,
 } from "@/hooks/use-vendedores-escopo";
 import { useVendedorPadrao } from "@/hooks/use-vendedor-padrao";
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import {
   guardarRolagem,
   rolagemGuardada,
@@ -31,6 +32,7 @@ import {
   QuickFilterGroup,
 } from "@/components/crud/quick-filter-group";
 import { FiltersPopover } from "@/components/crud/filters-popover";
+import { ProdutoCombobox } from "@/components/crud/produto-combobox";
 import { ClienteSheet } from "@/components/crud/cliente-form";
 import { OrcamentosClienteSheet } from "@/components/crud/orcamentos-cliente-sheet";
 import { PosicaoClienteSheet } from "@/components/comercial/posicao-cliente-sheet";
@@ -65,6 +67,7 @@ import {
   Lock,
   MoreHorizontal,
   Pencil,
+  X,
 } from "lucide-react";
 
 const DIAS_OPCOES = [120, 90, 60, 30, 15] as const;
@@ -104,7 +107,7 @@ export default function PosicaoClientePage() {
   // voltar — ver `useEstadoDaTela`.
   const [search, setSearch] = useEstadoDaTela("posicao-cliente:busca", "");
   const [page, setPage] = useEstadoDaTela("posicao-cliente:pagina", 1);
-  const [pageSize, setPageSize] = useEstadoDaTela("posicao-cliente:tamanho", 10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useEstadoDaTela("posicao-cliente:ordem", "dias");
   const [sortOrder, setSortOrder] = useEstadoDaTela<"asc" | "desc">(
     "posicao-cliente:sentido",
@@ -133,6 +136,12 @@ export default function PosicaoClientePage() {
   );
   const [temTituloVencido, setTemTituloVencido] = useEstadoDaTela<boolean | undefined>(
     "posicao-cliente:vencidos",
+    undefined,
+  );
+  // "Quem compra este produto?" — clientes que já compraram o produto em
+  // nota de venda (ver listagemPosicao na API).
+  const [produtoId, setProdutoId] = useEstadoDaTela<string | undefined>(
+    "posicao-cliente:produto",
     undefined,
   );
   // Aviso de comodato sem consumo e baixas (ver comodato-sql.ts na API). O
@@ -239,6 +248,7 @@ export default function PosicaoClientePage() {
       ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
       ...(diasSemComprar !== undefined ? { diasSemComprar } : {}),
       ...(temTituloVencido !== undefined ? { temTituloVencido } : {}),
+      ...(produtoId ? { produtoId } : {}),
       ...(comodatoSemConsumo ? { comodatoSemConsumo } : {}),
     });
 
@@ -268,6 +278,7 @@ export default function PosicaoClientePage() {
     carteira !== "todos" ||
     diasSemComprar !== undefined ||
     temTituloVencido !== undefined ||
+    !!produtoId ||
     !!comodatoSemConsumo;
 
   const limparFiltros = () => {
@@ -279,6 +290,7 @@ export default function PosicaoClientePage() {
     setCarteira("todos");
     setDiasSemComprar(undefined);
     setTemTituloVencido(undefined);
+    setProdutoId(undefined);
     setPage(1);
   };
 
@@ -500,6 +512,40 @@ export default function PosicaoClientePage() {
           isRefreshing={isFetching}
           actions={
             <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
+              <div className="space-y-2">
+                <FieldLabel>Produto comprado</FieldLabel>
+                <div className="flex items-center gap-1">
+                  <div className="min-w-0 flex-1">
+                    <ProdutoCombobox
+                      value={produtoId ?? null}
+                      placeholder="Qualquer produto"
+                      onChange={(p) => {
+                        setProdutoId(p?.id);
+                        setPage(1);
+                      }}
+                    />
+                  </div>
+                  {produtoId && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0"
+                      aria-label="Tirar o filtro de produto"
+                      onClick={() => {
+                        setProdutoId(undefined);
+                        setPage(1);
+                      }}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Clientes que já compraram este produto.
+                </p>
+              </div>
+
               <div className="space-y-2">
                 <FieldLabel>UF</FieldLabel>
                 <Select

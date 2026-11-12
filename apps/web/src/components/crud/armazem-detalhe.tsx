@@ -20,6 +20,7 @@ export function ArmazemDetalheContent({ armazem }: { armazem: Armazem }) {
     <Card>
       <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Info label="Código ERP" value={<span className="font-mono">{armazem.codigoErp}</span>} />
+        <Info label="Integração" value={<span className="font-mono">{armazem.chave || "—"}</span>} />
         <Info label="Descrição" value={armazem.descricao} />
         <Info label="Status" value={<StatusDot active={armazem.ativo} />} />
       </CardContent>

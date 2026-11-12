@@ -18,7 +18,8 @@ import {
 } from '../../common/prisma/prisma.service';
 import {
   combinarFiltroVendedor,
-  resolverEscopoVendedores,
+  resolverEscopoOrcamentos,
+  arvoreDoVendedor,
   type EscopoVendedores,
 } from '../../common/escopo/escopo-vendedores';
 import {
@@ -42,9 +43,19 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
 import { criarAtividadeRetorno } from './criar-atividade-retorno';
 import {
   orcamentoExigeAutorizacao,
+  orcamentosQueExigemAutorizacao,
+  historicoDescontoOrcamento,
+  historicoOrcamento,
   registrarAtividadeOrcamento,
 } from './registrar-atividade-orcamento';
 import { calcularItensOrcamento } from './calcular-itens-orcamento';
+import {
+  cabecalhoMudou,
+  camposAlterados,
+  descreverAlteracao,
+  IGNORADOS_NO_HISTORICO,
+  itensMudaram,
+} from './orcamento-alterado';
 import { resolverTabelaDoOrcamento } from './resolver-tabela-do-orcamento';
 import { montarOrcamentoPdf } from './orcamento-pdf';
 import { proximoNumeroOrcamento } from './proximo-numero-orcamento';
@@ -267,7 +278,7 @@ export class OrcamentosService {
     praca: Praca = {},
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoOrcamentos(tx, empresaId, user);
       if (clienteId) {
         await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId);
       }
@@ -309,7 +320,7 @@ export class OrcamentosService {
     praca: Praca = {},
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoOrcamentos(tx, empresaId, user);
       if (clienteId) {
         await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId);
       }
@@ -420,6 +431,33 @@ export class OrcamentosService {
     };
   }
 
+  /**
+   * Filtro "Desconto" da listagem (ver situacaoDescontoOrcamento). Bloqueado e
+   * recusado dependem dos itens contra o máximo da regra — isso vem do SQL de
+   * `orcamentosQueExigemAutorizacao`; aguardando e liberado são só os campos.
+   */
+  private async filtroDesconto(
+    tx: TenantTx,
+    empresaId: string,
+    desconto: OrcamentoQuery['desconto'],
+  ): Promise<Prisma.OrcamentoWhereInput | null> {
+    if (!desconto) return null;
+    if (desconto === 'liberado') return { descontoAutorizadoEm: { not: null } };
+    if (desconto === 'aguardando') {
+      return {
+        descontoSolicitadoEm: { not: null },
+        descontoAutorizadoEm: null,
+      };
+    }
+    const exigem = await orcamentosQueExigemAutorizacao(tx, empresaId);
+    return {
+      id: { in: [...exigem] },
+      descontoSolicitadoEm: null,
+      descontoAutorizadoEm: null,
+      descontoRecusadoEm: desconto === 'recusado' ? { not: null } : null,
+    };
+  }
+
   findAll(
     empresaId: string,
     user: AuthenticatedUser,
@@ -431,9 +469,37 @@ export class OrcamentosService {
       // isto (`Vendedor.atendeOutrasCarteiras`).
       const escopo = opcoes.ignorarEscopo
         ? null
-        : await resolverEscopoVendedores(tx, empresaId, user);
+        : await resolverEscopoOrcamentos(tx, empresaId, user);
       const numeroBuscado = query.search ? numeroDeBusca(query.search) : null;
       const situacaoWhere = this.filtroSituacao(query.situacao);
+      const descontoWhere = await this.filtroDesconto(
+        tx,
+        empresaId,
+        query.desconto,
+      );
+      // Filtro de carteira (ver orcamentoQuerySchema.carteira), a partir do
+      // vendedor ligado ao usuário. Soma-se ao escopo — nunca alarga o que o
+      // usuário alcança. Sem vendedor ligado, não há "minha" a separar.
+      let carteiraWhere: Prisma.OrcamentoWhereInput | null = null;
+      if (query.carteira && !opcoes.ignorarEscopo) {
+        const meu = await tx.vendedor.findFirst({
+          where: { usuarioId: user.id, empresaId, deletedAt: null },
+          select: { id: true },
+        });
+        if (meu) {
+          const arvore =
+            query.carteira === 'minha'
+              ? [meu.id]
+              : await arvoreDoVendedor(tx, empresaId, meu.id);
+          carteiraWhere = {
+            vendedorId:
+              query.carteira === 'outras' ? { notIn: arvore } : { in: arvore },
+          };
+        }
+      }
+      const filtrosE = [situacaoWhere, descontoWhere, carteiraWhere].filter(
+        (f): f is NonNullable<typeof f> => f !== null,
+      );
       const where = {
         empresaId,
         deletedAt: null,
@@ -474,7 +540,7 @@ export class OrcamentosService {
               },
             }
           : {}),
-        ...(situacaoWhere ? { AND: [situacaoWhere] } : {}),
+        ...(filtrosE.length ? { AND: filtrosE } : {}),
         ...(query.validadeInicio || query.validadeFim
           ? {
               dataValidade: {
@@ -508,8 +574,17 @@ export class OrcamentosService {
         tx.orcamento.count({ where }),
       ]);
       const oculta = await this.comissaoOcultaParaTodos(empresaId);
+      // Etiqueta de desconto por linha: a mesma regra da trava, só para a página.
+      const exigem = await orcamentosQueExigemAutorizacao(
+        tx,
+        empresaId,
+        data.map((o) => o.id),
+      );
       return buildPaginatedResult(
-        data.map((o) => ocultarComissaoDosItens(o, user, oculta)),
+        data.map((o) => ({
+          ...ocultarComissaoDosItens(o, user, oculta),
+          exigeAutorizacaoDesconto: exigem.has(o.id),
+        })),
         total,
         query,
       );
@@ -525,7 +600,7 @@ export class OrcamentosService {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = opcoes.ignorarEscopo
         ? null
-        : await resolverEscopoVendedores(tx, empresaId, user);
+        : await resolverEscopoOrcamentos(tx, empresaId, user);
       const orcamento = await tx.orcamento.findFirst({
         where: {
           id,
@@ -541,6 +616,22 @@ export class OrcamentosService {
         user,
         await this.comissaoOcultaParaTodos(empresaId),
       );
+    });
+  }
+
+  /** Tudo o que aconteceu com o orçamento, do mais recente ao mais antigo. */
+  historico(empresaId: string, user: AuthenticatedUser, id: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.buscarParaAcao(tx, empresaId, { tipo: 'usuario', user }, id);
+      return historicoOrcamento(tx, empresaId, id);
+    });
+  }
+
+  /** Pedidos, liberações e recusas de desconto do orçamento, em ordem. */
+  historicoDesconto(empresaId: string, user: AuthenticatedUser, id: string) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.buscarParaAcao(tx, empresaId, { tipo: 'usuario', user }, id);
+      return historicoDescontoOrcamento(tx, empresaId, id);
     });
   }
 
@@ -560,7 +651,7 @@ export class OrcamentosService {
       // cliente mesmo fora da hierarquia de quem está atendendo.
       const escopo = opcoes.ignorarEscopo
         ? null
-        : await resolverEscopoVendedores(tx, empresaId, user);
+        : await resolverEscopoOrcamentos(tx, empresaId, user);
       const clienteId = input.clienteId || null;
       if (!clienteId && input.status === 'aprovado') {
         throw new ConflictException(MSG_SEM_CLIENTE_NAO_EFETIVA);
@@ -700,7 +791,7 @@ export class OrcamentosService {
     input: OrcamentoUpdate,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoOrcamentos(tx, empresaId, user);
       const orcamento = await tx.orcamento.findFirst({
         where: {
           id,
@@ -819,6 +910,42 @@ export class OrcamentosService {
           uf: input.prospectUf ?? orcamento.prospectUf,
         },
       );
+      // Qualquer alteração de fato derruba o pedido/liberação de desconto: ela
+      // foi dada para o orçamento como estava (ver orcamento-alterado.ts).
+      const itensGravados = itens
+        ? await tx.orcamentoItem.findMany({
+            where: { orcamentoId: id },
+            select: { produtoId: true, quantidade: true, vlrUnitario: true },
+          })
+        : [];
+      const itensAlterados = !!itens && itensMudaram(itensGravados, itens);
+      const tabelaAlterada = tabelaPrecoId !== orcamento.tabelaPrecoId;
+      const alterou =
+        itensAlterados ||
+        tabelaAlterada ||
+        cabecalhoMudou(this.limpar(header), orcamento);
+      // O que o histórico registra como alterado (inclui ativo/inativo, que
+      // não derruba a liberação).
+      const camposDoHistorico = [
+        ...(itensAlterados ? ['itens'] : []),
+        ...(tabelaAlterada ? ['tabelaPrecoId'] : []),
+        ...camposAlterados(
+          this.limpar(header),
+          orcamento,
+          IGNORADOS_NO_HISTORICO,
+        ).filter((c) => c !== 'tabelaPrecoId'),
+      ];
+      const derrubaDesconto = alterou
+        ? {
+            descontoSolicitadoEm: null,
+            descontoSolicitadoPor: null,
+            descontoSolicitacaoMotivo: null,
+            descontoAutorizadoEm: null,
+            descontoAutorizadoPor: null,
+            descontoJustificativa: null,
+          }
+        : {};
+
       let itensUpdate: Record<string, unknown> = {};
       if (itens) {
         await tx.orcamentoItem.deleteMany({ where: { orcamentoId: id } });
@@ -838,15 +965,6 @@ export class OrcamentosService {
         itensUpdate = {
           vlrTotal,
           itens: { create: itensData },
-          // Mexeu nos itens, a autorização de desconto anterior não vale mais:
-          // ela foi dada para aqueles preços. Volta à estaca zero, e o vendedor
-          // solicita de novo se o novo desconto ainda passar do máximo.
-          descontoSolicitadoEm: null,
-          descontoSolicitadoPor: null,
-          descontoSolicitacaoMotivo: null,
-          descontoAutorizadoEm: null,
-          descontoAutorizadoPor: null,
-          descontoJustificativa: null,
         };
       }
 
@@ -863,6 +981,7 @@ export class OrcamentosService {
           tabelaPrecoId,
           updatedBy: user.id,
           ...itensUpdate,
+          ...derrubaDesconto,
           ...((header.status === 'aprovado' || header.status === 'recusado') &&
           header.status !== orcamento.status
             ? {
@@ -904,6 +1023,18 @@ export class OrcamentosService {
       // uma alteração.
       // Chegar aqui com o status anterior 'aprovado' é impossível (a guarda
       // no topo já recusou), então virar 'aprovado' é sempre transição nova.
+      // Alteração junto com a decisão (o formulário grava tudo de uma vez)
+      // também fica registrada: são dois fatos.
+      if (camposDoHistorico.length > 0) {
+        await registrarAtividadeOrcamento(
+          tx,
+          empresaId,
+          user.id,
+          'alteracao',
+          paraAtividade,
+          descreverAlteracao(camposDoHistorico),
+        );
+      }
       if (header.status === 'aprovado') {
         await registrarAtividadeOrcamento(
           tx,
@@ -911,6 +1042,7 @@ export class OrcamentosService {
           user.id,
           'aprovacao_cliente',
           paraAtividade,
+          'Efetivado no sistema',
         );
       } else if (
         header.status === 'recusado' &&
@@ -922,14 +1054,7 @@ export class OrcamentosService {
           user.id,
           'recusa_cliente',
           paraAtividade,
-        );
-      } else {
-        await registrarAtividadeOrcamento(
-          tx,
-          empresaId,
-          user.id,
-          'alteracao',
-          paraAtividade,
+          'Recusa registrada no sistema',
         );
       }
 
@@ -958,7 +1083,7 @@ export class OrcamentosService {
 
   async remove(empresaId: string, user: AuthenticatedUser, id: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const escopo = await resolverEscopoOrcamentos(tx, empresaId, user);
       const orcamento = await tx.orcamento.findFirst({
         where: {
           id,
@@ -1161,9 +1286,13 @@ export class OrcamentosService {
           'O desconto deste orçamento já está autorizado',
         );
       }
-      if (!orcamento.descontoSolicitadoEm) {
+      // Quem pode autorizar pode recusar, com ou sem pedido do vendedor
+      // (decisão do usuário, 2026-11-10): o gerente que acha o orçamento em
+      // "Bloqueados por desconto" decide ali mesmo. A trava é a mesma do
+      // autorizar — só há o que recusar se o desconto passou do máximo.
+      if (!(await orcamentoExigeAutorizacao(tx, id))) {
         throw new ConflictException(
-          'Não há pedido de autorização de desconto para recusar',
+          'Nenhum item deste orçamento tem desconto igual ou acima do máximo da regra',
         );
       }
 

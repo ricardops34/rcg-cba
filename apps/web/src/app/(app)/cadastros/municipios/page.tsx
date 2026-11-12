@@ -1,10 +1,12 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
 import type { Estado, Municipio } from "@plataforma/contracts";
+import { useAuthStore } from "@/stores/auth-store";
 import { useResourceList, useResourceMutations } from "@/hooks/use-resource";
 import { apiFetch, ApiError } from "@/lib/api-client";
 import { CrudHeader } from "@/components/crud/crud-header";
@@ -27,9 +29,11 @@ type MunicipioRow = Municipio & { estado?: { id: string; sigla: string } | null 
 
 export default function MunicipiosPage() {
   const router = useRouter();
+  const ehAdminPlataforma =
+    useAuthStore((state) => state.user?.administradorPlataforma) ?? false;
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useState("descricao");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("asc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");
@@ -65,7 +69,7 @@ export default function MunicipiosPage() {
     }
   };
 
-  const columns: ColumnDef<MunicipioRow>[] = [
+  const todasColunas: ColumnDef<MunicipioRow>[] = [
     { header: "Descrição", sortKey: "descricao", cell: (m) => <p className="font-medium">{m.descricao}</p> },
     { header: "UF", cell: (m) => <span className="text-xs">{m.estado?.sigla ?? "—"}</span> },
     {
@@ -102,6 +106,11 @@ export default function MunicipiosPage() {
     },
   ];
 
+  // Catálogo global: só a plataforma altera; as empresas apenas consultam.
+  const columns = ehAdminPlataforma
+    ? todasColunas
+    : todasColunas.filter((c) => c.header !== "");
+
   return (
     <div className="space-y-4">
       <CrudHeader
@@ -112,7 +121,7 @@ export default function MunicipiosPage() {
         }}
         onRefresh={() => refetch()}
         isRefreshing={isFetching}
-        onCreate={() => router.push("/cadastros/municipios/novo")}
+        onCreate={ehAdminPlataforma ? () => router.push("/cadastros/municipios/novo") : undefined}
         createLabel="Novo município"
         actions={
           <FiltersPopover

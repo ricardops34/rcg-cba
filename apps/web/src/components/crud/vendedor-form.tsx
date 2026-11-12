@@ -370,15 +370,15 @@ export function VendedorForm({ vendedor }: { vendedor?: Vendedor }) {
                   />
                   Usa em Dashboard
                 </label>
-                {/* Vale só dentro do atendimento de WhatsApp — libera este
-                    vendedor a usar 2ª via/XML/boleto/orçamento e a vincular
-                    contato a cliente de carteira alheia. */}
+                {/* Vale no atendimento de WhatsApp (2ª via/XML/boleto/orçamento
+                    e vínculo de contato) e na rotina de Orçamentos (cliente de
+                    carteira alheia). Nas demais telas o escopo não muda. */}
                 <label className="flex cursor-pointer items-center gap-2 text-sm">
                   <Checkbox
                     checked={form.watch("atendeOutrasCarteiras")}
                     onCheckedChange={(v) => form.setValue("atendeOutrasCarteiras", v === true)}
                   />
-                  Atende clientes de outras carteiras (WhatsApp)
+                  Atende clientes de outras carteiras (WhatsApp e orçamentos)
                 </label>
                 {/* Desligado é o que inativa: o servidor mantém `ativo` como
                     espelho, e é `ativo` que os selects do sistema consultam. */}

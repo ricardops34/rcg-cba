@@ -77,6 +77,12 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { StatusDot } from "@/components/crud/status-dot";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { OrcamentoTimeline } from "@/components/crud/orcamento-timeline";
+import { OrcamentoHistorico } from "@/components/crud/orcamento-historico";
+import {
+  OrcamentoHistoricoDesconto,
+  ultimoEvento,
+  useHistoricoDesconto,
+} from "@/components/crud/orcamento-historico-desconto";
 import {
   ArrowLeft,
   CircleCheck,
@@ -812,7 +818,8 @@ export function OrcamentoFormContent({
   // abaixo (só ao criar) e dos dados de cliente do PDF (só ao editar).
   const clienteSelecionadoQuery = useQuery({
     queryKey: ["clientes", clienteId],
-    queryFn: () => apiFetch<Cliente>(`/clientes/${clienteId}`),
+    queryFn: () =>
+      apiFetch<Cliente>(`/clientes/${clienteId}`, { query: { paraOrcamento: true } }),
     enabled: !!clienteId,
   });
 
@@ -1090,6 +1097,14 @@ export function OrcamentoFormContent({
     ? autorizacaoDescontoSituacao(registro)
     : "nao_solicitada";
   const travadoPorDesconto = exigeAutorizacao && situacaoAutorizacao !== "autorizada";
+  // Quem decidiu e por quê, para o aviso do topo (o histórico completo fica na
+  // aba Aprovação e integração).
+  const historicoDesconto = useHistoricoDesconto(registro?.id, exigeAutorizacao).data;
+  const quemEPorque = (evento: "solicitada" | "autorizada" | "recusada") => {
+    const e = ultimoEvento(historicoDesconto, evento);
+    if (!e) return "";
+    return `${e.por ? ` por ${e.por}` : ""}${e.justificativa ? ` — “${e.justificativa}”` : ""}`;
+  };
 
   // Oportunidades do vendedor escolhido — só as ativas, mesmo critério do form de Atividade.
   const oportunidadesQuery = useQuery({
@@ -1103,10 +1118,13 @@ export function OrcamentoFormContent({
   const opcoesOportunidade = oportunidadesQuery.data?.data ?? [];
 
   // Mix de produtos já comprados pelo cliente — alimenta a aba "Mix" (adicionar
-  // ao orçamento) e a coluna "Última venda" da aba Itens.
+  // ao orçamento) e a coluna "Última venda" da aba Itens. `paraOrcamento`:
+  // segue o escopo do orçamento — vendedor que atende outras carteiras orça
+  // cliente fora da própria carteira e precisa ver o mix dele.
   const mixQuery = useQuery({
     queryKey: ["clientes", clienteId, "mix"],
-    queryFn: () => apiFetch<PosicaoClienteMix[]>(`/clientes/${clienteId}/mix`),
+    queryFn: () =>
+      apiFetch<PosicaoClienteMix[]>(`/clientes/${clienteId}/mix?paraOrcamento=true`),
     enabled: !!clienteId,
   });
   const mix = mixQuery.data ?? [];
@@ -1114,11 +1132,18 @@ export function OrcamentoFormContent({
 
   // Sugestão de compra já calculada para o cliente — mesma leitura da aba
   // Sugestão da Posição de Cliente (mesma queryKey, reaproveita o cache).
-  const podeVerSugestao = useAuthStore((s) => s.hasPermission)("sugestao-compra", "visualizar");
+  // A aba é para todo vendedor descobrir o que oferecer ao cliente: basta ter
+  // acesso ao orçamento, sem a tela de Sugestão de compra (Gerencial).
+  const hasPermission = useAuthStore((s) => s.hasPermission);
+  const podeVerSugestao =
+    hasPermission("sugestao-compra", "visualizar") ||
+    hasPermission("orcamentos", "visualizar");
   const sugestaoQuery = useQuery({
     queryKey: ["sugestao-compra", "calculada", clienteId],
     queryFn: () =>
-      apiFetch<SugestaoCompraCalculada>(`/sugestao-compra/cliente/${clienteId}/calculada`),
+      apiFetch<SugestaoCompraCalculada>(
+        `/sugestao-compra/cliente/${clienteId}/calculada?paraOrcamento=true`,
+      ),
     enabled: !!clienteId && podeVerSugestao,
   });
   const sugestoes = sugestaoQuery.data?.itens ?? [];
@@ -1166,6 +1191,16 @@ export function OrcamentoFormContent({
   const [acaoAutorizacao, setAcaoAutorizacao] = useState(false);
   // Liberar exige justificativa: o superior escreve o motivo num diálogo.
   const [liberandoDesconto, setLiberandoDesconto] = useState<"solicitar" | "autorizar" | "recusar" | null>(null);
+  // Pedido aberto logo depois de salvar (ver salvar): o diálogo explica que o
+  // orçamento já foi gravado e, se era "Salvar e fechar", fecha ao terminar —
+  // pedindo ou não.
+  const [pedidoAposSalvar, setPedidoAposSalvar] = useState<{ fechar: boolean } | null>(null);
+  const fecharDialogoDesconto = () => {
+    setLiberandoDesconto(null);
+    setJustificativaDesconto("");
+    if (pedidoAposSalvar?.fechar) onClose();
+    setPedidoAposSalvar(null);
+  };
   const [justificativaDesconto, setJustificativaDesconto] = useState("");
   const chamarAutorizacao = async (
     rota: "solicitar-autorizacao-desconto" | "autorizar-desconto" | "recusar-desconto",
@@ -1179,8 +1214,7 @@ export function OrcamentoFormContent({
         ...(justificativa ? { body: { justificativa } } : {}),
       });
       setSalvoNaSessao(atualizado);
-      setLiberandoDesconto(null);
-      setJustificativaDesconto("");
+      fecharDialogoDesconto();
       void queryClient.invalidateQueries({ queryKey: ["atividades"] });
       void queryClient.invalidateQueries({ queryKey: ["orcamentos"] });
       toast.success(
@@ -1393,6 +1427,20 @@ export function OrcamentoFormContent({
       // cache anterior.
       void queryClient.invalidateQueries({ queryKey: ["atividades"] });
       toast.success(registro ? "Orçamento atualizado" : "Orçamento cadastrado");
+      // Desconto acima do máximo ainda sem pedido: já oferece o pedido de
+      // liberação aqui, em vez de o vendedor ter de voltar ao orçamento para
+      // justificar. Quem pode autorizar não precisa pedir; recusado também
+      // pergunta de novo, porque o pedido anterior foi encerrado.
+      const precisaPedir =
+        exigeAutorizacao &&
+        !podeAutorizarDesconto &&
+        salvo.status !== "aprovado" &&
+        autorizacaoDescontoSituacao(salvo) === "nao_solicitada";
+      if (precisaPedir) {
+        setPedidoAposSalvar({ fechar });
+        setLiberandoDesconto("solicitar");
+        return;
+      }
       if (fechar) onClose();
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao salvar orçamento");
@@ -1554,11 +1602,11 @@ export function OrcamentoFormContent({
               <TriangleAlert className="mt-0.5 size-4 shrink-0" />
               <span className="min-w-0 flex-1">
                 {situacaoAutorizacao === "autorizada"
-                  ? `Desconto autorizado em ${dataHoraBr(registro?.descontoAutorizadoEm ?? null)} — PDF e efetivação liberados.`
+                  ? `Desconto autorizado em ${dataHoraBr(registro?.descontoAutorizadoEm ?? null)}${quemEPorque("autorizada")}. PDF e efetivação liberados.`
                   : situacaoAutorizacao === "pendente"
-                    ? `Autorização solicitada em ${dataHoraBr(registro?.descontoSolicitadoEm ?? null)} — aguardando liberação. PDF e efetivação seguem bloqueados.`
+                    ? `Autorização solicitada em ${dataHoraBr(registro?.descontoSolicitadoEm ?? null)}${quemEPorque("solicitada")}. Aguardando liberação — PDF e efetivação seguem bloqueados.`
                     : registro?.descontoRecusaMotivo
-                      ? `Desconto recusado em ${dataHoraBr(registro.descontoRecusadoEm ?? null)}: ${registro.descontoRecusaMotivo}`
+                      ? `Desconto recusado em ${dataHoraBr(registro.descontoRecusadoEm ?? null)}${ultimoEvento(historicoDesconto, "recusada")?.por ? ` por ${ultimoEvento(historicoDesconto, "recusada")?.por}` : ""}: ${registro.descontoRecusaMotivo}`
                       : "Há item com desconto igual ou acima do máximo da regra. PDF e efetivação ficam bloqueados até a autorização."}
               </span>
               </div>
@@ -1583,7 +1631,9 @@ export function OrcamentoFormContent({
                   Autorizar desconto
                 </Button>
               )}
-              {registro && situacaoAutorizacao === "pendente" && podeAutorizarDesconto && (
+              {/* Mesma condição do Autorizar: quem pode liberar pode recusar,
+                  com ou sem pedido do vendedor. */}
+              {registro && situacaoAutorizacao !== "autorizada" && podeAutorizarDesconto && (
                 <Button
                   type="button"
                   variant="outline"
@@ -1606,7 +1656,13 @@ export function OrcamentoFormContent({
               abas inteiras desativava também os botões das abas, e não dava
               nem para consultar os itens. */}
           <Tabs value={aba} onValueChange={setAba}>
-            <TabsList data-tour="orcamento-abas">
+            {/* No celular as abas quebram em linhas: rolando para o lado (o
+                padrão do TabsList, com a barra escondida) parecia que só
+                existiam as primeiras. */}
+            <TabsList
+              data-tour="orcamento-abas"
+              className="max-sm:h-auto! max-sm:w-full max-sm:flex-wrap max-sm:gap-0.5 max-sm:*:h-7!"
+            >
               <TabsTrigger value="orcamento">Orçamento</TabsTrigger>
               <TabsTrigger data-tour="orcamento-itens" value="itens">Itens ({linhas.fields.length})</TabsTrigger>
               <TabsTrigger data-tour="orcamento-mix" value="mix">Mix de produtos ({mix.length})</TabsTrigger>
@@ -1630,7 +1686,7 @@ export function OrcamentoFormContent({
               {/* O histórico é do cliente, então já vale antes de gravar. Já
                   aprovação/integração só existe depois (status, codigoErp e
                   auditoria vêm do servidor). */}
-              {clienteId && <TabsTrigger data-tour="orcamento-historico" value="historico">Histórico</TabsTrigger>}
+              {(registro || clienteId) && <TabsTrigger data-tour="orcamento-historico" value="historico">Histórico</TabsTrigger>}
               {registro && <TabsTrigger data-tour="orcamento-integracao" value="integracao">Aprovação e integração</TabsTrigger>}
             </TabsList>
 
@@ -1674,6 +1730,7 @@ export function OrcamentoFormContent({
                     value={form.watch("clienteId") || null}
                     onChange={(id) => form.setValue("clienteId", id ?? "")}
                     disabled={!orcamento && !!clienteIdPadrao}
+                    paraOrcamento
                   />
                 )}
                 <FieldError errors={[form.formState.errors.clienteId]} />
@@ -2548,13 +2605,26 @@ export function OrcamentoFormContent({
                   </TabsContent>
                 )}
 
-            {clienteId && (
-              <TabsContent value="historico" className="space-y-2 pt-3">
-                <p className="text-sm text-muted-foreground">
-                  Atendimentos registrados com este cliente — tudo que aconteceu até chegar neste
-                  orçamento.
-                </p>
-                <OrcamentoTimeline clienteId={clienteId} orcamentoId={registro?.id} />
+            {(registro || clienteId) && (
+              <TabsContent value="historico" className="space-y-4 pt-3">
+                {/* Primeiro o orçamento (completo, com quem fez); depois o
+                    contexto do cliente. Orçamento de interessado sem cadastro
+                    só tem a primeira parte. */}
+                {registro && (
+                  <section className="space-y-2">
+                    <h3 className="text-sm font-medium">Histórico deste orçamento</h3>
+                    <OrcamentoHistorico orcamentoId={registro.id} />
+                  </section>
+                )}
+                {clienteId && (
+                  <section className="space-y-2">
+                    <h3 className="text-sm font-medium">Atendimentos do cliente</h3>
+                    <p className="text-sm text-muted-foreground">
+                      Tudo que aconteceu com este cliente até chegar neste orçamento.
+                    </p>
+                    <OrcamentoTimeline clienteId={clienteId} orcamentoId={registro?.id} />
+                  </section>
+                )}
               </TabsContent>
             )}
 
@@ -2702,6 +2772,8 @@ export function OrcamentoFormContent({
                   </Field>
                 )}
 
+                <OrcamentoHistoricoDesconto orcamentoId={registro.id} />
+
                 <p className="text-sm text-muted-foreground">
                   Só orçamentos aprovados ficam disponíveis para o ERP importar. Depois de importar,
                   o ERP vincula o registro e acompanha aqui a situação do pedido: liberação,
@@ -2714,7 +2786,7 @@ export function OrcamentoFormContent({
 
         <CardFooter
           data-tour="orcamento-acoes"
-          className="grid grid-cols-2 gap-2 max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:border-t max-sm:bg-card sm:flex sm:flex-wrap sm:justify-end"
+          className="grid grid-cols-2 gap-2 max-sm:sticky max-sm:bottom-0 max-sm:z-10 max-sm:border-t max-sm:bg-card max-sm:pb-[max(var(--card-spacing),env(safe-area-inset-bottom))] sm:flex sm:flex-wrap sm:justify-end"
         >
           {/* PDF só depois de salvo — precisa dos itens com produto e do total
               consolidado pelo servidor. */}
@@ -2765,7 +2837,7 @@ export function OrcamentoFormContent({
           )}
         </CardFooter>
       </form>
-    <Dialog open={liberandoDesconto !== null} onOpenChange={(o) => !o && setLiberandoDesconto(null)}>
+    <Dialog open={liberandoDesconto !== null} onOpenChange={(o) => !o && fecharDialogoDesconto()}>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
@@ -2779,7 +2851,9 @@ export function OrcamentoFormContent({
               {liberandoDesconto === "recusar"
                 ? "Informe o motivo da recusa. O vendedor é avisado e vê o motivo no orçamento."
                 : liberandoDesconto === "solicitar"
-                  ? "Explique por que o cliente precisa deste desconto. O supervisor lê o texto antes de decidir."
+                  ? pedidoAposSalvar
+                    ? "Orçamento salvo. Há item com desconto igual ou acima do máximo da regra — PDF, link e efetivação ficam bloqueados até a liberação. Explique por que o cliente precisa deste desconto para já enviar o pedido ao supervisor."
+                    : "Explique por que o cliente precisa deste desconto. O supervisor lê o texto antes de decidir."
                   : "Informe a justificativa da liberação. Ela fica registrada no histórico do orçamento."}
             </DialogDescription>
           </DialogHeader>
@@ -2791,8 +2865,8 @@ export function OrcamentoFormContent({
             placeholder="Justificativa"
           />
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => setLiberandoDesconto(null)}>
-              Cancelar
+            <Button type="button" variant="outline" onClick={fecharDialogoDesconto}>
+              {pedidoAposSalvar ? "Agora não" : "Cancelar"}
             </Button>
             <Button
               type="button"
@@ -2811,7 +2885,7 @@ export function OrcamentoFormContent({
               {liberandoDesconto === "recusar"
                 ? "Recusar"
                 : liberandoDesconto === "solicitar"
-                  ? "Solicitar"
+                  ? "Enviar solicitação"
                   : "Autorizar"}
             </Button>
           </DialogFooter>

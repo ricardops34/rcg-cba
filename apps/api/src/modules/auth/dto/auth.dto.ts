@@ -9,6 +9,7 @@ import {
   switchEmpresaInputSchema,
   updateOwnProfileSchema,
   updateRotinaInicialSchema,
+  updateTamanhoPaginaSchema,
   completeFirstAccessSchema,
 } from '@plataforma/contracts';
 
@@ -20,5 +21,6 @@ export class SwitchEmpresaDto extends createZodDto(switchEmpresaInputSchema) {}
 export class ChangePasswordDto extends createZodDto(changePasswordSchema) {}
 export class UpdateOwnProfileDto extends createZodDto(updateOwnProfileSchema) {}
 export class UpdateRotinaInicialDto extends createZodDto(updateRotinaInicialSchema) {}
+export class UpdateTamanhoPaginaDto extends createZodDto(updateTamanhoPaginaSchema) {}
 export class CompleteFirstAccessDto extends createZodDto(completeFirstAccessSchema) {}
 export class AvatarPadraoDto extends createZodDto(avatarPadraoSchema) {}

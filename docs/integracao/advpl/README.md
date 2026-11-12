@@ -266,6 +266,7 @@ sem recompilar.
 | `MV_BJAPI06` | N | `2000` | Espera entre retentativas, em ms — multiplicada pelo número da tentativa |
 | `MV_BJAPI07` | N | `500` | Registros por transação ao enfileirar na SZZ. A coleta grava em blocos desse tamanho; `0` usa 500. **Precisa estar cadastrado** — o `GetMV` não tem padrão |
 | `MV_BJAPI08` | N | `1050` | Pausa entre requisições, em ms |
+| `MV_BJCLITP` | C | `F` | `A1_TIPO` dos clientes **incluídos** a partir da plataforma (`F` = consumidor final). Sem cadastro, vale o padrão. Ver `BJIncluiCliente` |
 | `MV_BJAPI09` | N | `1000` | Máximo de registros por `PUT` em bloco |
 | `MV_BJAPI10` | — | — | **Não é mais lido** desde 26/09/2026. Recuava a marca, em dias, quando a fila já tinha mensagens e nenhum lote tinha marca — e com a coleta fracionada esse é o caso da **carga inicial que caiu no meio**: o recuo perdia em silêncio tudo que ela não chegou a ler. Agora a coleta refaz a carga desde o corte (`MV_BJAPI14`); o envio descarta a mensagem repetida como superada. Pode ficar cadastrado, sem efeito |
 | `MV_BJAPI11` | N | `90` | Retenção da mensagem executada, em dias |
@@ -692,6 +693,16 @@ molde do pedido da Máxima, `Faturamento/Maxima/IMPPED.prw`): `C5_ORGPED = "P"`
 (plataforma — é por ele que o `U_BJMAPPED` separa os pedidos que voltam),
 `C5_YTPVEN = "01"`, `C5_FORPGT` (da SA1, ou `"B"`), `C5_DTIMP`/`C5_HRIMP`,
 `C5_XSTATUS = "P"`, `C5_INDPRES = "1"` e `C6_QTDLIB = 0`.
+
+**Autorização de desconto no `C5_XOBSVEN`** (decisão de 10/11/2026). O campo
+é Memo e recebe a observação do vendedor e, quando o orçamento teve desconto
+acima do máximo liberado, em seguida: `Desconto pedido por <vendedor>: <motivo>
+| Desconto autorizado por <nome> em dd/mm/aaaa hh:mm: <justificativa>`. A parte
+do pedido some quando o superior liberou sem pedido. A plataforma manda
+`descontoSolicitadoPor`, `descontoSolicitacaoMotivo`, `descontoAutorizadoPor`,
+`descontoAutorizadoEm` (já no horário local) e `descontoJustificativa`, só com a
+autorização vigente. Se em algum dicionário o campo for caractere, o texto é
+cortado no tamanho dele, com WARN no log, para não derrubar o pedido.
 
 **Recusa do `MATA410`.** O `BJErroOrc` grava o erro na SZZ e avisa a
 plataforma (`PATCH /integracao/orcamentos/pendentes/{id}/erro`): o orçamento

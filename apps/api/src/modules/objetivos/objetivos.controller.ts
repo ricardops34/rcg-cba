@@ -16,6 +16,7 @@ import {
   DashboardGerencialVendedorQueryDto,
   ObjetivoCopiarPeriodoDto,
   ObjetivoCreateDto,
+  ObjetivoGerarDto,
   ObjetivoDashboardMunicipiosQueryDto,
   ObjetivoDashboardQueryDto,
   ObjetivoQueryDto,
@@ -173,6 +174,21 @@ export class ObjetivosController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.copiarPeriodo(user.empresaAtivaId, user, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Gerar objetivos a partir do realizado de um período',
+    description:
+      'Propõe a meta de cada vendedor para o mês de destino a partir do que ele vendeu no ' +
+      'período base (mesma base das Consultas), somando um percentual. modo "geral" grava só ' +
+      'o valor do mês; "categoria" grava também uma linha por categoria. Vendedor que já tem ' +
+      'objetivo no destino é pulado, nunca sobrescrito. Com simular=true nada é gravado. ' +
+      'Requer objetivos.cadastrar.',
+  })
+  @RequirePermission('objetivos', 'cadastrar')
+  @Post('gerar')
+  gerar(@Body() dto: ObjetivoGerarDto, @CurrentUser() user: AuthenticatedUser) {
+    return this.service.gerar(user.empresaAtivaId, user, dto);
   }
 
   @ApiOperation({

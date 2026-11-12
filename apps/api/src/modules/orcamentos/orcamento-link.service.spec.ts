@@ -4,7 +4,7 @@ import { OrcamentoLinkService } from './orcamento-link.service';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 jest.mock('../../common/escopo/escopo-vendedores', () => ({
-  resolverEscopoVendedores: jest.fn().mockResolvedValue(null),
+  resolverEscopoOrcamentos: jest.fn().mockResolvedValue(null),
 }));
 
 const EMPRESA = '7f8226bb-7076-4c08-92f3-0693333d618e';

@@ -26,6 +26,7 @@ export function TabelaPrecoDetalheContent({ tabelaPreco }: { tabelaPreco: Tabela
     <Card>
       <CardContent className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <Info label="Código ERP" value={<span className="font-mono">{tabelaPreco.codigoErp}</span>} />
+        <Info label="Integração" value={<span className="font-mono">{tabelaPreco.chave || "—"}</span>} />
         <Info label="Descrição" value={tabelaPreco.descricao} />
         <Info label="Início da vigência" value={dateLabel(tabelaPreco.dtInicio)} />
         <Info label="Fim da vigência" value={tabelaPreco.dtFim ? dateLabel(tabelaPreco.dtFim) : "sem fim"} />

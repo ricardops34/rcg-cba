@@ -15,6 +15,8 @@ import type {
   DashboardGerencialQuery,
   DashboardGerencialVendedor,
   DashboardGerencialVendedorQuery,
+  ObjetivoGerar,
+  ObjetivoGerarResultado,
   ObjetivoCopiarPeriodo,
   ObjetivoDashboardMunicipiosQuery,
   ObjetivoDashboardQuery,
@@ -307,6 +309,185 @@ export class ObjetivosService {
         vendedoresPulados: pulados.map(
           (o) => o.vendedor.nomeReduzido || o.vendedor.nome,
         ),
+      };
+    });
+  }
+
+  /**
+   * Gera os objetivos de um mês a partir do **realizado** de outro: cada
+   * vendedor recebe o que vendeu no período base (líquido de devolução, na
+   * mesma base das Consultas) mais o percentual. No modo "categoria" cada
+   * categoria acompanhada também ganha a sua linha, pelo realizado dela.
+   *
+   * O valor do mês é sempre o realizado total + percentual; as linhas por
+   * categoria não precisam fechar com ele, porque venda de produto sem
+   * categoria entra no total e não tem linha própria (mesmo critério do
+   * Dashboard Gerencial).
+   *
+   * Como a cópia de período: vendedor que já tem objetivo no destino é pulado,
+   * e o escopo hierárquico limita quem pode receber meta. Só vendedor ativo
+   * (tipo "vendedor") entra — supervisor/gerente não têm venda própria.
+   * `numeroCliente` fica nulo: não há como derivar meta de positivação do
+   * realizado sem inventar o número.
+   */
+  gerar(
+    empresaId: string,
+    user: AuthenticatedUser,
+    input: ObjetivoGerar,
+  ): Promise<ObjetivoGerarResultado> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const venda = await corteDeVenda(tx, empresaId);
+      const fator = 1 + input.percIncremento / 100;
+      const arredondar = (v: number) => Math.round(v * 100) / 100;
+      const ajustar = (v: number) => arredondar(v * fator);
+
+      const grupos = await tx.notaSaidaItem.groupBy({
+        by: ['vendedorId', 'produtoId'],
+        where: {
+          empresaId,
+          ...venda.item,
+          ano: input.anoBase,
+          mes: input.mesBase,
+          vendedorId: { not: null },
+          ...combinarFiltroVendedor(escopo, undefined),
+        },
+        _sum: { vlrTotal: true, vlrDev: true },
+      });
+      if (grupos.length === 0) {
+        throw new NotFoundException(
+          `Nenhuma venda encontrada em ${String(input.mesBase).padStart(2, '0')}/${input.anoBase}`,
+        );
+      }
+
+      const produtoIds = [
+        ...new Set(grupos.map((g) => g.produtoId).filter((id): id is string => !!id)),
+      ];
+      const produtos = produtoIds.length
+        ? await tx.produto.findMany({
+            where: { id: { in: produtoIds } },
+            select: { id: true, categoriaId: true },
+          })
+        : [];
+      const categoriaPorProduto = new Map(produtos.map((p) => [p.id, p.categoriaId]));
+
+      const totalPorVendedor = new Map<string, number>();
+      const categoriaPorVendedor = new Map<string, Map<string, number>>();
+      for (const g of grupos) {
+        if (!g.vendedorId) continue;
+        const liquido = (g._sum.vlrTotal ?? 0) - (g._sum.vlrDev ?? 0);
+        totalPorVendedor.set(g.vendedorId, (totalPorVendedor.get(g.vendedorId) ?? 0) + liquido);
+        const categoriaId = g.produtoId ? categoriaPorProduto.get(g.produtoId) : null;
+        if (!categoriaId) continue;
+        const porCategoria = categoriaPorVendedor.get(g.vendedorId) ?? new Map<string, number>();
+        porCategoria.set(categoriaId, (porCategoria.get(categoriaId) ?? 0) + liquido);
+        categoriaPorVendedor.set(g.vendedorId, porCategoria);
+      }
+
+      const vendedores = await tx.vendedor.findMany({
+        where: {
+          id: { in: [...totalPorVendedor.keys()] },
+          empresaId,
+          deletedAt: null,
+          ativo: true,
+          tipo: 'vendedor',
+        },
+        select: { id: true, nome: true, nomeReduzido: true },
+      });
+
+      const categoriaIds = new Set<string>();
+      for (const m of categoriaPorVendedor.values()) {
+        for (const id of m.keys()) categoriaIds.add(id);
+      }
+      // Só categoria marcada como usada tem linha — a mesma regra do dashboard.
+      const categoriasInfo =
+        input.modo === 'categoria' && categoriaIds.size
+          ? await tx.categoria.findMany({
+              where: { id: { in: [...categoriaIds] }, usado: true },
+              select: { id: true, codigoErp: true, descricao: true },
+            })
+          : [];
+      const infoCategoria = new Map(categoriasInfo.map((c) => [c.id, c]));
+
+      const jaExistem = await tx.objetivoVendedorMes.findMany({
+        where: {
+          empresaId,
+          mes: input.mesDestino,
+          ano: input.anoDestino,
+          deletedAt: null,
+          vendedorId: { in: vendedores.map((v) => v.id) },
+        },
+        select: { vendedorId: true },
+      });
+      const ocupados = new Set(jaExistem.map((o) => o.vendedorId));
+
+      const linhas = vendedores
+        .map((v) => {
+          const realizadoBase = arredondar(totalPorVendedor.get(v.id) ?? 0);
+          const categorias =
+            input.modo === 'categoria'
+              ? [...(categoriaPorVendedor.get(v.id) ?? new Map<string, number>())]
+                  .flatMap(([id, valor]) => {
+                    const info = infoCategoria.get(id);
+                    return info && valor > 0
+                      ? [
+                          {
+                            categoriaId: id,
+                            codigoErp: info.codigoErp,
+                            descricao: info.descricao,
+                            valor: ajustar(valor),
+                          },
+                        ]
+                      : [];
+                  })
+                  .sort((a, b) => a.codigoErp.localeCompare(b.codigoErp))
+              : [];
+          return {
+            vendedorId: v.id,
+            nome: v.nomeReduzido || v.nome,
+            realizadoBase,
+            valor: ajustar(realizadoBase),
+            jaExiste: ocupados.has(v.id),
+            categorias,
+          };
+        })
+        // Vendedor sem venda líquida no período não ganha meta de R$ 0.
+        .filter((l) => l.realizadoBase > 0)
+        .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+
+      const novos = linhas.filter((l) => !l.jaExiste);
+      if (!input.simular) {
+        for (const l of novos) {
+          await tx.objetivoVendedorMes.create({
+            data: {
+              empresaId,
+              vendedorId: l.vendedorId,
+              mes: input.mesDestino,
+              ano: input.anoDestino,
+              valor: l.valor,
+              createdBy: user.id,
+              updatedBy: user.id,
+              categorias: {
+                create: l.categorias.map((c) => ({
+                  empresaId,
+                  categoriaId: c.categoriaId,
+                  valor: c.valor,
+                  createdBy: user.id,
+                  updatedBy: user.id,
+                })),
+              },
+            },
+          });
+        }
+      }
+
+      return {
+        simulado: input.simular,
+        gerados: input.simular ? 0 : novos.length,
+        pulados: linhas.length - novos.length,
+        totalBase: arredondar(linhas.reduce((a, l) => a + l.realizadoBase, 0)),
+        totalProposto: arredondar(novos.reduce((a, l) => a + l.valor, 0)),
+        linhas,
       };
     });
   }
@@ -642,13 +823,22 @@ export class ObjetivosService {
               id: { in: vendedorIds },
               empresaId,
               deletedAt: null,
-              // **Linha aqui é vendedor, e só.** A venda fica sempre com o
-              // vendedor que atende o cliente (regra do negócio): supervisor e
-              // gerente não têm venda própria — eles aparecem nesta tela como
-              // o **agrupador** do time, não como uma linha de faturamento.
-              // Sem este corte, quem vendia na carteira do subordinado surgia
-              // como um vendedor a mais, dobrando a leitura do mesmo número.
-              tipo: 'vendedor',
+              // Linha é vendedor — **ou qualquer cadastro com venda no
+              // período**. Supervisor e gerente aparecem como agrupador do
+              // time, mas há supervisor com carteira própria (CBA: ESCRITORIO,
+              // CLERIA...): cortar por `tipo` tirava a venda dele da tabela e
+              // o rodapé deixava de fechar com o cartão Realizado.
+              OR: [
+                { tipo: 'vendedor' },
+                {
+                  id: {
+                    in: [
+                      ...realizadoPorVendedor.keys(),
+                      ...positivacaoPorVendedor.keys(),
+                    ],
+                  },
+                },
+              ],
               // `usaDashboard` é a resposta do cadastro para "este vendedor
               // participa do acompanhamento gerencial?". O campo existe desde
               // sempre e está documentado no schema como "aparece nas telas

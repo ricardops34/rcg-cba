@@ -1,5 +1,6 @@
 "use client";
 
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { useEffect, useState } from "react";
 import { toast } from "sonner";
 import { MoreHorizontal, Pencil, Pin, Trash2, Megaphone, CheckCircle2, Users, Plus } from "lucide-react";
@@ -68,7 +69,7 @@ const FORM_VAZIO: FormState = {
 export default function ComunicadosPage() {
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(10);
+  const [pageSize, setPageSize] = useTamanhoPagina(10);
   const [sortBy, setSortBy] = useState("inicioEm");
   const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [status, setStatus] = useState<StatusFilterValue>("todos");

@@ -15,6 +15,8 @@ import { AvisoSuportePlataforma } from "@/components/layout/aviso-suporte-plataf
 import { AvisoPersonificacao } from "@/components/layout/aviso-personificacao";
 import { TourProvider } from "@/components/tour/tour-provider";
 import { RegistroUsoRotina } from "@/components/layout/registro-uso-rotina";
+import { AppCelularLogado } from "@/components/layout/app-celular-logado";
+import { FaixaAtivarAvisos } from "@/components/layout/faixa-ativar-avisos";
 
 const PAGE_TITLES: Record<string, { title: string; subtitle: string }> = {
   "/": { title: "Mural de atalhos", subtitle: "Acesso rápido e comunicados" },
@@ -87,6 +89,8 @@ export default function AppShellLayout({
           <AvisoAvaliacao />
           <AvisoSuportePlataforma />
           <AvisoPersonificacao />
+          <AppCelularLogado />
+          <FaixaAtivarAvisos />
 
           <div className="flex min-h-0 flex-1">
             <AppSidebar collapsed={collapsed} />
@@ -97,7 +101,7 @@ export default function AppShellLayout({
                 title={page?.title}
                 subtitle={page?.subtitle}
               />
-              <main className="flex-1 overflow-y-auto overflow-x-hidden bg-muted/30 p-3 sm:p-4 lg:p-6">
+              <main className="flex-1 overflow-y-auto overflow-x-hidden bg-muted/30 p-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:p-4 lg:p-6">
                 <ResponsiveRouteGuard>{children}</ResponsiveRouteGuard>
               </main>
             </div>

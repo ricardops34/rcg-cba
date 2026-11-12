@@ -4,6 +4,7 @@ import {
   MOTIVO_NOVO_ACESSO,
   SessaoEncerradaException,
 } from '../../common/sessao/sessao-encerrada.exception';
+import { aparelhoDoNavegador } from '../../common/sessao/aparelho';
 import { randomBytes, createHash } from 'node:crypto';
 import { mkdir, writeFile, unlink } from 'node:fs/promises';
 import { join } from 'node:path';
@@ -715,12 +716,18 @@ export class AuthService {
       ip: meta.ip,
       userAgent: meta.userAgent,
     });
-    // Sessão única por usuário (decisão de 30/09/2026): este login derruba o
-    // que estiver aberto em outro navegador ou computador — sessão encerrada e
-    // renovação revogada; o token de acesso de lá para de valer na próxima
-    // requisição (JwtAuthGuard). Abas do mesmo navegador são a mesma sessão.
+    // Sessão única por usuário e por tipo de aparelho (decisões de 30/09 e
+    // 10/11/2026): este login derruba o que estiver aberto em outro aparelho
+    // do mesmo tipo — outro computador, ou outro celular — com sessão
+    // encerrada e renovação revogada; o token de acesso de lá para de valer na
+    // próxima requisição (JwtAuthGuard). Computador e celular convivem. Abas
+    // do mesmo navegador são a mesma sessão.
     const substituidas = await this.acessos.encerrarSessoes(
-      { usuarioId: usuario.id, manter: sessaoId },
+      {
+        usuarioId: usuario.id,
+        manter: sessaoId,
+        aparelho: aparelhoDoNavegador(meta.userAgent),
+      },
       MOTIVO_NOVO_ACESSO,
     );
     if (substituidas.length > 0) {
@@ -1125,6 +1132,7 @@ export class AuthService {
           nome: true,
           sistemaBase: true,
           administraPlataforma: true,
+          tamanhoPagina: true,
           rotinaInicial: {
             select: {
               nome: true,
@@ -1240,7 +1248,31 @@ export class AuthService {
       rotinaInicialRota,
       rotinaInicialId: ativo?.rotinaInicialId ?? null,
       rotinaInicialPerfilNome: ativo ? (perfil.rotinaInicial?.nome ?? null) : null,
+      // O do usuário vale acima do perfil; nenhum dos dois = padrão da tela.
+      tamanhoPagina: usuario.tamanhoPagina ?? perfil.tamanhoPagina ?? null,
+      tamanhoPaginaUsuario: usuario.tamanhoPagina,
+      tamanhoPaginaPerfil: perfil.tamanhoPagina,
     };
+  }
+
+  /**
+   * Itens por página das listagens, escolhido pelo próprio usuário em "Meu
+   * perfil". Fica no usuário (vale em todas as empresas); null volta para o
+   * do perfil. O valor já chega validado por `updateTamanhoPaginaSchema`, e o
+   * CHECK da coluna repete a regra no banco.
+   */
+  async updateTamanhoPagina(
+    usuarioId: string,
+    empresaAtivaId: string,
+    tamanhoPagina: number | null,
+  ) {
+    await this.prisma.withUsuario(usuarioId, (tx) =>
+      tx.usuario.update({
+        where: { id: usuarioId },
+        data: { tamanhoPagina, updatedBy: usuarioId },
+      }),
+    );
+    return this.me(usuarioId, empresaAtivaId);
   }
 
   async completeFirstAccess(

@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { numeroOrcamento } from '@plataforma/contracts';
 import type { TenantTx } from '../../common/prisma/prisma.service';
 import {
@@ -34,8 +35,10 @@ const TITULO: Record<EventoOrcamento, (numero: string) => string> = {
   pdf: (n) => `Proposta em PDF gerada — orçamento nº ${n}`,
   envio_whatsapp: (n) => `Proposta enviada pelo WhatsApp — orçamento nº ${n}`,
   link_gerado: (n) => `Link do orçamento nº ${n} gerado para o cliente`,
-  aprovacao_cliente: (n) => `Orçamento nº ${n} aprovado pelo cliente`,
-  recusa_cliente: (n) => `Orçamento nº ${n} recusado pelo cliente`,
+  // Sem "pelo cliente": o mesmo evento vem do link, do portal e do vendedor
+  // efetivando na tela. O canal vai na descrição; quem fez, no autor.
+  aprovacao_cliente: (n) => `Orçamento nº ${n} aprovado`,
+  recusa_cliente: (n) => `Orçamento nº ${n} recusado`,
   autorizacao_solicitada: (n) =>
     `Autorização de desconto solicitada — orçamento nº ${n}`,
   autorizacao_concedida: (n) => `Desconto autorizado — orçamento nº ${n}`,
@@ -204,4 +207,159 @@ export async function orcamentoExigeAutorizacao(
       i.regraDesconto != null &&
       i.percDesconto >= i.regraDesconto.percDescontoMaximo,
   );
+}
+
+/**
+ * Rastro da autorização de desconto: cada pedido, liberação e recusa, com quem
+ * fez, quando e a justificativa. Vem das Atividades que cada etapa grava (ver
+ * `TITULO`), e não dos campos do orçamento: a recusa limpa o pedido, e um novo
+ * pedido limpa a recusa — os campos só guardam a rodada atual.
+ *
+ * A justificativa é o que segue o marcador que a própria etapa escreve na
+ * descrição ("Justificativa do vendedor:", "Justificativa:", "Motivo:").
+ */
+const PREFIXO_EVENTO_DESCONTO: Record<string, EventoDesconto> = {
+  'Autorização de desconto solicitada': 'solicitada',
+  'Desconto autorizado': 'autorizada',
+  'Desconto recusado': 'recusada',
+};
+export type EventoDesconto = 'solicitada' | 'autorizada' | 'recusada';
+
+export async function historicoDescontoOrcamento(
+  tx: TenantTx,
+  empresaId: string,
+  orcamentoId: string,
+) {
+  const atividades = await tx.atividade.findMany({
+    where: {
+      empresaId,
+      orcamentoId,
+      OR: Object.keys(PREFIXO_EVENTO_DESCONTO).map((p) => ({
+        titulo: { startsWith: p },
+      })),
+    },
+    select: { titulo: true, descricao: true, createdAt: true, createdBy: true },
+    orderBy: { createdAt: 'asc' },
+  });
+  const nomes = await nomesDosAutores(tx, atividades);
+  return atividades.flatMap((a) => {
+    const prefixo = Object.keys(PREFIXO_EVENTO_DESCONTO).find((p) =>
+      a.titulo.startsWith(p),
+    );
+    if (!prefixo) return [];
+    const justificativa =
+      /(?:Justificativa do vendedor|Justificativa|Motivo): ([\s\S]*)$/.exec(
+        a.descricao ?? '',
+      )?.[1] ?? null;
+    return [
+      {
+        evento: PREFIXO_EVENTO_DESCONTO[prefixo],
+        em: a.createdAt,
+        por: a.createdBy ? (nomes.get(a.createdBy) ?? null) : null,
+        justificativa,
+      },
+    ];
+  });
+}
+
+/** Nome dos usuários que gravaram as atividades (createdBy é o id). */
+async function nomesDosAutores(
+  tx: TenantTx,
+  atividades: { createdBy: string | null }[],
+) {
+  const autores = [
+    ...new Set(
+      atividades.map((a) => a.createdBy).filter((v): v is string => !!v),
+    ),
+  ];
+  if (autores.length === 0) return new Map<string, string>();
+  return new Map(
+    (
+      await tx.usuario.findMany({
+        where: { id: { in: autores } },
+        select: { id: true, nome: true },
+      })
+    ).map((u) => [u.id, u.nome]),
+  );
+}
+
+/**
+ * Quem fez, para o histórico. Além do usuário da plataforma, o autor pode ser
+ * o próprio cliente: pelo portal o createdBy é `portal-cliente:<contato>`; pelo
+ * link e pelo atendimento automático do WhatsApp não há autor (nulo), e a
+ * descrição gravada pelo link diz "(pelo link ...)".
+ */
+function autorDoHistorico(
+  createdBy: string | null,
+  descricao: string | null,
+  nomes: Map<string, string>,
+): string {
+  if (createdBy?.startsWith('portal-cliente:')) return 'Cliente (portal)';
+  if (createdBy) return nomes.get(createdBy) ?? 'Usuário removido';
+  if (descricao?.includes('(pelo link')) return 'Cliente (link)';
+  return 'Atendimento automático';
+}
+
+/**
+ * Histórico completo do orçamento — tudo o que aconteceu com ele, em ordem:
+ * cadastro, alterações (com os campos), PDF, envio, link, decisão do cliente,
+ * autorização de desconto e retornos agendados. Mostrado na aba Histórico do
+ * formulário, acima da linha do tempo do cliente.
+ */
+export async function historicoOrcamento(
+  tx: TenantTx,
+  empresaId: string,
+  orcamentoId: string,
+) {
+  const atividades = await tx.atividade.findMany({
+    where: { empresaId, orcamentoId, deletedAt: null },
+    select: {
+      id: true,
+      titulo: true,
+      descricao: true,
+      createdAt: true,
+      createdBy: true,
+      concluida: true,
+    },
+    orderBy: { createdAt: 'desc' },
+    take: 500,
+  });
+  const nomes = await nomesDosAutores(tx, atividades);
+  return atividades.map((a) => ({
+    id: a.id,
+    titulo: a.titulo,
+    detalhe: a.descricao,
+    em: a.createdAt,
+    por: autorDoHistorico(a.createdBy, a.descricao, nomes),
+    pendente: !a.concluida,
+  }));
+}
+
+/**
+ * A mesma regra de `orcamentoExigeAutorizacao`, em lote e no banco: ids dos
+ * orçamentos com algum item no máximo da regra ou acima. Serve à listagem
+ * (etiqueta e filtro "Desconto"), onde testar um a um não escala.
+ *
+ * Só orçamentos em aberto (rascunho/enviado): aprovado já passou pela trava e
+ * vencido/recusado não vão a lugar nenhum. `ids` restringe a uma página.
+ */
+export async function orcamentosQueExigemAutorizacao(
+  tx: TenantTx,
+  empresaId: string,
+  ids?: string[],
+): Promise<Set<string>> {
+  if (ids && ids.length === 0) return new Set();
+  const linhas = await tx.$queryRaw<{ id: string }[]>`
+    SELECT DISTINCT o."id"
+    FROM "orcamentos" o
+    JOIN "orcamento_itens" i ON i."orcamentoId" = o."id"
+    JOIN "regras_desconto" r ON r."id" = i."regraDescontoId"
+    WHERE o."empresaId" = ${empresaId}
+      AND o."deletedAt" IS NULL
+      AND o."status" IN ('rascunho', 'enviado')
+      AND i."percDesconto" > 0
+      AND i."percDesconto" >= r."percDescontoMaximo"
+      ${ids ? Prisma.sql`AND o."id" IN (${Prisma.join(ids)})` : Prisma.empty}
+  `;
+  return new Set(linhas.map((l) => l.id));
 }

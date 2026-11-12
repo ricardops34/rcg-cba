@@ -43,6 +43,20 @@ export const paginationQuerySchema = z.object({
 });
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
 
+/**
+ * Tamanhos de página que o seletor das listagens oferece e que perfil e
+ * usuário podem gravar como padrão. O maior não passa do máximo de
+ * `paginationQuerySchema.pageSize`.
+ */
+export const TAMANHOS_PAGINA = [10, 20, 50, 100] as const;
+export type TamanhoPagina = (typeof TAMANHOS_PAGINA)[number];
+export const tamanhoPaginaSchema = z
+  .number()
+  .int()
+  .refine((n): n is TamanhoPagina => (TAMANHOS_PAGINA as readonly number[]).includes(n), {
+    message: `Tamanho de página deve ser ${TAMANHOS_PAGINA.join(", ")}`,
+  });
+
 export const PAGINATION_QUERY_EXAMPLE: PaginationQuery = {
   page: 1,
   pageSize: 20,

@@ -1,4 +1,5 @@
 "use client";
+import { useTamanhoPagina } from "@/hooks/use-tamanho-pagina";
 import { CrudHeader } from "@/components/crud/crud-header";
 
 import { useState } from "react";
@@ -106,7 +107,7 @@ function Mudanca({ linha }: { linha: PlataformaAuditoria }) {
 
 export default function PlataformaAuditoriaPage() {
   const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(20);
+  const [pageSize, setPageSize] = useTamanhoPagina(20);
   const [acao, setAcao] = useState("");
 
   const { data, isLoading, error, refetch, isFetching } =

@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { tamanhoPaginaSchema } from "./common";
 import { situacaoEmpresaSchema } from "./empresa";
 
 export const loginSchema = z.object({
@@ -133,6 +134,13 @@ export const updateRotinaInicialSchema = z.object({
     .describe("Rotina que abre ao entrar; null volta para a rotina inicial do perfil"),
 });
 export type UpdateRotinaInicialInput = z.infer<typeof updateRotinaInicialSchema>;
+
+export const updateTamanhoPaginaSchema = z.object({
+  tamanhoPagina: tamanhoPaginaSchema
+    .nullable()
+    .describe("Itens por página das listagens (10, 20, 50 ou 100); null volta para o padrão do perfil"),
+});
+export type UpdateTamanhoPaginaInput = z.infer<typeof updateTamanhoPaginaSchema>;
 
 export const completeFirstAccessSchema = updateOwnProfileSchema.extend({
   telefoneInstitucional: z.string().trim().min(1, "Informe o telefone celular")
@@ -273,6 +281,26 @@ export const currentUserSchema = z.object({
     .nullable()
     .optional()
     .describe("Nome da rotina inicial do perfil, usada quando o usuário não escolhe uma"),
+  tamanhoPagina: z
+    .number()
+    .int()
+    .nullable()
+    .optional()
+    .describe(
+      "Itens por página das listagens: o do usuário, senão o do perfil; null = o padrão de cada tela",
+    ),
+  tamanhoPaginaUsuario: z
+    .number()
+    .int()
+    .nullable()
+    .optional()
+    .describe("Tamanho escolhido pelo próprio usuário em Meu perfil; null = segue o do perfil"),
+  tamanhoPaginaPerfil: z
+    .number()
+    .int()
+    .nullable()
+    .optional()
+    .describe("Tamanho definido no perfil do usuário; null = o padrão de cada tela"),
 });
 export type CurrentUser = z.infer<typeof currentUserSchema>;
 

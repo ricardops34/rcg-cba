@@ -1,6 +1,5 @@
-import { Controller, Post, Get, Body, UseGuards, Res } from '@nestjs/common';
-import { ApiTags, ApiOperation, ApiSecurity, ApiProduces } from '@nestjs/swagger';
-import type { Response } from 'express';
+import { Controller, Post, Body, UseGuards } from '@nestjs/common';
+import { ApiTags, ApiOperation, ApiSecurity } from '@nestjs/swagger';
 import { ApiKeyGuard, type IntegracaoContext } from '../guards/api-key.guard';
 import { CurrentIntegracao } from '../decorators/current-integracao.decorator';
 import { IntegracaoFileService } from './integracao-file.service';
@@ -21,16 +20,6 @@ export class IntegracaoFileController {
     return this.fileService.importarArquivo(ctx.empresaId, ctx.apiKeyId, conteudo);
   }
 
-  @Get('exportar')
-  @ApiOperation({ summary: 'Exporta as pendências da plataforma em formato TXT para o ERP' })
-  @ApiProduces('text/plain')
-  async exportarArquivo(
-    @CurrentIntegracao() ctx: IntegracaoContext,
-    @Res() res: Response,
-  ) {
-    const txt = await this.fileService.exportarArquivo(ctx.empresaId);
-    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
-    res.setHeader('Content-Disposition', 'attachment; filename="pendencias_plataforma.txt"');
-    res.send(txt);
-  }
+  // Não há `exportar`: o que a plataforma envia ao ERP sai pelas filas
+  // (`orcamentos/pendentes`, `clientes/alteracoes`, `equipamentos-comodato/alteracoes`).
 }

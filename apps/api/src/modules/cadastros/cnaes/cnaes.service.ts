@@ -6,6 +6,7 @@ import {
 } from '../../../common/pagination/paginate';
 import type { CnaeCreate, CnaeQuery, CnaeUpdate } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
+import { criarOuReativar, gravarUnico, REATIVAR } from '../unicidade';
 
 const SORT_FIELDS = new Set(['descricao', 'codigoErp', 'secao', 'ativo', 'createdAt']);
 
@@ -53,17 +54,39 @@ export class CnaesService {
   }
 
   async create(user: AuthenticatedUser, input: CnaeCreate) {
-    return this.prisma.cnae.create({
-      data: { ...(this.limpar(input) as object), createdBy: user.id, updatedBy: user.id } as never,
+    const dados = this.limpar(input);
+    const chave = dados.codigoErp ? { codigoErp: dados.codigoErp as string } : null;
+    return criarOuReativar({
+      achaExcluido: () =>
+        chave
+          ? this.prisma.cnae.findFirst({
+              where: { deletedAt: { not: null }, ...chave },
+              select: { id: true },
+            })
+          : Promise.resolve(null),
+      reativar: (id) =>
+        this.prisma.cnae.update({
+          where: { id },
+          data: { ...(dados as object), ...REATIVAR, updatedBy: user.id } as never,
+        }),
+      criar: () =>
+        this.prisma.cnae.create({
+          data: { ...(dados as object), createdBy: user.id, updatedBy: user.id } as never,
+        }),
+      jaExiste: 'Já existe um CNAE com este código',
     });
   }
 
   async update(user: AuthenticatedUser, id: string, input: CnaeUpdate) {
     await this.findOne(id);
-    return this.prisma.cnae.update({
-      where: { id },
-      data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
-    });
+    return gravarUnico(
+      () =>
+        this.prisma.cnae.update({
+          where: { id },
+          data: { ...(this.limpar(input) as object), updatedBy: user.id } as never,
+        }),
+      'Já existe um CNAE com este código',
+    );
   }
 
   async remove(user: AuthenticatedUser, id: string) {
