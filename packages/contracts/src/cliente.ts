@@ -97,9 +97,19 @@ const vinculoSchema = z.object({
   descricao: z.string(),
 });
 
+// Nome do vendedor do cadastro, para exibir sem depender de uma segunda
+// lista escopada por carteira (que pode não trazer o vendedor de um cliente
+// de outra hierarquia) — ver GET /clientes/:id (DETALHE_INCLUDE.vendedor).
+const vendedorVinculoSchema = z.object({
+  id: z.string().uuid(),
+  nome: z.string(),
+  nomeReduzido: z.string().nullable(),
+});
+
 export const clienteSchema = clienteCreateSchema.extend({
   id: z.string().uuid(),
   empresaId: z.string().uuid(),
+  vendedor: vendedorVinculoSchema.nullable().optional(),
   tabelaPreco: vinculoSchema.nullable().optional(),
   condicaoPagamento: vinculoSchema.nullable().optional(),
   // Chave de integração (FILIAL-COD), gravada pela carga do ERP. Só leitura:
