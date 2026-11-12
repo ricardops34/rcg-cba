@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Wrench } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import type { PosicaoClienteListRow } from "@plataforma/contracts";
+import type { CnaeEscopoRow, PosicaoClienteListRow } from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
 import { dataCivilBr } from "@/lib/data";
@@ -33,6 +33,7 @@ import {
 } from "@/components/crud/quick-filter-group";
 import { FiltersPopover } from "@/components/crud/filters-popover";
 import { ProdutoCombobox } from "@/components/crud/produto-combobox";
+import { CnaeEscopoCombobox } from "@/components/crud/cnae-escopo-combobox";
 import { ClienteSheet } from "@/components/crud/cliente-form";
 import { OrcamentosClienteSheet } from "@/components/crud/orcamentos-cliente-sheet";
 import { PosicaoClienteSheet } from "@/components/comercial/posicao-cliente-sheet";
@@ -40,7 +41,6 @@ import { IconeWhatsapp } from "@/components/ui/icone-whatsapp";
 import { useAtendimentoDisponivel } from "@/components/whatsapp/atendimento-cliente-janela";
 import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import { FieldLabel } from "@/components/ui/field";
-import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -131,11 +131,14 @@ export default function PosicaoClientePage() {
     "posicao-cliente:carteira",
     "todos",
   );
-  // Ramo por prefixo do código CNAE, principal ou secundário (ver
-  // listagemPosicao na API) — o mesmo filtro da listagem de Clientes.
-  const [cnae, setCnae] = useEstadoDaTela<string | undefined>(
+  // Ramo por CNAE, principal ou secundário (ver listagemPosicao na API) —
+  // mesma regra de prefixo da listagem de Clientes, mas aqui a busca parte só
+  // dos CNAEs em uso na carteira visível (ver cnaes-escopo), não do catálogo
+  // inteiro do IBGE. Guarda a linha inteira (não só o código) pro rótulo do
+  // combobox sobreviver a uma troca de página sem precisar buscar de novo.
+  const [cnae, setCnae] = useEstadoDaTela<CnaeEscopoRow | null>(
     "posicao-cliente:cnae",
-    undefined,
+    null,
   );
   const [diasSemComprar, setDiasSemComprar] = useEstadoDaTela<number | undefined>(
     "posicao-cliente:dias",
@@ -257,8 +260,7 @@ export default function PosicaoClientePage() {
       ...(temTituloVencido !== undefined ? { temTituloVencido } : {}),
       ...(produtoId ? { produtoId } : {}),
       ...(comodatoSemConsumo ? { comodatoSemConsumo } : {}),
-      // A API pede de 2 a 7 dígitos: com 1 só, ainda não filtra.
-      ...(cnae && cnae.length >= 2 ? { cnae } : {}),
+      ...(cnae?.codigoErp ? { cnae: cnae.codigoErp } : {}),
     });
 
   // Volta ao mesmo ponto da lista. Quem rola é o <main> do layout, e numa
@@ -301,7 +303,7 @@ export default function PosicaoClientePage() {
     setDiasSemComprar(undefined);
     setTemTituloVencido(undefined);
     setProdutoId(undefined);
-    setCnae(undefined);
+    setCnae(null);
     setPage(1);
   };
 
@@ -606,21 +608,45 @@ export default function PosicaoClientePage() {
                 </Select>
               </div>
 
-              {/* Prefixo do código: "56" pega alimentação inteira, "5611" o
-                  food service, "5611201" só restaurantes. Procura no CNAE
-                  principal e nos secundários. */}
+              {/* Mesmo padrão do campo "Produto comprado" acima: busca só
+                  entre os CNAEs em uso na carteira visível (não o catálogo
+                  inteiro do IBGE) — por código ou por descrição, no CNAE
+                  principal ou nos secundários. */}
               <div className="space-y-2">
-                <FieldLabel>Ramo (CNAE principal ou secundário)</FieldLabel>
-                <Input
-                  value={cnae ?? ""}
-                  placeholder="2 a 7 dígitos, ex.: 5611"
-                  inputMode="numeric"
-                  onChange={(e) => {
-                    const so = e.target.value.replace(/\D/g, "").slice(0, 7);
-                    setCnae(so || undefined);
-                    setPage(1);
-                  }}
-                />
+                <FieldLabel>Ramo (CNAE)</FieldLabel>
+                <div className="flex items-center gap-1">
+                  <div className="min-w-0 flex-1">
+                    <CnaeEscopoCombobox
+                      value={cnae}
+                      placeholder="Qualquer ramo"
+                      onChange={(c) => {
+                        setCnae(c);
+                        setPage(1);
+                      }}
+                      uf={uf}
+                      municipio={municipio}
+                      vendedorId={vendedorId}
+                    />
+                  </div>
+                  {cnae && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      className="size-8 shrink-0"
+                      aria-label="Tirar o filtro de ramo"
+                      onClick={() => {
+                        setCnae(null);
+                        setPage(1);
+                      }}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Clientes com este CNAE, principal ou secundário.
+                </p>
               </div>
 
               {mostrarFiltroVendedor && (

@@ -5,6 +5,7 @@ import {
   clienteContatoCreateSchema,
   clienteQuerySchema,
   clienteUpdateSchema,
+  cnaesEscopoQuerySchema,
   municipiosEscopoQuerySchema,
   posicaoClienteListQuerySchema,
   ufsEscopoQuerySchema,
@@ -24,6 +25,9 @@ export class MunicipiosEscopoQueryDto extends createZodDto(
   municipiosEscopoQuerySchema,
 ) {}
 export class UfsEscopoQueryDto extends createZodDto(ufsEscopoQuerySchema) {}
+export class CnaesEscopoQueryDto extends createZodDto(
+  cnaesEscopoQuerySchema,
+) {}
 export class ClienteContatoCreateDto extends createZodDto(
   clienteContatoCreateSchema,
 ) {}

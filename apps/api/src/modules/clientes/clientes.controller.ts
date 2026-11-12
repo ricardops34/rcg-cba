@@ -27,6 +27,7 @@ import {
   ClientesReceitaLoteBodyDto,
   ClienteQueryDto,
   ClienteUpdateDto,
+  CnaesEscopoQueryDto,
   MunicipiosEscopoQueryDto,
   PosicaoClienteListQueryDto,
   UfsEscopoQueryDto,
@@ -134,6 +135,25 @@ export class ClientesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.ufsEscopo(user.empresaAtivaId, user, query);
+  }
+
+  // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.
+  @ApiOperation({
+    summary: 'CNAEs em uso no escopo do usuário logado',
+    description:
+      'CNAEs (código + descrição), principal ou secundário, realmente vinculados a algum ' +
+      'cliente na carteira visível ao usuário logado — não o catálogo inteiro de CNAEs ' +
+      '(ver Cadastros > CNAEs). Pro filtro "Ramo (CNAE)" da Posição de Cliente. ' +
+      'uf/município/vendedorId (facetas irmãs já selecionadas) restringem a lista, mesma ' +
+      'regra de ufs-escopo/municipios-escopo. `search` casa por prefixo do código ou trecho ' +
+      'da descrição. Endpoint utilitário compartilhado — só exige login.',
+  })
+  @Get('cnaes-escopo')
+  cnaesEscopo(
+    @Query() query: CnaesEscopoQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.cnaesEscopo(user.empresaAtivaId, user, query);
   }
 
   // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.

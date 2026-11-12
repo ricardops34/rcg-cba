@@ -232,6 +232,27 @@ export const ufsEscopoQuerySchema = z.object({
 });
 export type UfsEscopoQuery = z.infer<typeof ufsEscopoQuerySchema>;
 
+// CNAEs distintos realmente vinculados a algum cliente na carteira visível
+// ao usuário — pro filtro "Ramo (CNAE)" da Posição de Cliente buscar por
+// código ou descrição só entre os que existem na base, não o catálogo
+// inteiro do IBGE (ver cadastro de CNAEs). `search` casa por prefixo do
+// código ou trecho da descrição.
+export const cnaesEscopoQuerySchema = z.object({
+  uf: z.string().trim().length(2).optional(),
+  municipio: z.string().trim().optional(),
+  vendedorId: z.string().uuid().optional(),
+  search: z.string().trim().min(1).max(60).optional(),
+});
+export type CnaesEscopoQuery = z.infer<typeof cnaesEscopoQuerySchema>;
+
+export const cnaeEscopoRowSchema = z.object({
+  id: z.string().uuid(),
+  codigoErp: z.string().nullable(),
+  descricao: z.string(),
+  total: z.number().int(),
+});
+export type CnaeEscopoRow = z.infer<typeof cnaeEscopoRowSchema>;
+
 export const CLIENTE_CREATE_EXAMPLE: ClienteCreate = {
   codigoErp: "004417",
   tipoPessoa: "juridica",

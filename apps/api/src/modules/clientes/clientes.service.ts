@@ -1879,4 +1879,88 @@ export class ClientesService {
       };
     });
   }
+
+  /**
+   * CNAEs (código + descrição) realmente vinculados a algum cliente na
+   * carteira visível ao usuário logado — pro filtro "Ramo (CNAE)" da Posição
+   * de Cliente buscar só entre o que existe na base, não o catálogo inteiro
+   * sincronizado do IBGE (ver Cadastros > CNAEs). Mesmo racional de
+   * ufsEscopo/municipiosEscopo: nunca expõe CNAE de cliente fora do escopo
+   * hierárquico do usuário. uf/município/vendedorId (facetas irmãs já
+   * selecionadas) restringem a contagem. `search` casa por prefixo do código
+   * ou trecho da descrição — sem ele, lista tudo que está em uso (até 50,
+   * pra não devolver o catálogo inteiro de uma vez).
+   */
+  cnaesEscopo(
+    empresaId: string,
+    user: AuthenticatedUser,
+    filtros: {
+      uf?: string;
+      municipio?: string;
+      vendedorId?: string;
+      search?: string;
+    } = {},
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const grupos = await tx.clienteCnae.groupBy({
+        by: ['cnaeId'],
+        where: {
+          empresaId,
+          deletedAt: null,
+          cliente: {
+            deletedAt: null,
+            ...(filtros.uf ? { uf: filtros.uf } : {}),
+            ...(filtros.municipio
+              ? {
+                  municipio: {
+                    equals: filtros.municipio,
+                    mode: 'insensitive' as const,
+                  },
+                }
+              : {}),
+            ...combinarFiltroVendedor(escopo, filtros.vendedorId),
+          },
+          cnae: {
+            deletedAt: null,
+            ...(filtros.search
+              ? {
+                  OR: [
+                    { codigoErp: { startsWith: filtros.search } },
+                    {
+                      descricao: {
+                        contains: filtros.search,
+                        mode: 'insensitive' as const,
+                      },
+                    },
+                  ],
+                }
+              : {}),
+          },
+        },
+        _count: { _all: true },
+      });
+      if (!grupos.length) return { data: [] };
+      const cnaes = await tx.cnae.findMany({
+        where: { id: { in: grupos.map((g) => g.cnaeId) } },
+        select: { id: true, codigoErp: true, descricao: true },
+      });
+      const porId = new Map(cnaes.map((c) => [c.id, c]));
+      const linhas = grupos
+        .map((g) => {
+          const c = porId.get(g.cnaeId);
+          return c
+            ? {
+                id: c.id,
+                codigoErp: c.codigoErp,
+                descricao: c.descricao,
+                total: g._count._all,
+              }
+            : null;
+        })
+        .filter((v): v is NonNullable<typeof v> => v !== null)
+        .sort((a, b) => (a.codigoErp ?? '').localeCompare(b.codigoErp ?? ''));
+      return { data: linhas.slice(0, 50) };
+    });
+  }
 }
