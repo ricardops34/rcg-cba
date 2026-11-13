@@ -4,6 +4,7 @@ import {
   Delete,
   Get,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
@@ -70,6 +71,29 @@ export class ObjetivosController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.municipiosDashboard(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Detalhe de uma categoria do Dashboard Comercial',
+    description:
+      'Produtos e clientes que compõem o realizado de uma categoria da tabela "Vendas ' +
+      'Categoria", com os mesmos filtros (mês/ano, vendedor, município), o mesmo escopo ' +
+      'hierárquico e o mesmo corte de venda do dashboard. Traz também o cruzamento ' +
+      'produto × cliente. Requer dashboard-comercial.visualizar.',
+  })
+  @RequirePermission('dashboard-comercial', 'visualizar')
+  @Get('dashboard/categorias/:categoriaId')
+  dashboardCategoriaDetalhe(
+    @Param('categoriaId', ParseUUIDPipe) categoriaId: string,
+    @Query() query: ObjetivoDashboardQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.dashboardCategoriaDetalhe(
+      user.empresaAtivaId,
+      user,
+      categoriaId,
+      query,
+    );
   }
 
   @ApiOperation({

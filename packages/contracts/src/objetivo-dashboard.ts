@@ -72,3 +72,52 @@ export const OBJETIVO_DASHBOARD_EXAMPLE: ObjetivoDashboard = {
     { categoriaId: "8f7e6d5c-4b3a-4291-a0b9-c8d7e6f5a4b3", codigoErp: "02", descricao: "COZINHA", realizado: 13805.34, objetivo: 11500 },
   ],
 };
+
+/**
+ * Detalhe de uma linha de "Vendas Categoria" do Dashboard Comercial: os
+ * produtos e os clientes que compõem o realizado da categoria, com os mesmos
+ * filtros do dashboard (período, vendedor, município) e o mesmo corte de
+ * venda. A soma de `produtos` (e a de `clientes`) fecha com o realizado da
+ * linha clicada. A query é a mesma do dashboard (`objetivoDashboardQuerySchema`).
+ *
+ * `itens` é o cruzamento produto × cliente — a tela abre um produto para ver
+ * quem comprou, ou um cliente para ver o que comprou, sem nova ida à API.
+ */
+export const objetivoDashboardCategoriaDetalheSchema = z.object({
+  categoria: z.object({
+    id: z.string().uuid(),
+    codigoErp: z.string(),
+    descricao: z.string(),
+  }),
+  realizado: z.number(),
+  produtos: z.array(
+    z.object({
+      id: z.string().uuid(),
+      codigo: z.string(),
+      descricao: z.string(),
+      unidade: z.string().nullable(),
+      quantidade: z.number().describe("Quantidade vendida líquida de devolução"),
+      realizado: z.number(),
+    }),
+  ),
+  clientes: z.array(
+    z.object({
+      id: z.string().uuid().nullable().describe("Nulo = item de nota sem cliente vinculado"),
+      codigo: z.string().nullable(),
+      nome: z.string(),
+      municipio: z.string().nullable(),
+      realizado: z.number(),
+    }),
+  ),
+  itens: z.array(
+    z.object({
+      produtoId: z.string().uuid(),
+      clienteId: z.string().uuid().nullable(),
+      quantidade: z.number(),
+      realizado: z.number(),
+    }),
+  ),
+});
+export type ObjetivoDashboardCategoriaDetalhe = z.infer<
+  typeof objetivoDashboardCategoriaDetalheSchema
+>;

@@ -2,7 +2,8 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { ObjetivoDashboard } from "@plataforma/contracts";
+import type { ObjetivoDashboard, ObjetivoDashboardCategoria } from "@plataforma/contracts";
+import { DashboardCategoriaDetalhe } from "@/components/comercial/dashboard-categoria-detalhe";
 import { apiFetch } from "@/lib/api-client";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
 import { Badge } from "@/components/ui/badge";
@@ -21,7 +22,7 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
-import { Banknote, SlidersHorizontal, ThumbsUp, Undo2, Users } from "lucide-react";
+import { Banknote, ChevronRight, SlidersHorizontal, ThumbsUp, Undo2, Users } from "lucide-react";
 
 const MESES = [
   "Janeiro", "Fevereiro", "Março", "Abril", "Maio", "Junho",
@@ -87,6 +88,7 @@ export default function DashboardComercialPage() {
   const [filtros, setFiltros] = useState<Filtros>(filtrosIniciais);
   const [rascunho, setRascunho] = useState<Filtros>(filtrosIniciais);
   const [cortinaAberta, setCortinaAberta] = useState(false);
+  const [categoriaAberta, setCategoriaAberta] = useState<ObjetivoDashboardCategoria | null>(null);
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
@@ -306,7 +308,12 @@ export default function DashboardComercialPage() {
 
             <Card data-tour="dashboard-comercial-categorias">
               <CardContent className="space-y-3">
-                <p className="text-sm font-semibold">Vendas Categoria</p>
+                <div>
+                  <p className="text-sm font-semibold">Vendas Categoria</p>
+                  <p className="text-xs text-muted-foreground">
+                    Clique na categoria para ver os produtos e os clientes que compõem o valor.
+                  </p>
+                </div>
                 {data.categorias.length === 0 ? (
                   <p className="text-sm text-muted-foreground">Nenhuma venda no período.</p>
                 ) : (
@@ -320,9 +327,26 @@ export default function DashboardComercialPage() {
                     </TableHeader>
                     <TableBody>
                       {data.categorias.map((c) => (
-                        <TableRow key={c.categoriaId}>
+                        <TableRow
+                          key={c.categoriaId}
+                          className="cursor-pointer"
+                          tabIndex={0}
+                          title="Ver produtos e clientes da categoria"
+                          onClick={() => setCategoriaAberta(c)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" || e.key === " ") {
+                              e.preventDefault();
+                              setCategoriaAberta(c);
+                            }
+                          }}
+                        >
                           <TableCell className="font-mono text-xs">{c.codigoErp}</TableCell>
-                          <TableCell>{c.descricao}</TableCell>
+                          <TableCell>
+                            <span className="inline-flex items-center gap-1">
+                              {c.descricao}
+                              <ChevronRight className="size-3.5 text-muted-foreground" />
+                            </span>
+                          </TableCell>
                           <TableCell className="text-right">{moeda(c.realizado)}</TableCell>
                         </TableRow>
                       ))}
@@ -342,6 +366,19 @@ export default function DashboardComercialPage() {
           </div>
         ) : null}
       </div>
+
+      <DashboardCategoriaDetalhe
+        categoria={categoriaAberta}
+        filtros={{ mes: filtros.mes, ano: filtros.ano, vendedorId: vendedorIdQuery, municipio: municipioQuery }}
+        recorte={[
+          `${MESES[filtros.mes - 1]}/${filtros.ano}`,
+          municipioQuery,
+          nomeVendedorFiltrado,
+        ]
+          .filter(Boolean)
+          .join(" · ")}
+        onClose={() => setCategoriaAberta(null)}
+      />
     </div>
   );
 }

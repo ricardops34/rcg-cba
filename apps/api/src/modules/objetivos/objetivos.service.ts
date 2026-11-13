@@ -19,6 +19,7 @@ import type {
   ObjetivoGerarResultado,
   ObjetivoCopiarPeriodo,
   ObjetivoDashboardMunicipiosQuery,
+  ObjetivoDashboardCategoriaDetalhe,
   ObjetivoDashboardQuery,
   ObjetivoVendedorMesCreate,
   ObjetivoVendedorMesQuery,
@@ -637,6 +638,151 @@ export class ObjetivosService {
         devolucaoTotal,
         municipio: query.municipio ?? null,
         categorias,
+      };
+    });
+  }
+
+  /**
+   * O que compõe uma linha de "Vendas Categoria" do Dashboard Comercial:
+   * produtos e clientes, e o cruzamento dos dois.
+   *
+   * Os filtros, o escopo e o corte de venda são os de `dashboard` — o número
+   * do detalhe tem de fechar com o da linha clicada, senão a tela se
+   * desmente. A categoria entra em `AND` com o corte: `venda.item` já tem um
+   * `OR` sobre o produto, e espalhar outra condição de produto por cima
+   * apagaria a dele.
+   */
+  async dashboardCategoriaDetalhe(
+    empresaId: string,
+    user: AuthenticatedUser,
+    categoriaId: string,
+    query: ObjetivoDashboardQuery,
+  ): Promise<ObjetivoDashboardCategoriaDetalhe> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const categoria = await tx.categoria.findFirst({
+        where: { id: categoriaId, empresaId },
+        select: { id: true, codigoErp: true, descricao: true },
+      });
+      if (!categoria) throw new NotFoundException('Categoria não encontrada');
+
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const venda = await corteDeVenda(tx, empresaId);
+      const filtroVendedor = combinarFiltroVendedor(escopo, query.vendedorId);
+
+      const grupos = await tx.notaSaidaItem.groupBy({
+        by: ['produtoId', 'clienteId'],
+        where: {
+          empresaId,
+          ano: query.ano,
+          mes: query.mes,
+          ...filtroVendedor,
+          ...(query.municipio
+            ? { cliente: { municipio: query.municipio } }
+            : {}),
+          AND: [venda.item, { produto: { is: { categoriaId } } }],
+        },
+        _sum: {
+          vlrTotal: true,
+          vlrDev: true,
+          quantidade: true,
+          quantidadeDev: true,
+        },
+      });
+
+      const arredondar = (v: number) => Math.round(v * 100) / 100;
+      const itens = grupos
+        .filter(
+          (g): g is typeof g & { produtoId: string } => g.produtoId !== null,
+        )
+        .map((g) => ({
+          produtoId: g.produtoId,
+          clienteId: g.clienteId,
+          quantidade: (g._sum.quantidade ?? 0) - (g._sum.quantidadeDev ?? 0),
+          realizado: arredondar((g._sum.vlrTotal ?? 0) - (g._sum.vlrDev ?? 0)),
+        }));
+
+      const produtoIds = [...new Set(itens.map((i) => i.produtoId))];
+      const clienteIds = [
+        ...new Set(
+          itens
+            .map((i) => i.clienteId)
+            .filter((id): id is string => id !== null),
+        ),
+      ];
+      const [produtosInfo, clientesInfo] = await Promise.all([
+        tx.produto.findMany({
+          where: { id: { in: produtoIds } },
+          select: { id: true, codigoErp: true, descricao: true, unidade: true },
+        }),
+        tx.cliente.findMany({
+          where: { id: { in: clienteIds } },
+          select: {
+            id: true,
+            codigoErp: true,
+            razaoSocial: true,
+            nomeFantasia: true,
+            municipio: true,
+          },
+        }),
+      ]);
+
+      const porProduto = new Map<
+        string,
+        { quantidade: number; realizado: number }
+      >();
+      const porCliente = new Map<string | null, number>();
+      for (const i of itens) {
+        const p = porProduto.get(i.produtoId) ?? {
+          quantidade: 0,
+          realizado: 0,
+        };
+        p.quantidade += i.quantidade;
+        p.realizado += i.realizado;
+        porProduto.set(i.produtoId, p);
+        porCliente.set(
+          i.clienteId,
+          (porCliente.get(i.clienteId) ?? 0) + i.realizado,
+        );
+      }
+
+      const produtos = produtosInfo
+        .map((p) => ({
+          id: p.id,
+          codigo: p.codigoErp,
+          descricao: p.descricao,
+          unidade: p.unidade,
+          quantidade: porProduto.get(p.id)?.quantidade ?? 0,
+          realizado: arredondar(porProduto.get(p.id)?.realizado ?? 0),
+        }))
+        .sort((a, b) => b.realizado - a.realizado);
+
+      const clientes = [
+        ...clientesInfo.map((c) => ({
+          id: c.id,
+          codigo: c.codigoErp,
+          nome: c.nomeFantasia || c.razaoSocial,
+          municipio: c.municipio,
+          realizado: arredondar(porCliente.get(c.id) ?? 0),
+        })),
+        ...(porCliente.has(null)
+          ? [
+              {
+                id: null,
+                codigo: null,
+                nome: '(Sem cliente vinculado)',
+                municipio: null,
+                realizado: arredondar(porCliente.get(null) ?? 0),
+              },
+            ]
+          : []),
+      ].sort((a, b) => b.realizado - a.realizado);
+
+      return {
+        categoria,
+        realizado: arredondar(itens.reduce((acc, i) => acc + i.realizado, 0)),
+        produtos,
+        clientes,
+        itens,
       };
     });
   }
