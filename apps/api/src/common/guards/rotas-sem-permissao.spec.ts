@@ -28,6 +28,9 @@ const EXCECOES: Record<string, string> = {
   'AuthController.selectDefaultAvatar': 'do próprio usuário (JwtAuthGuard)',
   'AuthController.updateMe': 'do próprio usuário (JwtAuthGuard)',
   'AuthController.updateRotinaInicial': 'do próprio usuário (JwtAuthGuard)',
+  'AuthController.updateTamanhoPagina': 'do próprio usuário (JwtAuthGuard)',
+  'AuthController.updateNotificacoesSilenciadas':
+    'do próprio usuário (JwtAuthGuard)',
   'RecuperacaoSenhaController.esqueci': 'público; limite por IP e por conta',
   'RecuperacaoSenhaController.redefinir': 'público; autenticado pelo token do link',
   'PortalClienteAuthController.login': 'público (portal); limite por IP',

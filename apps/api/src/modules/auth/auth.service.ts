@@ -1,3 +1,4 @@
+import type { NotificacaoTipo } from '@prisma/client';
 import { gravarWhatsappDoUsuario } from '../../common/usuarios/whatsapp-do-usuario';
 import {
   MOTIVO_DESCONECTADO,
@@ -1252,7 +1253,54 @@ export class AuthService {
       tamanhoPagina: usuario.tamanhoPagina ?? perfil.tamanhoPagina ?? null,
       tamanhoPaginaUsuario: usuario.tamanhoPagina,
       tamanhoPaginaPerfil: perfil.tamanhoPagina,
+      notificacoesSilenciadas: usuario.notificacoesSilenciadas,
     };
+  }
+
+  /**
+   * Tipos de notificação que o próprio usuário desligou do sino ("Meu perfil
+   * > Notificações"). Vale em todas as empresas, como o resto do perfil.
+   *
+   * O que já estava no sino de um tipo recém-desligado é marcado como lido:
+   * quem desliga quer o sino limpo agora, e não só daqui para frente. Aí o
+   * push também para, porque marca lida não volta para a fila.
+   */
+  async updateNotificacoesSilenciadas(
+    usuarioId: string,
+    empresaAtivaId: string,
+    tipos: NotificacaoTipo[],
+  ) {
+    const silenciadas = [...new Set(tipos)];
+    await this.prisma.withUsuario(usuarioId, (tx) =>
+      tx.usuario.update({
+        where: { id: usuarioId },
+        data: { notificacoesSilenciadas: silenciadas, updatedBy: usuarioId },
+      }),
+    );
+    if (silenciadas.length > 0) {
+      // A notificação é por empresa (RLS por empresaId): limpa em cada uma
+      // em que o usuário tem vínculo ativo.
+      const vinculos = await this.prisma.withUsuario(usuarioId, (tx) =>
+        tx.usuarioEmpresa.findMany({
+          where: { usuarioId, ativo: true },
+          select: { empresaId: true },
+        }),
+      );
+      for (const { empresaId } of vinculos) {
+        await this.prisma.withTenant(empresaId, (tx) =>
+          tx.notificacao.updateMany({
+            where: {
+              empresaId,
+              usuarioId,
+              lidaEm: null,
+              tipo: { in: silenciadas },
+            },
+            data: { lidaEm: new Date() },
+          }),
+        );
+      }
+    }
+    return this.me(usuarioId, empresaAtivaId);
   }
 
   /**

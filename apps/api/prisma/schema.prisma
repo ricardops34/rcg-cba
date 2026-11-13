@@ -261,6 +261,10 @@ model Usuario {
   // Itens por página das listagens, escolhido em "Meu perfil". Nulo = segue
   // Perfil.tamanhoPagina. Do usuário, não do vínculo: vale em todas as empresas.
   tamanhoPagina    Int?
+  // Tipos que o usuário desligou do sino em "Meu perfil > Notificações".
+  // Lista do que NÃO quer (tipo novo nasce ligado). registrarNotificacao não
+  // grava o tipo silenciado — some do sino e do push do celular juntos.
+  notificacoesSilenciadas NotificacaoTipo[] @default([])
   telefone       String?
   celular        String?
   dataNascimento DateTime?

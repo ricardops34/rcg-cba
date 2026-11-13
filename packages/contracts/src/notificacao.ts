@@ -45,6 +45,142 @@ export const NOTIFICACAO_TIPOS = [
 export const notificacaoTipoSchema = z.enum(NOTIFICACAO_TIPOS);
 export type NotificacaoTipo = z.infer<typeof notificacaoTipoSchema>;
 
+/**
+ * Como cada tipo aparece em "Meu perfil > Notificações", onde o usuário
+ * escolhe o que chega no sino. Agrupado por assunto; o `Record` em
+ * `NOTIFICACAO_TIPO_INFO` obriga todo tipo novo do enum a ganhar nome aqui.
+ */
+export const NOTIFICACAO_TIPO_INFO: Record<
+  NotificacaoTipo,
+  { grupo: NotificacaoGrupo; nome: string; descricao: string }
+> = {
+  whatsapp_mensagem: {
+    grupo: "whatsapp",
+    nome: "Mensagem nova",
+    descricao: "Cliente mandou mensagem numa conversa sua.",
+  },
+  whatsapp_aguardando: {
+    grupo: "whatsapp",
+    nome: "Cliente aguardando atendimento",
+    descricao: "Alguém espera ser assumido no número da empresa.",
+  },
+  whatsapp_agendamento_erro: {
+    grupo: "whatsapp",
+    nome: "Falha em mensagem agendada",
+    descricao: "Uma mensagem programada não pôde ser enviada.",
+  },
+  lead_novo: {
+    grupo: "whatsapp",
+    nome: "Lead novo",
+    descricao: "A IA captou um contato novo no número da empresa.",
+  },
+  atendimento_agendado: {
+    grupo: "agenda",
+    nome: "Hora do atendimento agendado",
+    descricao: "Chegou a hora de um atendimento que você agendou.",
+  },
+  atendimento_nao_realizado: {
+    grupo: "agenda",
+    nome: "Atendimento agendado não realizado",
+    descricao: "A hora de um atendimento passou sem ele ser feito.",
+  },
+  atividade_vencimento: {
+    grupo: "agenda",
+    nome: "Atividade vencendo",
+    descricao: "Tarefa ou compromisso da agenda vencido ou vencendo.",
+  },
+  roteiro_confirmar: {
+    grupo: "agenda",
+    nome: "Confirmar roteiro do dia",
+    descricao: "Pedido para confirmar os atendimentos do roteiro.",
+  },
+  roteiro_iniciado: {
+    grupo: "agenda",
+    nome: "Roteiro iniciado",
+    descricao: "A conversa de um atendimento do roteiro começou.",
+  },
+  roteiro_cancelado: {
+    grupo: "equipe",
+    nome: "Roteiro cancelado pelo vendedor",
+    descricao: "Um vendedor da sua equipe cancelou atendimentos do roteiro.",
+  },
+  roteiro_atraso: {
+    grupo: "equipe",
+    nome: "Roteiro atrasado",
+    descricao: "O horário passou sem o vendedor fazer o atendimento.",
+  },
+  desconto_pendente: {
+    grupo: "equipe",
+    nome: "Desconto aguardando sua liberação",
+    descricao: "Orçamento com desconto acima do máximo esperando você.",
+  },
+  recado_interno: {
+    grupo: "equipe",
+    nome: "Recado interno",
+    descricao: "Recado da equipe enviado para você.",
+  },
+  orcamento_aprovado: {
+    grupo: "vendas",
+    nome: "Orçamento aprovado",
+    descricao: "O cliente aprovou um orçamento seu.",
+  },
+  orcamento_recusado: {
+    grupo: "vendas",
+    nome: "Orçamento recusado",
+    descricao: "O cliente recusou um orçamento seu.",
+  },
+  desconto_liberado: {
+    grupo: "vendas",
+    nome: "Desconto liberado",
+    descricao: "O superior liberou o desconto que você pediu.",
+  },
+  desconto_recusado: {
+    grupo: "vendas",
+    nome: "Desconto recusado",
+    descricao: "O superior recusou o desconto que você pediu.",
+  },
+  cliente_atribuido: {
+    grupo: "clientes",
+    nome: "Cliente entrou na sua carteira",
+    descricao: "Um cliente passou a ser atendido por você.",
+  },
+  titulo_vencido: {
+    grupo: "clientes",
+    nome: "Título vencido",
+    descricao: "Cliente da sua carteira com título em atraso.",
+  },
+  sugestao_compra_calculada: {
+    grupo: "processos",
+    nome: "Sugestão de compra calculada",
+    descricao: "O cálculo em lote da Sugestão de Compra terminou.",
+  },
+  clientes_receita_atualizados: {
+    grupo: "processos",
+    nome: "Clientes atualizados pela Receita",
+    descricao: "A atualização em lote dos clientes terminou.",
+  },
+};
+
+export const NOTIFICACAO_GRUPOS = [
+  { id: "whatsapp", nome: "WhatsApp" },
+  { id: "agenda", nome: "Agenda e roteiro" },
+  { id: "vendas", nome: "Orçamentos" },
+  { id: "clientes", nome: "Clientes" },
+  { id: "equipe", nome: "Equipe e supervisão" },
+  { id: "processos", nome: "Processos em lote" },
+] as const;
+export type NotificacaoGrupo = (typeof NOTIFICACAO_GRUPOS)[number]["id"];
+
+export const updateNotificacoesSilenciadasSchema = z.object({
+  notificacoesSilenciadas: z
+    .array(notificacaoTipoSchema)
+    .max(NOTIFICACAO_TIPOS.length)
+    .describe("Tipos que o usuário desligou do sino; vazio = recebe todos"),
+});
+export type UpdateNotificacoesSilenciadasInput = z.infer<
+  typeof updateNotificacoesSilenciadasSchema
+>;
+
 export const notificacaoItemSchema = z.object({
   id: z.string().uuid(),
   tipo: notificacaoTipoSchema,

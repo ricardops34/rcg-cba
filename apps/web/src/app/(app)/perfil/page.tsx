@@ -1,7 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
-import { Camera, MessageCircle, ShieldCheck, UserRound } from "lucide-react";
+import { Bell, Camera, MessageCircle, ShieldCheck, UserRound } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useAuthStore } from "@/stores/auth-store";
@@ -10,6 +10,7 @@ import { AssinaturaWhatsappCard } from "@/components/perfil/assinatura-whatsapp-
 import { ChangePasswordForm } from "@/components/perfil/change-password-form";
 import { DadosPessoaisCard } from "@/components/perfil/dados-pessoais-card";
 import { IdentidadeHeader } from "@/components/perfil/identidade-header";
+import { NotificacoesSinoCard } from "@/components/perfil/notificacoes-sino-card";
 import { ProfilePhoto } from "@/components/perfil/profile-photo";
 import { TelaInicialCard } from "@/components/perfil/tela-inicial-card";
 import { TamanhoPaginaCard } from "@/components/perfil/tamanho-pagina-card";
@@ -17,7 +18,7 @@ import { TermosAceitosCard } from "@/components/perfil/termos-aceitos-card";
 import { UsarFotoNoWhatsapp } from "@/components/perfil/usar-foto-no-whatsapp";
 import { WhatsappPareamentoCard } from "@/components/perfil/whatsapp-pareamento-card";
 
-const ABAS = ["conta", "whatsapp", "seguranca"] as const;
+const ABAS = ["conta", "notificacoes", "whatsapp", "seguranca"] as const;
 type Aba = (typeof ABAS)[number];
 
 /** Duas colunas a partir do computador; cada coluna empilha os seus cartões. */
@@ -56,6 +57,9 @@ export default function PerfilPage() {
           <TabsTrigger value="conta" className="flex-none px-3 py-2">
             <UserRound /> Conta
           </TabsTrigger>
+          <TabsTrigger value="notificacoes" className="flex-none px-3 py-2">
+            <Bell /> Notificações
+          </TabsTrigger>
           <TabsTrigger value="whatsapp" className="flex-none px-3 py-2">
             <MessageCircle /> WhatsApp
           </TabsTrigger>
@@ -93,6 +97,11 @@ export default function PerfilPage() {
             <TamanhoPaginaCard />
             <AppCelularCard />
           </div>
+        </TabsContent>
+
+        {/* Uma coluna só: a lista é longa e lida de cima para baixo. */}
+        <TabsContent value="notificacoes" className="max-w-3xl">
+          <NotificacoesSinoCard />
         </TabsContent>
 
         <TabsContent value="whatsapp" className={GRADE}>

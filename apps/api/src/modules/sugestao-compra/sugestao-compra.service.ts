@@ -37,6 +37,7 @@ import type {
   SugestaoCompraResultado,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { registrarNotificacao } from '../notificacoes/registrar-notificacao';
 
 /**
  * O que conta como venda — a mesma definição das Consultas e da Posição de
@@ -1159,17 +1160,14 @@ export class SugestaoCompraService {
     // Aviso no sino de quem pediu; sem ele, a pessoa precisaria ficar na tela.
     await this.prisma
       .withTenant(empresaId, (tx) =>
-        tx.notificacao.create({
-          data: {
-            empresaId,
-            usuarioId: user.id,
-            tipo: 'sugestao_compra_calculada',
-            titulo,
-            descricao,
-            rota: '/gerencial/sugestao-compra',
-            referenciaId: execucaoId,
-            ocorridaEm: new Date(),
-          },
+        registrarNotificacao(tx, {
+          empresaId,
+          usuarioId: user.id,
+          tipo: 'sugestao_compra_calculada',
+          titulo,
+          descricao,
+          rota: '/gerencial/sugestao-compra',
+          referenciaId: execucaoId,
         }),
       )
       .catch((e) => this.logger.error('Não foi possível notificar o fim do cálculo', e as Error));

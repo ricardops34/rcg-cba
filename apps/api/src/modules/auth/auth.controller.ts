@@ -41,6 +41,7 @@ import {
   UpdateOwnProfileDto,
   UpdateRotinaInicialDto,
   UpdateTamanhoPaginaDto,
+  UpdateNotificacoesSilenciadasDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PlatformAdminGuard } from '../../common/guards/platform-admin.guard';
@@ -349,6 +350,31 @@ export class AuthController {
       user.id,
       user.empresaAtivaId,
       dto.tamanhoPagina,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Escolher as notificações do próprio sino',
+    description:
+      'Grava os tipos de notificação que o próprio usuário desligou, em todas as empresas. ' +
+      'Tipo silenciado deixa de ser gravado (não aparece no sino nem vai para o celular) e o ' +
+      'que já estava pendente dele é marcado como lido. Lista vazia = recebe todos.',
+  })
+  @ApiBodyExample({
+    notificacoesSilenciadas: ['titulo_vencido', 'roteiro_iniciado'],
+  })
+  @ApiResponse({ status: 400, description: 'Tipo de notificação inexistente' })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/notificacoes')
+  updateNotificacoesSilenciadas(
+    @Body() dto: UpdateNotificacoesSilenciadasDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.authService.updateNotificacoesSilenciadas(
+      user.id,
+      user.empresaAtivaId,
+      dto.notificacoesSilenciadas,
     );
   }
 }

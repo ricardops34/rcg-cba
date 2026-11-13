@@ -12,6 +12,7 @@ import type {
   ConsultaCnpjResultado,
 } from '@plataforma/contracts';
 import { Prisma, PrismaService } from '../../common/prisma/prisma.service';
+import { registrarNotificacao } from '../notificacoes/registrar-notificacao';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ClienteCampoConfigService } from '../cliente-campo-config/cliente-campo-config.service';
@@ -291,17 +292,14 @@ export class ClientesReceitaLoteService {
     // tarefa de agenda uma a uma (ver `registrarNaAgenda`).
     await this.prisma
       .withTenant(empresaId, (tx) =>
-        tx.notificacao.create({
-          data: {
-            empresaId,
-            usuarioId: user.id,
-            tipo: 'clientes_receita_atualizados',
-            titulo,
-            descricao,
-            rota: '/cadastros/clientes',
-            referenciaId: execucaoId,
-            ocorridaEm: new Date(),
-          },
+        registrarNotificacao(tx, {
+          empresaId,
+          usuarioId: user.id,
+          tipo: 'clientes_receita_atualizados',
+          titulo,
+          descricao,
+          rota: '/cadastros/clientes',
+          referenciaId: execucaoId,
         }),
       )
       .catch((e) =>

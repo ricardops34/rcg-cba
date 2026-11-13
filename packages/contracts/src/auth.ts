@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { tamanhoPaginaSchema } from "./common";
+import { notificacaoTipoSchema } from "./notificacao";
 import { situacaoEmpresaSchema } from "./empresa";
 
 export const loginSchema = z.object({
@@ -301,6 +302,10 @@ export const currentUserSchema = z.object({
     .nullable()
     .optional()
     .describe("Tamanho definido no perfil do usuário; null = o padrão de cada tela"),
+  notificacoesSilenciadas: z
+    .array(notificacaoTipoSchema)
+    .optional()
+    .describe("Tipos de notificação que o usuário desligou do sino"),
 });
 export type CurrentUser = z.infer<typeof currentUserSchema>;
 

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { TenantTx } from '../../common/prisma/prisma.service';
+import { registrarNotificacao } from '../notificacoes/registrar-notificacao';
 import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 import { WhatsappProviderService } from './providers/whatsapp-provider.service';
 import { jidBrasileiro } from './triagem/telefone-equipe';
@@ -462,20 +463,17 @@ export class WhatsappRecadoService implements OnModuleInit, OnModuleDestroy {
               select: { usuarioId: true },
             });
             if (vendedor?.usuarioId) {
-              await tx.notificacao.create({
-                data: {
-                  empresaId,
-                  usuarioId: vendedor.usuarioId,
-                  tipo: 'recado_interno',
-                  titulo: `Recado de ${dados.criadoPorNome}`,
-                  descricao:
-                    dados.texto.length > 120
-                      ? dados.texto.slice(0, 117) + '...'
-                      : dados.texto,
-                  referenciaId: recadoId,
-                  rota: '/gerencial/recados',
-                  ocorridaEm: new Date(),
-                },
+              await registrarNotificacao(tx, {
+                empresaId,
+                usuarioId: vendedor.usuarioId,
+                tipo: 'recado_interno',
+                titulo: `Recado de ${dados.criadoPorNome}`,
+                descricao:
+                  dados.texto.length > 120
+                    ? dados.texto.slice(0, 117) + '...'
+                    : dados.texto,
+                referenciaId: recadoId,
+                rota: '/gerencial/recados',
               });
             }
           }

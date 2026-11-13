@@ -56,16 +56,26 @@ export async function registrarNotificacao(
   // (`notificacoes_pendente_por_referencia`): é assim que o Postgres sabe qual
   // índice arbitra o conflito. Linha com `referenciaId` nulo não está no
   // índice e portanto nunca conflita — sempre insere.
+  //
+  // O `NOT EXISTS` respeita o que o destinatário desligou em "Meu perfil >
+  // Notificações": tipo silenciado não é gravado, e por isso também não vai
+  // para o celular (o push lê desta tabela). Fica no mesmo comando para não
+  // custar uma ida a mais ao banco em cada mensagem recebida. Se a linha do
+  // usuário não for visível (RLS), a notificação é gravada — na dúvida, avisa.
   await tx.$executeRaw`
     INSERT INTO "notificacoes" (
       "id", "empresaId", "usuarioId", "tipo", "titulo", "descricao", "rota",
       "referenciaId", "contador", "ocorridaEm", "criadaEm", "atualizadaEm"
     )
-    VALUES (
+    SELECT
       gen_random_uuid(), ${n.empresaId}, ${n.usuarioId},
       ${n.tipo}::"NotificacaoTipo", ${n.titulo}, ${n.descricao ?? null},
       ${n.rota ?? null}, ${n.referenciaId ?? null}, 1, ${ocorridaEm},
       NOW(), NOW()
+    WHERE NOT EXISTS (
+      SELECT 1 FROM "usuarios" u
+      WHERE u."id" = ${n.usuarioId}
+        AND ${n.tipo}::"NotificacaoTipo" = ANY (u."notificacoesSilenciadas")
     )
     ON CONFLICT ("empresaId", "usuarioId", "tipo", "referenciaId")
       WHERE "lidaEm" IS NULL AND "referenciaId" IS NOT NULL
