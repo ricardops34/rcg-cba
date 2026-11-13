@@ -9,6 +9,7 @@ import type {
 } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { DashboardMetaEditor } from "@/components/crud/dashboard-meta-editor";
+import { DashboardCategoriaDetalhe } from "@/components/comercial/dashboard-categoria-detalhe";
 import { cn } from "@/lib/utils";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
 import { Badge } from "@/components/ui/badge";
@@ -164,6 +165,12 @@ export default function DashboardGerencialPage() {
   // Linha clicada: abre o detalhe por categoria daquele vendedor.
   const [detalheVendedorId, setDetalheVendedorId] = useState<string | null>(null);
   const [listaSemVendedor, setListaSemVendedor] = useState(false);
+  // Categoria clicada dentro do detalhe do vendedor: abre produtos e clientes.
+  const [categoriaAberta, setCategoriaAberta] = useState<{
+    categoriaId: string;
+    codigoErp: string;
+    descricao: string;
+  } | null>(null);
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
@@ -676,7 +683,10 @@ export default function DashboardGerencialPage() {
       <Sheet
         open={detalheVendedorId !== null}
         onOpenChange={(aberta) => {
-          if (!aberta) setDetalheVendedorId(null);
+          if (!aberta) {
+            setDetalheVendedorId(null);
+            setCategoriaAberta(null);
+          }
         }}
       >
         <ResizableSheetContent defaultWidth={560}>
@@ -742,13 +752,35 @@ export default function DashboardGerencialPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {detalhe.data.categorias.map((c) => (
-                        <TableRow key={c.categoriaId}>
+                      {detalhe.data.categorias.map((c) => {
+                        // Categoria só com meta não tem venda para abrir.
+                        const abre = c.realizado !== 0;
+                        return (
+                        <TableRow
+                          key={c.categoriaId}
+                          className={abre ? "cursor-pointer" : undefined}
+                          {...(abre
+                            ? {
+                                tabIndex: 0,
+                                title: "Ver produtos e clientes da categoria",
+                                onClick: () => setCategoriaAberta(c),
+                                onKeyDown: (e: React.KeyboardEvent) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault();
+                                    setCategoriaAberta(c);
+                                  }
+                                },
+                              }
+                            : {})}
+                        >
                           <TableCell>
-                            <span className="font-mono text-xs text-muted-foreground">
-                              {c.codigoErp}
-                            </span>{" "}
-                            {c.descricao}
+                            <span className="inline-flex items-center gap-1">
+                              <span className="font-mono text-xs text-muted-foreground">
+                                {c.codigoErp}
+                              </span>{" "}
+                              {c.descricao}
+                              {abre && <ChevronRight className="size-3.5 text-muted-foreground" />}
+                            </span>
                           </TableCell>
                           {mostrarValores && (
                             <TableCell className="text-right tabular-nums">
@@ -770,9 +802,15 @@ export default function DashboardGerencialPage() {
                             )}
                           </TableCell>
                         </TableRow>
-                      ))}
+                        );
+                      })}
                     </TableBody>
                   </Table>
+                )}
+                {detalhe.data.categorias.some((c) => c.realizado !== 0) && (
+                  <p className="text-xs text-muted-foreground">
+                    Clique na categoria para ver os produtos e os clientes que compõem o valor.
+                  </p>
                 )}
 
                 {/* Item sem produto vinculado não cai em categoria nenhuma, mas
@@ -790,6 +828,19 @@ export default function DashboardGerencialPage() {
           </div>
         </ResizableSheetContent>
       </Sheet>
+
+      {/* Segundo nível: a categoria do vendedor aberta por produto e cliente. */}
+      <DashboardCategoriaDetalhe
+        categoria={detalheVendedorId ? categoriaAberta : null}
+        filtros={{
+          mes: filtros.mes,
+          ano: filtros.ano,
+          vendedorId: detalheVendedorId ?? undefined,
+        }}
+        recorte={[detalhe.data?.periodo.label, detalhe.data?.nome].filter(Boolean).join(" · ")}
+        mostrarValores={mostrarValores}
+        onClose={() => setCategoriaAberta(null)}
+      />
 
       {/* Detalhe do card: quem são os clientes que ninguém está atendendo. */}
       <Sheet open={listaSemVendedor} onOpenChange={setListaSemVendedor}>

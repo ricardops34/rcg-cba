@@ -79,9 +79,13 @@ export class ObjetivosController {
       'Produtos e clientes que compõem o realizado de uma categoria da tabela "Vendas ' +
       'Categoria", com os mesmos filtros (mês/ano, vendedor, município), o mesmo escopo ' +
       'hierárquico e o mesmo corte de venda do dashboard. Traz também o cruzamento ' +
-      'produto × cliente. Requer dashboard-comercial.visualizar.',
+      'produto × cliente. Também abre do detalhe de vendedor do Dashboard Gerencial (com ' +
+      'vendedorId). Requer dashboard-comercial.visualizar ou dashboard-gerencial.visualizar.',
   })
-  @RequirePermission('dashboard-comercial', 'visualizar')
+  @RequirePermission('dashboard-comercial', 'visualizar', [
+    'dashboard-gerencial',
+    'visualizar',
+  ])
   @Get('dashboard/categorias/:categoriaId')
   dashboardCategoriaDetalhe(
     @Param('categoriaId', ParseUUIDPipe) categoriaId: string,

@@ -42,6 +42,8 @@ interface Props {
   filtros: FiltrosDetalheCategoria;
   /** Rótulo do recorte (período, município, vendedor), para a cortina dizer de onde vem o número. */
   recorte: string;
+  /** Falso esconde os valores em R$ (opção do Dashboard Gerencial): ficam quantidade e %. */
+  mostrarValores?: boolean;
   onClose: () => void;
 }
 
@@ -54,7 +56,13 @@ interface Props {
  * mesma resposta: é um mês de uma categoria, e buscar por clique custaria uma
  * ida à API para dado que já foi somado.
  */
-export function DashboardCategoriaDetalhe({ categoria, filtros, recorte, onClose }: Props) {
+export function DashboardCategoriaDetalhe({
+  categoria,
+  filtros,
+  recorte,
+  mostrarValores = true,
+  onClose,
+}: Props) {
   const [aba, setAba] = useState<"produtos" | "clientes">("produtos");
   const [busca, setBusca] = useState("");
   const [abertos, setAbertos] = useState<Set<string>>(new Set());
@@ -118,7 +126,7 @@ export function DashboardCategoriaDetalhe({ categoria, filtros, recorte, onClose
           </SheetTitle>
           <SheetDescription>
             {recorte}
-            {data ? ` — ${moeda(total)} realizados` : ""}
+            {data && mostrarValores ? ` — ${moeda(total)} realizados` : ""}
           </SheetDescription>
         </SheetHeader>
 
@@ -158,7 +166,7 @@ export function DashboardCategoriaDetalhe({ categoria, filtros, recorte, onClose
                     <TableRow>
                       <TableHead>Produto</TableHead>
                       <TableHead className="text-right">Qtd.</TableHead>
-                      <TableHead className="text-right">Realizado</TableHead>
+                      {mostrarValores && <TableHead className="text-right">Realizado</TableHead>}
                       <TableHead className="text-right">%</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -193,9 +201,11 @@ export function DashboardCategoriaDetalhe({ categoria, filtros, recorte, onClose
                             <TableCell className="text-right text-xs tabular-nums">
                               {quantidade(p.quantidade)} {p.unidade ?? ""}
                             </TableCell>
-                            <TableCell className="text-right text-xs font-medium tabular-nums">
-                              {moeda(p.realizado)}
-                            </TableCell>
+                            {mostrarValores && (
+                              <TableCell className="text-right text-xs font-medium tabular-nums">
+                                {moeda(p.realizado)}
+                              </TableCell>
+                            )}
                             <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                               {percentual(p.realizado, total)}
                             </TableCell>
@@ -213,7 +223,9 @@ export function DashboardCategoriaDetalhe({ categoria, filtros, recorte, onClose
                                 <TableCell className="text-right text-xs tabular-nums">
                                   {quantidade(i.quantidade)} {p.unidade ?? ""}
                                 </TableCell>
-                                <TableCell className="text-right text-xs tabular-nums">{moeda(i.realizado)}</TableCell>
+                                {mostrarValores && (
+                                  <TableCell className="text-right text-xs tabular-nums">{moeda(i.realizado)}</TableCell>
+                                )}
                                 <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                                   {percentual(i.realizado, p.realizado)}
                                 </TableCell>
@@ -227,8 +239,8 @@ export function DashboardCategoriaDetalhe({ categoria, filtros, recorte, onClose
                   <TableFooter className="sticky bottom-0 bg-card">
                     <TableRow>
                       <TableCell colSpan={2}>Total da categoria</TableCell>
-                      <TableCell className="text-right tabular-nums">{moeda(total)}</TableCell>
-                      <TableCell />
+                      {mostrarValores && <TableCell className="text-right tabular-nums">{moeda(total)}</TableCell>}
+                      <TableCell className="text-right tabular-nums">100%</TableCell>
                     </TableRow>
                   </TableFooter>
                 </Table>
@@ -239,7 +251,7 @@ export function DashboardCategoriaDetalhe({ categoria, filtros, recorte, onClose
                   <TableHeader className="sticky top-0 z-10 bg-card">
                     <TableRow>
                       <TableHead>Cliente</TableHead>
-                      <TableHead className="text-right">Realizado</TableHead>
+                      {mostrarValores && <TableHead className="text-right">Realizado</TableHead>}
                       <TableHead className="text-right">%</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -274,9 +286,11 @@ export function DashboardCategoriaDetalhe({ categoria, filtros, recorte, onClose
                                 </div>
                               </div>
                             </TableCell>
-                            <TableCell className="text-right text-xs font-medium tabular-nums">
-                              {moeda(c.realizado)}
-                            </TableCell>
+                            {mostrarValores && (
+                              <TableCell className="text-right text-xs font-medium tabular-nums">
+                                {moeda(c.realizado)}
+                              </TableCell>
+                            )}
                             <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                               {percentual(c.realizado, total)}
                             </TableCell>
@@ -292,7 +306,9 @@ export function DashboardCategoriaDetalhe({ categoria, filtros, recorte, onClose
                                     {p?.unidade ?? ""}
                                   </p>
                                 </TableCell>
-                                <TableCell className="text-right text-xs tabular-nums">{moeda(i.realizado)}</TableCell>
+                                {mostrarValores && (
+                                  <TableCell className="text-right text-xs tabular-nums">{moeda(i.realizado)}</TableCell>
+                                )}
                                 <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                                   {percentual(i.realizado, c.realizado)}
                                 </TableCell>
@@ -306,8 +322,8 @@ export function DashboardCategoriaDetalhe({ categoria, filtros, recorte, onClose
                   <TableFooter className="sticky bottom-0 bg-card">
                     <TableRow>
                       <TableCell>Total da categoria</TableCell>
-                      <TableCell className="text-right tabular-nums">{moeda(total)}</TableCell>
-                      <TableCell />
+                      {mostrarValores && <TableCell className="text-right tabular-nums">{moeda(total)}</TableCell>}
+                      <TableCell className="text-right tabular-nums">100%</TableCell>
                     </TableRow>
                   </TableFooter>
                 </Table>
