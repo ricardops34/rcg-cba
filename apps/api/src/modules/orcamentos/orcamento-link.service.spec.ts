@@ -72,7 +72,10 @@ function montar(opcoes: {
       update: jest.fn().mockResolvedValue({}),
       updateMany: jest.fn().mockResolvedValue({ count: 1 }),
     },
-    atividade: { create: jest.fn().mockResolvedValue({}) },
+    atividade: {
+      create: jest.fn().mockResolvedValue({}),
+      updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+    },
     vendedor: {
       findFirst: jest.fn().mockResolvedValue(null),
       findUnique: jest.fn().mockResolvedValue(null),

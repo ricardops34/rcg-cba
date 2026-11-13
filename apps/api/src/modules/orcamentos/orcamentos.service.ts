@@ -42,6 +42,7 @@ import {
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { criarAtividadeRetorno } from './criar-atividade-retorno';
 import {
+  concluirPendenciaAutorizacaoDesconto,
   orcamentoExigeAutorizacao,
   orcamentosQueExigemAutorizacao,
   historicoDescontoOrcamento,
@@ -1010,6 +1011,12 @@ export class OrcamentosService {
         );
       }
 
+      // Pedido derrubado pela alteração: não há mais o que o supervisor
+      // liberar. (A recusa do cliente fecha em registrarAtividadeOrcamento.)
+      if (alterou) {
+        await concluirPendenciaAutorizacaoDesconto(tx, empresaId, id, user.id);
+      }
+
       const paraAtividade = {
         id: atualizado.id,
         numero: atualizado.numero,
@@ -1100,6 +1107,7 @@ export class OrcamentosService {
           'Orçamento integrado ao ERP não pode ser excluído. Só é possível excluir orçamento ainda não aprovado ou recusado pelo ERP.',
         );
       }
+      await concluirPendenciaAutorizacaoDesconto(tx, empresaId, id, user.id);
       return tx.orcamento.update({
         where: { id },
         data: { deletedAt: new Date(), deletedBy: user.id, ativo: false },
@@ -1234,19 +1242,7 @@ export class OrcamentosService {
       });
       // Fecha a pendência aberta na solicitação: quem autorizou já resolveu a
       // tarefa, e ela não deve continuar na agenda do supervisor.
-      await tx.atividade.updateMany({
-        where: {
-          orcamentoId: id,
-          empresaId,
-          concluida: false,
-          titulo: { startsWith: 'Autorização de desconto solicitada' },
-        },
-        data: {
-          concluida: true,
-          dataConclusao: new Date(),
-          updatedBy: user.id,
-        },
-      });
+      await concluirPendenciaAutorizacaoDesconto(tx, empresaId, id, user.id);
       await registrarAtividadeOrcamento(
         tx,
         empresaId,
@@ -1310,19 +1306,7 @@ export class OrcamentosService {
         include: INCLUDE,
       });
       // Fecha a pendência da agenda: a decisão já foi tomada.
-      await tx.atividade.updateMany({
-        where: {
-          orcamentoId: id,
-          empresaId,
-          concluida: false,
-          titulo: { startsWith: 'Autorização de desconto solicitada' },
-        },
-        data: {
-          concluida: true,
-          dataConclusao: new Date(),
-          updatedBy: user.id,
-        },
-      });
+      await concluirPendenciaAutorizacaoDesconto(tx, empresaId, id, user.id);
       await registrarAtividadeOrcamento(
         tx,
         empresaId,

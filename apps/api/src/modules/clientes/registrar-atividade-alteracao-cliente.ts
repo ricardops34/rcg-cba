@@ -5,6 +5,38 @@ import {
   type OrigemAlteracaoCliente,
 } from '@plataforma/contracts';
 
+const TITULO_PENDENCIA_ALTERACAO = 'Alteração de cadastro aguardando aprovação';
+
+/**
+ * Fecha a tarefa da agenda quando a solicitação é aprovada ou recusada —
+ * sem isso ela continuava "atrasada" na agenda e no resumo do assistente de
+ * quem nem precisava mais agir (outro usuário já tinha decidido).
+ *
+ * A atividade não guarda o id da solicitação, só o cliente; e o cliente pode
+ * ter uma pendência por origem. Por isso só fecha quando não sobra nenhuma
+ * pendente para ele: com outra ainda aberta, a tarefa continua valendo.
+ */
+export async function concluirAtividadeAlteracaoCliente(
+  tx: TenantTx,
+  params: { empresaId: string; clienteId: string; autorId: string | null },
+) {
+  const { empresaId, clienteId, autorId } = params;
+  const aindaPendente = await tx.clienteAlteracao.findFirst({
+    where: { empresaId, clienteId, status: 'pendente' },
+    select: { id: true },
+  });
+  if (aindaPendente) return;
+  await tx.atividade.updateMany({
+    where: {
+      empresaId,
+      clienteId,
+      concluida: false,
+      titulo: { startsWith: TITULO_PENDENCIA_ALTERACAO },
+    },
+    data: { concluida: true, dataConclusao: new Date(), updatedBy: autorId },
+  });
+}
+
 /**
  * Pendência de aprovação do cadastro na Agenda de quem pode liberar — mesmo
  * mecanismo da autorização de desconto do orçamento
@@ -55,7 +87,7 @@ export async function registrarAtividadeAlteracaoCliente(
       clienteId,
       vendedorId: vendedorDestino,
       tipo: 'tarefa',
-      titulo: `Alteração de cadastro aguardando aprovação — ${cliente.razaoSocial}`,
+      titulo: `${TITULO_PENDENCIA_ALTERACAO} — ${cliente.razaoSocial}`,
       descricao: `Origem: ${ORIGEM_ALTERACAO_CLIENTE_LABEL[origem]}. Campos: ${resumo}.`,
       dataVencimento: new Date(),
       concluida: false,

@@ -18,7 +18,10 @@ import {
 } from '../../common/pagination/paginate';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import { sincronizarContatosErp } from './sincronizar-contatos-erp';
-import { registrarAtividadeAlteracaoCliente } from './registrar-atividade-alteracao-cliente';
+import {
+  concluirAtividadeAlteracaoCliente,
+  registrarAtividadeAlteracaoCliente,
+} from './registrar-atividade-alteracao-cliente';
 import {
   enderecoCanonico,
   telefoneCanonico,
@@ -806,6 +809,11 @@ export class ClienteAlteracoesService {
           cliente: { select: { razaoSocial: true, codigoErp: true } },
         },
       });
+      await concluirAtividadeAlteracaoCliente(tx, {
+        empresaId,
+        clienteId: solicitacao.clienteId,
+        autorId: user.id,
+      });
       return this.paraLeitura(
         atualizada,
         await this.nomesDeUsuarios([
@@ -823,7 +831,12 @@ export class ClienteAlteracoesService {
     motivo: string,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      await this.buscarPendenteNoEscopo(tx, empresaId, user, id);
+      const solicitacao = await this.buscarPendenteNoEscopo(
+        tx,
+        empresaId,
+        user,
+        id,
+      );
       const atualizada = await tx.clienteAlteracao.update({
         where: { id },
         data: {
@@ -835,6 +848,11 @@ export class ClienteAlteracoesService {
         include: {
           cliente: { select: { razaoSocial: true, codigoErp: true } },
         },
+      });
+      await concluirAtividadeAlteracaoCliente(tx, {
+        empresaId,
+        clienteId: solicitacao.clienteId,
+        autorId: user.id,
       });
       return this.paraLeitura(
         atualizada,

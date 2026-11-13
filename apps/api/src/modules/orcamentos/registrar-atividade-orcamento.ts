@@ -108,6 +108,17 @@ export async function registrarAtividadeOrcamento(
     }
   }
 
+  // A decisão do cliente encerra o pedido de liberação — por qualquer canal
+  // (tela, link, portal, WhatsApp), todos passam por aqui.
+  if (evento === 'aprovacao_cliente' || evento === 'recusa_cliente') {
+    await concluirPendenciaAutorizacaoDesconto(
+      tx,
+      empresaId,
+      orcamento.id,
+      autor,
+    );
+  }
+
   await tx.atividade.create({
     data: {
       empresaId,
@@ -179,6 +190,30 @@ export async function registrarAtividadeOrcamento(
       autorUsuarioId: autor,
     });
   }
+}
+
+/**
+ * Fecha a pendência "Autorização de desconto solicitada" do orçamento. Ponto
+ * único para todo caminho que torna o pedido resolvido ou sem efeito:
+ * autorizar, recusar, alterar o orçamento (que derruba o pedido), o cliente
+ * recusar e excluir. Antes só autorizar/recusar fechavam, e as outras saídas
+ * deixavam a tarefa "atrasada" na agenda do supervisor para sempre.
+ */
+export async function concluirPendenciaAutorizacaoDesconto(
+  tx: TenantTx,
+  empresaId: string,
+  orcamentoId: string,
+  autor: string | null,
+) {
+  await tx.atividade.updateMany({
+    where: {
+      orcamentoId,
+      empresaId,
+      concluida: false,
+      titulo: { startsWith: 'Autorização de desconto solicitada' },
+    },
+    data: { concluida: true, dataConclusao: new Date(), updatedBy: autor },
+  });
 }
 
 /**
