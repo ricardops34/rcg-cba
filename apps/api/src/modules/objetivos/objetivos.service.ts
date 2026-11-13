@@ -643,27 +643,37 @@ export class ObjetivosService {
   }
 
   /**
-   * O que compõe uma linha de "Vendas Categoria" do Dashboard Comercial:
-   * produtos e clientes, e o cruzamento dos dois.
+   * O que compõe um realizado do Dashboard: produtos e clientes, e o
+   * cruzamento dos dois. Com `categoriaId`, é uma linha de "Vendas
+   * Categoria" do Comercial (ou uma categoria do detalhe de vendedor do
+   * Gerencial); sem ela, é o total inteiro — o detalhe de vendedor do
+   * Gerencial abre por cliente.
    *
-   * Os filtros, o escopo e o corte de venda são os de `dashboard` — o número
-   * do detalhe tem de fechar com o da linha clicada, senão a tela se
-   * desmente. A categoria entra em `AND` com o corte: `venda.item` já tem um
-   * `OR` sobre o produto, e espalhar outra condição de produto por cima
-   * apagaria a dele.
+   * Os filtros, o escopo e o corte de venda são os de `dashboard` e de
+   * `dashboardGerencialVendedor` — o número do detalhe tem de fechar com o
+   * da linha clicada, senão a tela se desmente. A categoria entra em `AND`
+   * com o corte: `venda.item` já tem um `OR` sobre o produto, e espalhar
+   * outra condição de produto por cima apagaria a dele.
+   *
+   * Sem categoria, item sem produto vinculado também conta no total (como
+   * no realizado do vendedor) e aparece como produto nulo.
    */
-  async dashboardCategoriaDetalhe(
+  async dashboardComposicao(
     empresaId: string,
     user: AuthenticatedUser,
-    categoriaId: string,
+    categoriaId: string | null,
     query: ObjetivoDashboardQuery,
   ): Promise<ObjetivoDashboardCategoriaDetalhe> {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const categoria = await tx.categoria.findFirst({
-        where: { id: categoriaId, empresaId },
-        select: { id: true, codigoErp: true, descricao: true },
-      });
-      if (!categoria) throw new NotFoundException('Categoria não encontrada');
+      const categoria = categoriaId
+        ? await tx.categoria.findFirst({
+            where: { id: categoriaId, empresaId },
+            select: { id: true, codigoErp: true, descricao: true },
+          })
+        : null;
+      if (categoriaId && !categoria) {
+        throw new NotFoundException('Categoria não encontrada');
+      }
 
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       const venda = await corteDeVenda(tx, empresaId);
@@ -679,7 +689,10 @@ export class ObjetivosService {
           ...(query.municipio
             ? { cliente: { municipio: query.municipio } }
             : {}),
-          AND: [venda.item, { produto: { is: { categoriaId } } }],
+          AND: [
+            venda.item,
+            ...(categoriaId ? [{ produto: { is: { categoriaId } } }] : []),
+          ],
         },
         _sum: {
           vlrTotal: true,
@@ -690,32 +703,23 @@ export class ObjetivosService {
       });
 
       const arredondar = (v: number) => Math.round(v * 100) / 100;
-      const itens = grupos
-        .filter(
-          (g): g is typeof g & { produtoId: string } => g.produtoId !== null,
-        )
-        .map((g) => ({
-          produtoId: g.produtoId,
-          clienteId: g.clienteId,
-          quantidade: (g._sum.quantidade ?? 0) - (g._sum.quantidadeDev ?? 0),
-          realizado: arredondar((g._sum.vlrTotal ?? 0) - (g._sum.vlrDev ?? 0)),
-        }));
+      const itens = grupos.map((g) => ({
+        produtoId: g.produtoId,
+        clienteId: g.clienteId,
+        quantidade: (g._sum.quantidade ?? 0) - (g._sum.quantidadeDev ?? 0),
+        realizado: arredondar((g._sum.vlrTotal ?? 0) - (g._sum.vlrDev ?? 0)),
+      }));
 
-      const produtoIds = [...new Set(itens.map((i) => i.produtoId))];
-      const clienteIds = [
-        ...new Set(
-          itens
-            .map((i) => i.clienteId)
-            .filter((id): id is string => id !== null),
-        ),
+      const semNulos = (ids: (string | null)[]) => [
+        ...new Set(ids.filter((id): id is string => id !== null)),
       ];
       const [produtosInfo, clientesInfo] = await Promise.all([
         tx.produto.findMany({
-          where: { id: { in: produtoIds } },
+          where: { id: { in: semNulos(itens.map((i) => i.produtoId)) } },
           select: { id: true, codigoErp: true, descricao: true, unidade: true },
         }),
         tx.cliente.findMany({
-          where: { id: { in: clienteIds } },
+          where: { id: { in: semNulos(itens.map((i) => i.clienteId)) } },
           select: {
             id: true,
             codigoErp: true,
@@ -727,7 +731,7 @@ export class ObjetivosService {
       ]);
 
       const porProduto = new Map<
-        string,
+        string | null,
         { quantidade: number; realizado: number }
       >();
       const porCliente = new Map<string | null, number>();
@@ -745,16 +749,29 @@ export class ObjetivosService {
         );
       }
 
-      const produtos = produtosInfo
-        .map((p) => ({
+      const semProduto = porProduto.get(null);
+      const produtos = [
+        ...produtosInfo.map((p) => ({
           id: p.id,
           codigo: p.codigoErp,
           descricao: p.descricao,
           unidade: p.unidade,
           quantidade: porProduto.get(p.id)?.quantidade ?? 0,
           realizado: arredondar(porProduto.get(p.id)?.realizado ?? 0),
-        }))
-        .sort((a, b) => b.realizado - a.realizado);
+        })),
+        ...(semProduto
+          ? [
+              {
+                id: null,
+                codigo: null,
+                descricao: '(Item sem produto vinculado)',
+                unidade: null,
+                quantidade: semProduto.quantidade,
+                realizado: arredondar(semProduto.realizado),
+              },
+            ]
+          : []),
+      ].sort((a, b) => b.realizado - a.realizado);
 
       const clientes = [
         ...clientesInfo.map((c) => ({

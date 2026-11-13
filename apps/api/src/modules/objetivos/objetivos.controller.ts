@@ -74,6 +74,32 @@ export class ObjetivosController {
   }
 
   @ApiOperation({
+    summary: 'Composição do realizado por cliente e produto',
+    description:
+      'Clientes e produtos que compõem o realizado do mês, com os mesmos filtros (mês/ano, ' +
+      'vendedor, município), o mesmo escopo hierárquico e o mesmo corte de venda dos ' +
+      'dashboards, mais o cruzamento produto × cliente. Usado no detalhe de vendedor do ' +
+      'Dashboard Gerencial. Requer dashboard-comercial.visualizar ou ' +
+      'dashboard-gerencial.visualizar.',
+  })
+  @RequirePermission('dashboard-comercial', 'visualizar', [
+    'dashboard-gerencial',
+    'visualizar',
+  ])
+  @Get('dashboard/composicao')
+  dashboardComposicao(
+    @Query() query: ObjetivoDashboardQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.dashboardComposicao(
+      user.empresaAtivaId,
+      user,
+      null,
+      query,
+    );
+  }
+
+  @ApiOperation({
     summary: 'Detalhe de uma categoria do Dashboard Comercial',
     description:
       'Produtos e clientes que compõem o realizado de uma categoria da tabela "Vendas ' +
@@ -92,7 +118,7 @@ export class ObjetivosController {
     @Query() query: ObjetivoDashboardQueryDto,
     @CurrentUser() user: AuthenticatedUser,
   ) {
-    return this.service.dashboardCategoriaDetalhe(
+    return this.service.dashboardComposicao(
       user.empresaAtivaId,
       user,
       categoriaId,

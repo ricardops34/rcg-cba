@@ -84,16 +84,19 @@ export const OBJETIVO_DASHBOARD_EXAMPLE: ObjetivoDashboard = {
  * quem comprou, ou um cliente para ver o que comprou, sem nova ida à API.
  */
 export const objetivoDashboardCategoriaDetalheSchema = z.object({
-  categoria: z.object({
-    id: z.string().uuid(),
-    codigoErp: z.string(),
-    descricao: z.string(),
-  }),
+  categoria: z
+    .object({
+      id: z.string().uuid(),
+      codigoErp: z.string(),
+      descricao: z.string(),
+    })
+    .nullable()
+    .describe("Nula = composição do total inteiro, sem recorte de categoria"),
   realizado: z.number(),
   produtos: z.array(
     z.object({
-      id: z.string().uuid(),
-      codigo: z.string(),
+      id: z.string().uuid().nullable().describe("Nulo = item de nota sem produto vinculado"),
+      codigo: z.string().nullable(),
       descricao: z.string(),
       unidade: z.string().nullable(),
       quantidade: z.number().describe("Quantidade vendida líquida de devolução"),
@@ -111,7 +114,7 @@ export const objetivoDashboardCategoriaDetalheSchema = z.object({
   ),
   itens: z.array(
     z.object({
-      produtoId: z.string().uuid(),
+      produtoId: z.string().uuid().nullable(),
       clienteId: z.string().uuid().nullable(),
       quantidade: z.number(),
       realizado: z.number(),

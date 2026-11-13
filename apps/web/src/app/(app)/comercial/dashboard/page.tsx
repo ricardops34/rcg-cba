@@ -368,6 +368,7 @@ export default function DashboardComercialPage() {
       </div>
 
       <DashboardCategoriaDetalhe
+        aberto={categoriaAberta !== null}
         categoria={categoriaAberta}
         filtros={{ mes: filtros.mes, ano: filtros.ano, vendedorId: vendedorIdQuery, municipio: municipioQuery }}
         recorte={[

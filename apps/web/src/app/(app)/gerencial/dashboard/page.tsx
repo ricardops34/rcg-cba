@@ -9,7 +9,12 @@ import type {
 } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
 import { DashboardMetaEditor } from "@/components/crud/dashboard-meta-editor";
-import { DashboardCategoriaDetalhe } from "@/components/comercial/dashboard-categoria-detalhe";
+import {
+  ComposicaoTabela,
+  DashboardCategoriaDetalhe,
+  useComposicao,
+} from "@/components/comercial/dashboard-categoria-detalhe";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { cn } from "@/lib/utils";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
 import { Badge } from "@/components/ui/badge";
@@ -165,6 +170,9 @@ export default function DashboardGerencialPage() {
   // Linha clicada: abre o detalhe por categoria daquele vendedor.
   const [detalheVendedorId, setDetalheVendedorId] = useState<string | null>(null);
   const [listaSemVendedor, setListaSemVendedor] = useState(false);
+  // Aba do detalhe do vendedor. Abre em Clientes: a pergunta de quem clica
+  // no vendedor é "de quem veio esse total".
+  const [abaVendedor, setAbaVendedor] = useState<"clientes" | "produtos" | "categorias">("clientes");
   // Categoria clicada dentro do detalhe do vendedor: abre produtos e clientes.
   const [categoriaAberta, setCategoriaAberta] = useState<{
     categoriaId: string;
@@ -203,6 +211,14 @@ export default function DashboardGerencialPage() {
       ),
     enabled: detalheVendedorId !== null,
   });
+
+  // O total do vendedor aberto por cliente e produto — as abas Clientes e
+  // Produtos do detalhe. Mesma base do realizado da linha.
+  const composicaoVendedor = useComposicao(
+    null,
+    { mes: filtros.mes, ano: filtros.ano, vendedorId: detalheVendedorId ?? undefined },
+    detalheVendedorId !== null,
+  );
 
   // Independe do período: a carteira sem dono é do cadastro, não do mês.
   const semVendedor = useQuery({
@@ -679,23 +695,24 @@ export default function DashboardGerencialPage() {
         </CardContent>
       </Card>
 
-      {/* Detalhe da linha: o mês daquele vendedor repartido por categoria. */}
+      {/* Detalhe da linha: o mês daquele vendedor por cliente, produto e categoria. */}
       <Sheet
         open={detalheVendedorId !== null}
         onOpenChange={(aberta) => {
           if (!aberta) {
             setDetalheVendedorId(null);
             setCategoriaAberta(null);
+            setAbaVendedor("clientes");
           }
         }}
       >
-        <ResizableSheetContent defaultWidth={560}>
+        <ResizableSheetContent defaultWidth={760}>
           <SheetHeader>
             <SheetTitle>
               {detalhe.data ? detalhe.data.nome : "Detalhe do vendedor"}
             </SheetTitle>
           </SheetHeader>
-          <div className="space-y-4 px-4 pb-4">
+          <div className="flex min-h-0 flex-1 flex-col gap-4 px-4 pb-4">
             {detalhe.isLoading ? (
               <Skeleton className="h-64 w-full" />
             ) : detalhe.isError || !detalhe.data ? (
@@ -733,96 +750,135 @@ export default function DashboardGerencialPage() {
                   </div>
                 </div>
 
-                {detalhe.data.categorias.length === 0 ? (
-                  <p className="text-sm text-muted-foreground">
-                    Nenhuma meta por categoria nem venda no período.
-                  </p>
-                ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Categoria</TableHead>
-                        {mostrarValores && (
-                          <TableHead className="text-right">Objetivo</TableHead>
-                        )}
-                        {mostrarValores && (
-                          <TableHead className="text-right">Realizado</TableHead>
-                        )}
-                        <TableHead className="w-44">%</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {detalhe.data.categorias.map((c) => {
-                        // Categoria só com meta não tem venda para abrir.
-                        const abre = c.realizado !== 0;
-                        return (
-                        <TableRow
-                          key={c.categoriaId}
-                          className={abre ? "cursor-pointer" : undefined}
-                          {...(abre
-                            ? {
-                                tabIndex: 0,
-                                title: "Ver produtos e clientes da categoria",
-                                onClick: () => setCategoriaAberta(c),
-                                onKeyDown: (e: React.KeyboardEvent) => {
-                                  if (e.key === "Enter" || e.key === " ") {
-                                    e.preventDefault();
-                                    setCategoriaAberta(c);
-                                  }
-                                },
-                              }
-                            : {})}
-                        >
-                          <TableCell>
-                            <span className="inline-flex items-center gap-1">
-                              <span className="font-mono text-xs text-muted-foreground">
-                                {c.codigoErp}
-                              </span>{" "}
-                              {c.descricao}
-                              {abre && <ChevronRight className="size-3.5 text-muted-foreground" />}
-                            </span>
-                          </TableCell>
-                          {mostrarValores && (
-                            <TableCell className="text-right tabular-nums">
-                              {moeda(c.objetivo)}
-                            </TableCell>
-                          )}
-                          {mostrarValores && (
-                            <TableCell className="text-right tabular-nums">
-                              {moeda(c.realizado)}
-                            </TableCell>
-                          )}
-                          <TableCell>
-                            {c.objetivo > 0 ? (
-                              <BarraMeta perc={c.percRealizado} />
-                            ) : (
-                              <span className="text-xs text-muted-foreground">
-                                sem meta
-                              </span>
+                <Tabs
+                  value={abaVendedor}
+                  onValueChange={(v) => setAbaVendedor(v as typeof abaVendedor)}
+                  className="flex min-h-0 flex-1 flex-col gap-3"
+                >
+                  <TabsList>
+                    <TabsTrigger value="clientes">
+                      Clientes
+                      {composicaoVendedor.data ? ` (${composicaoVendedor.data.clientes.length})` : ""}
+                    </TabsTrigger>
+                    <TabsTrigger value="produtos">
+                      Produtos
+                      {composicaoVendedor.data ? ` (${composicaoVendedor.data.produtos.length})` : ""}
+                    </TabsTrigger>
+                    <TabsTrigger value="categorias">Categorias</TabsTrigger>
+                  </TabsList>
+                  {(["clientes", "produtos"] as const).map((a) => (
+                    <TabsContent key={a} value={a} className="flex min-h-0 flex-1 flex-col">
+                      {composicaoVendedor.isLoading ? (
+                        <Skeleton className="h-64 w-full" />
+                      ) : composicaoVendedor.isError || !composicaoVendedor.data ? (
+                        <p className="text-sm text-muted-foreground">
+                          Não foi possível carregar a composição do realizado.
+                        </p>
+                      ) : composicaoVendedor.data.itens.length === 0 ? (
+                        <p className="text-sm text-muted-foreground">Nenhuma venda no período.</p>
+                      ) : (
+                        <ComposicaoTabela
+                          data={composicaoVendedor.data}
+                          aba={a}
+                          mostrarValores={mostrarValores}
+                          rotuloTotal="Total do vendedor"
+                        />
+                      )}
+                    </TabsContent>
+                  ))}
+                  <TabsContent value="categorias" className="space-y-4">
+                    {detalhe.data.categorias.length === 0 ? (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhuma meta por categoria nem venda no período.
+                      </p>
+                    ) : (
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead>Categoria</TableHead>
+                            {mostrarValores && (
+                              <TableHead className="text-right">Objetivo</TableHead>
                             )}
-                          </TableCell>
-                        </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
-                )}
-                {detalhe.data.categorias.some((c) => c.realizado !== 0) && (
-                  <p className="text-xs text-muted-foreground">
-                    Clique na categoria para ver os produtos e os clientes que compõem o valor.
-                  </p>
-                )}
+                            {mostrarValores && (
+                              <TableHead className="text-right">Realizado</TableHead>
+                            )}
+                            <TableHead className="w-44">%</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {detalhe.data.categorias.map((c) => {
+                            // Categoria só com meta não tem venda para abrir.
+                            const abre = c.realizado !== 0;
+                            return (
+                            <TableRow
+                              key={c.categoriaId}
+                              className={abre ? "cursor-pointer" : undefined}
+                              {...(abre
+                                ? {
+                                    tabIndex: 0,
+                                    title: "Ver produtos e clientes da categoria",
+                                    onClick: () => setCategoriaAberta(c),
+                                    onKeyDown: (e: React.KeyboardEvent) => {
+                                      if (e.key === "Enter" || e.key === " ") {
+                                        e.preventDefault();
+                                        setCategoriaAberta(c);
+                                      }
+                                    },
+                                  }
+                                : {})}
+                            >
+                              <TableCell>
+                                <span className="inline-flex items-center gap-1">
+                                  <span className="font-mono text-xs text-muted-foreground">
+                                    {c.codigoErp}
+                                  </span>{" "}
+                                  {c.descricao}
+                                  {abre && <ChevronRight className="size-3.5 text-muted-foreground" />}
+                                </span>
+                              </TableCell>
+                              {mostrarValores && (
+                                <TableCell className="text-right tabular-nums">
+                                  {moeda(c.objetivo)}
+                                </TableCell>
+                              )}
+                              {mostrarValores && (
+                                <TableCell className="text-right tabular-nums">
+                                  {moeda(c.realizado)}
+                                </TableCell>
+                              )}
+                              <TableCell>
+                                {c.objetivo > 0 ? (
+                                  <BarraMeta perc={c.percRealizado} />
+                                ) : (
+                                  <span className="text-xs text-muted-foreground">
+                                    sem meta
+                                  </span>
+                                )}
+                              </TableCell>
+                            </TableRow>
+                            );
+                          })}
+                        </TableBody>
+                      </Table>
+                    )}
+                    {detalhe.data.categorias.some((c) => c.realizado !== 0) && (
+                      <p className="text-xs text-muted-foreground">
+                        Clique na categoria para ver os produtos e os clientes que compõem o valor.
+                      </p>
+                    )}
 
-                {/* Item sem produto vinculado não cai em categoria nenhuma, mas
-                    conta no realizado do mês — dizer isso evita a leitura de que
-                    a tabela "não fecha" com o total da linha. */}
-                {detalhe.data.realizadoSemCategoria > 0 && (
-                  <p className="text-xs text-muted-foreground">
-                    {mostrarValores
-                      ? `${moeda(detalhe.data.realizadoSemCategoria)} realizados em itens sem categoria — contam no total do vendedor, mas não aparecem acima.`
-                      : "Há realizado em itens sem categoria, que conta no total do vendedor mas não aparece acima."}
-                  </p>
-                )}
+                    {/* Item sem produto vinculado não cai em categoria nenhuma, mas
+                        conta no realizado do mês — dizer isso evita a leitura de que
+                        a tabela "não fecha" com o total da linha. */}
+                    {detalhe.data.realizadoSemCategoria > 0 && (
+                      <p className="text-xs text-muted-foreground">
+                        {mostrarValores
+                          ? `${moeda(detalhe.data.realizadoSemCategoria)} realizados em itens sem categoria — contam no total do vendedor, mas não aparecem acima.`
+                          : "Há realizado em itens sem categoria, que conta no total do vendedor mas não aparece acima."}
+                      </p>
+                    )}
+                  </TabsContent>
+                </Tabs>
               </>
             )}
           </div>
@@ -831,7 +887,8 @@ export default function DashboardGerencialPage() {
 
       {/* Segundo nível: a categoria do vendedor aberta por produto e cliente. */}
       <DashboardCategoriaDetalhe
-        categoria={detalheVendedorId ? categoriaAberta : null}
+        aberto={detalheVendedorId !== null && categoriaAberta !== null}
+        categoria={categoriaAberta}
         filtros={{
           mes: filtros.mes,
           ano: filtros.ano,
