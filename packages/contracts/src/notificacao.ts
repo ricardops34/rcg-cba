@@ -171,11 +171,26 @@ export const NOTIFICACAO_GRUPOS = [
 ] as const;
 export type NotificacaoGrupo = (typeof NOTIFICACAO_GRUPOS)[number]["id"];
 
+/**
+ * Tipos que nunca viram notificação do navegador. Mensagem de WhatsApp tem o
+ * ícone próprio e volume alto (decisão de 2026-10-08, mantida em 2026-11-13).
+ * Espelha os `null` de `TITULO_PUSH` na API — um teste confere os dois.
+ */
+export const NOTIFICACAO_TIPOS_SEM_NAVEGADOR: readonly NotificacaoTipo[] = [
+  "whatsapp_mensagem",
+];
+
 export const updateNotificacoesSilenciadasSchema = z.object({
   notificacoesSilenciadas: z
     .array(notificacaoTipoSchema)
     .max(NOTIFICACAO_TIPOS.length)
     .describe("Tipos que o usuário desligou do sino; vazio = recebe todos"),
+  navegadorSilenciadas: z
+    .array(notificacaoTipoSchema)
+    .max(NOTIFICACAO_TIPOS.length)
+    .describe(
+      "Tipos que ficam no sino mas não viram notificação do navegador; vazio = todos vão",
+    ),
 });
 export type UpdateNotificacoesSilenciadasInput = z.infer<
   typeof updateNotificacoesSilenciadasSchema

@@ -265,6 +265,9 @@ model Usuario {
   // Lista do que NÃO quer (tipo novo nasce ligado). registrarNotificacao não
   // grava o tipo silenciado — some do sino e do push do celular juntos.
   notificacoesSilenciadas NotificacaoTipo[] @default([])
+  // Ficam no sino, mas não viram notificação do navegador (push). Só faz
+  // sentido para tipo ligado no sino: o push sai do registro do sino.
+  navegadorSilenciadas    NotificacaoTipo[] @default([])
   telefone       String?
   celular        String?
   dataNascimento DateTime?

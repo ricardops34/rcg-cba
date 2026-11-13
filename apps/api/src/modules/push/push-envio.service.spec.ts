@@ -1,5 +1,6 @@
 import { PushEnvioService } from './push-envio.service';
-import { rotaSegura } from './push-texto';
+import { NOTIFICACAO_TIPOS_SEM_NAVEGADOR } from '@plataforma/contracts';
+import { rotaSegura, TITULO_PUSH } from './push-texto';
 
 describe('PushEnvioService', () => {
   const agora = new Date();
@@ -10,6 +11,7 @@ describe('PushEnvioService', () => {
     rota: '/crm/orcamentos/1',
     referenciaId: 'orc-1',
     criadaEm: agora,
+    foraDoNavegador: false,
     ...over,
   });
 
@@ -73,6 +75,20 @@ describe('PushEnvioService', () => {
     ]);
     await velho.service.passar();
     expect(velho.push.enviarParaUsuario).not.toHaveBeenCalled();
+  });
+
+  it('tipo desmarcado na coluna Navegador do perfil fica só no sino', async () => {
+    const { service, push } = montar([linha({ foraDoNavegador: true })]);
+    await service.passar();
+    expect(push.enviarParaUsuario).not.toHaveBeenCalled();
+  });
+
+  it('a lista de tipos sem navegador do contrato bate com TITULO_PUSH', () => {
+    const semPush = Object.entries(TITULO_PUSH)
+      .filter(([, titulo]) => titulo === null)
+      .map(([tipo]) => tipo)
+      .sort();
+    expect([...NOTIFICACAO_TIPOS_SEM_NAVEGADOR].sort()).toEqual(semPush);
   });
 
   it('sem nenhum aparelho apto, nem lê a fila', async () => {

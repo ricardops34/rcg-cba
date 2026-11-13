@@ -119,7 +119,7 @@ export function FaixaAtivarAvisos() {
         ) : (
           <>
             {motivoSemPush()}{" "}
-            <Link href="/perfil#conta" className="font-semibold text-primary underline">
+            <Link href="/perfil#notificacoes" className="font-semibold text-primary underline">
               Ver como
             </Link>
           </>

@@ -66,7 +66,7 @@ export function AppCelularLogado() {
       <Smartphone className="size-4 shrink-0 text-primary" />
       <span className="min-w-0 flex-1">
         Instale o app para abrir pelo ícone e receber os avisos no celular.{" "}
-        <Link href="/perfil#conta" onClick={dispensar} className="font-semibold text-primary underline">
+        <Link href="/perfil#notificacoes" onClick={dispensar} className="font-semibold text-primary underline">
           Ver como
         </Link>
       </span>

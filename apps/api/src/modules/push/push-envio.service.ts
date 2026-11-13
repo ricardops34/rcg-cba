@@ -28,6 +28,8 @@ interface LinhaFila {
   rota: string | null;
   referenciaId: string | null;
   criadaEm: Date;
+  /** O destinatário desmarcou este tipo na coluna Navegador do perfil. */
+  foraDoNavegador: boolean;
 }
 
 /**
@@ -106,13 +108,21 @@ export class PushEnvioService implements OnModuleInit, OnModuleDestroy {
           LIMIT ${LOTE}
           FOR UPDATE SKIP LOCKED
         )
-        RETURNING "id", "usuarioId", "tipo", "rota", "referenciaId", "criadaEm"
+        RETURNING "id", "usuarioId", "tipo", "rota", "referenciaId", "criadaEm",
+          -- Coluna Navegador de "Meu perfil > Notificações". Usuário não
+          -- visível (RLS) = false: na dúvida, avisa.
+          COALESCE((
+            SELECT "notificacoes"."tipo" = ANY (u."navegadorSilenciadas")
+            FROM "usuarios" u WHERE u."id" = "notificacoes"."usuarioId"
+          ), false) AS "foraDoNavegador"
       `,
     );
     const limite = Date.now() - VALIDADE_MS;
     for (const n of linhas) {
       const titulo = TITULO_PUSH[n.tipo];
       if (!titulo || !aptos.has(n.usuarioId)) continue;
+      // Fica no sino, mas a pessoa não quer como notificação do navegador.
+      if (n.foraDoNavegador) continue;
       if (n.criadaEm.getTime() < limite) continue;
       const expediente = await this.horarios.verificar(n.usuarioId, empresaId);
       if (!expediente.dentro) continue;

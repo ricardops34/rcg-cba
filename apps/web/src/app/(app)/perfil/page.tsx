@@ -95,12 +95,14 @@ export default function PerfilPage() {
           <div className="space-y-4">
             <TelaInicialCard />
             <TamanhoPaginaCard />
-            <AppCelularCard />
           </div>
         </TabsContent>
 
-        {/* Uma coluna só: a lista é longa e lida de cima para baixo. */}
-        <TabsContent value="notificacoes" className="max-w-3xl">
+        {/* Uma coluna só: a lista é longa e lida de cima para baixo. Primeiro
+            ligar as notificações do navegador neste aparelho (no celular, o
+            mesmo cartão ensina a instalar o app); depois, o que recebe. */}
+        <TabsContent value="notificacoes" className="max-w-3xl space-y-4">
+          <AppCelularCard />
           <NotificacoesSinoCard />
         </TabsContent>
 

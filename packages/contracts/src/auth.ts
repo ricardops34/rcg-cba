@@ -306,6 +306,10 @@ export const currentUserSchema = z.object({
     .array(notificacaoTipoSchema)
     .optional()
     .describe("Tipos de notificação que o usuário desligou do sino"),
+  navegadorSilenciadas: z
+    .array(notificacaoTipoSchema)
+    .optional()
+    .describe("Tipos que ficam no sino mas não viram notificação do navegador"),
 });
 export type CurrentUser = z.infer<typeof currentUserSchema>;
 

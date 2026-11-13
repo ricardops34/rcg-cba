@@ -354,14 +354,16 @@ export class AuthController {
   }
 
   @ApiOperation({
-    summary: 'Escolher as notificações do próprio sino',
+    summary: 'Escolher as notificações do próprio sino e do navegador',
     description:
-      'Grava os tipos de notificação que o próprio usuário desligou, em todas as empresas. ' +
-      'Tipo silenciado deixa de ser gravado (não aparece no sino nem vai para o celular) e o ' +
-      'que já estava pendente dele é marcado como lido. Lista vazia = recebe todos.',
+      'Grava, para o próprio usuário e em todas as empresas, os tipos desligados do sino ' +
+      '(notificacoesSilenciadas: não são gravados, nem viram notificação do navegador; o que ' +
+      'estava pendente é marcado como lido) e os que ficam no sino mas não vão para o ' +
+      'navegador (navegadorSilenciadas). Listas vazias = recebe tudo.',
   })
   @ApiBodyExample({
-    notificacoesSilenciadas: ['titulo_vencido', 'roteiro_iniciado'],
+    notificacoesSilenciadas: ['titulo_vencido'],
+    navegadorSilenciadas: ['roteiro_iniciado'],
   })
   @ApiResponse({ status: 400, description: 'Tipo de notificação inexistente' })
   @ApiBearerAuth()
@@ -375,6 +377,7 @@ export class AuthController {
       user.id,
       user.empresaAtivaId,
       dto.notificacoesSilenciadas,
+      dto.navegadorSilenciadas,
     );
   }
 }

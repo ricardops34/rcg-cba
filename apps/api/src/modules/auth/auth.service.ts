@@ -1254,27 +1254,38 @@ export class AuthService {
       tamanhoPaginaUsuario: usuario.tamanhoPagina,
       tamanhoPaginaPerfil: perfil.tamanhoPagina,
       notificacoesSilenciadas: usuario.notificacoesSilenciadas,
+      navegadorSilenciadas: usuario.navegadorSilenciadas,
     };
   }
 
   /**
-   * Tipos de notificação que o próprio usuário desligou do sino ("Meu perfil
-   * > Notificações"). Vale em todas as empresas, como o resto do perfil.
+   * O que o próprio usuário escolheu em "Meu perfil > Notificações", nas duas
+   * colunas: o que sai do sino e o que fica no sino mas não vira notificação
+   * do navegador. Vale em todas as empresas, como o resto do perfil.
    *
    * O que já estava no sino de um tipo recém-desligado é marcado como lido:
-   * quem desliga quer o sino limpo agora, e não só daqui para frente. Aí o
-   * push também para, porque marca lida não volta para a fila.
+   * quem desliga quer o sino limpo agora, e não só daqui para frente.
    */
   async updateNotificacoesSilenciadas(
     usuarioId: string,
     empresaAtivaId: string,
     tipos: NotificacaoTipo[],
+    navegador: NotificacaoTipo[],
   ) {
     const silenciadas = [...new Set(tipos)];
+    // Tipo fora do sino já não vai para o navegador (o push sai do registro
+    // do sino); guardá-lo aqui também só criaria duas verdades.
+    const navegadorSilenciadas = [...new Set(navegador)].filter(
+      (t) => !silenciadas.includes(t),
+    );
     await this.prisma.withUsuario(usuarioId, (tx) =>
       tx.usuario.update({
         where: { id: usuarioId },
-        data: { notificacoesSilenciadas: silenciadas, updatedBy: usuarioId },
+        data: {
+          notificacoesSilenciadas: silenciadas,
+          navegadorSilenciadas,
+          updatedBy: usuarioId,
+        },
       }),
     );
     if (silenciadas.length > 0) {
