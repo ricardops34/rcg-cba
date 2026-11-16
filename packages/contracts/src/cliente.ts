@@ -104,6 +104,11 @@ const vendedorVinculoSchema = z.object({
   id: z.string().uuid(),
   nome: z.string(),
   nomeReduzido: z.string().nullable(),
+  // Validade do vendedor: o orçamento só libera a troca quando ele está
+  // excluído, inativo ou desligado.
+  ativo: z.boolean().optional(),
+  desligado: z.boolean().optional(),
+  deletedAt: z.coerce.date().nullable().optional(),
 });
 
 export const clienteSchema = clienteCreateSchema.extend({

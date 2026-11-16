@@ -132,7 +132,16 @@ const SORT_FIELDS = new Set([
 
 // Dados do vendedor anexados às respostas (coluna "Vendedor" da listagem).
 const VENDEDOR_SELECT = {
-  select: { id: true, nome: true, nomeReduzido: true },
+  // ativo/desligado/deletedAt: o orçamento só libera a troca do vendedor
+  // quando o do cliente está inválido (ver OrcamentosService.vendedorDoOrcamento).
+  select: {
+    id: true,
+    nome: true,
+    nomeReduzido: true,
+    ativo: true,
+    desligado: true,
+    deletedAt: true,
+  },
 };
 
 // Dados da tabela de preço vinculada ao cliente (Posição de Cliente usa isso

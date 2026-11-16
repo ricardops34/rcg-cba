@@ -837,31 +837,61 @@ export function OrcamentoFormContent({
    * orçar.
    */
   const vendedorDoCliente = clienteSelecionadoQuery.data?.vendedorId ?? null;
+  const cadastroVendedorCliente = clienteSelecionadoQuery.data?.vendedor;
   const nomeVendedorDoCliente =
-    clienteSelecionadoQuery.data?.vendedor?.nomeReduzido ||
-    clienteSelecionadoQuery.data?.vendedor?.nome ||
+    cadastroVendedorCliente?.nomeReduzido ||
+    cadastroVendedorCliente?.nome ||
     opcoesVendedor.find((v) => v.id === vendedorDoCliente)?.nomeReduzido ||
     opcoesVendedor.find((v) => v.id === vendedorDoCliente)?.nome ||
     "—";
+  // Vendedor do cliente excluído, inativo ou desligado não responde mais pela
+  // carteira: aí (e só aí, ou sem vendedor) a troca é liberada — a mesma
+  // regra de OrcamentosService.vendedorDoOrcamento.
+  const vendedorDoClienteInvalido =
+    !!vendedorDoCliente &&
+    !!cadastroVendedorCliente &&
+    (cadastroVendedorCliente.ativo === false ||
+      !!cadastroVendedorCliente.desligado ||
+      !!cadastroVendedorCliente.deletedAt);
+
+  const meuVendedorId = vendedoresEscopoQuery.data?.meuVendedorId;
+  // Avulso que já era avulso, na edição: fica o vendedor gravado (quem edita
+  // não toma o orçamento para si). Avulso novo: o vendedor de quem usa o
+  // sistema. Cliente com vendedor válido: o da carteira.
+  const avulsoGravado = !!orcamento && !copiando && !orcamento.clienteId && avulso;
+  const vendedorTravado: string | null = clienteId
+    ? vendedorDoClienteInvalido
+      ? null
+      : vendedorDoCliente
+    : avulso
+      ? avulsoGravado
+        ? (orcamento?.vendedorId ?? null)
+        : (meuVendedorId ?? null)
+      : null;
+  const nomeVendedorTravado =
+    vendedorTravado && vendedorTravado === vendedorDoCliente
+      ? nomeVendedorDoCliente
+      : opcoesVendedor.find((v) => v.id === vendedorTravado)?.nomeReduzido ||
+        opcoesVendedor.find((v) => v.id === vendedorTravado)?.nome ||
+        orcamento?.vendedor?.nomeReduzido ||
+        orcamento?.vendedor?.nome ||
+        "—";
   useEffect(() => {
-    if (!vendedorDoCliente) return;
-    // Cópia grava um orçamento novo, então segue a regra da criação.
-    if (orcamento && !copiando && clienteId === orcamento.clienteId) return;
-    if (form.getValues("vendedorId") === vendedorDoCliente) return;
-    form.setValue("vendedorId", vendedorDoCliente);
+    if (!vendedorTravado) return;
+    if (form.getValues("vendedorId") === vendedorTravado) return;
+    form.setValue("vendedorId", vendedorTravado);
     // A oportunidade é filtrada por vendedor — a anterior não vale mais.
     form.setValue("oportunidadeId", null);
-  }, [vendedorDoCliente, orcamento, copiando, clienteId, form]);
+  }, [vendedorTravado, form]);
 
   // Enquanto não houver cliente escolhido (criação pelo menu, sem
   // ?clienteId=), sugere o próprio vendedor do usuário logado, se houver
   // vínculo — só na primeira carga; o vendedor do cliente assume depois.
   const [vendedorPadraoAplicado, setVendedorPadraoAplicado] = useState(false);
-  const meuVendedorId = vendedoresEscopoQuery.data?.meuVendedorId;
   // Quem tem vendedor próprio e está num cliente de outro vendedor recebe o
   // aviso de que está atendendo a carteira alheia.
   const atendendoOutraCarteira =
-    !!meuVendedorId && !!vendedorDoCliente && meuVendedorId !== vendedorDoCliente;
+    !!clienteId && !!meuVendedorId && !!vendedorTravado && meuVendedorId !== vendedorTravado;
   useEffect(() => {
     if (orcamento || vendedorPadraoAplicado || clienteIdPadrao) return;
     // Cliente já escolhido: o vendedor é o dele, nunca o do usuário logado
@@ -1760,34 +1790,33 @@ export function OrcamentoFormContent({
                   </label>
                 )}
               </Field>
-              {/* Vendedor é o do cadastro do cliente, e **não se escolhe
-                  aqui**: o servidor sobrescreve de qualquer forma
-                  (OrcamentosService.create/update), então um seletor só
-                  prometeria uma troca que não acontece. Vira campo de leitura.
-
-                  O seletor sobrevive num caso só: cliente sem vendedor
-                  cadastrado, em que não há o que herdar e sem escolher não
-                  haveria como orçar. */}
+              {/* Regra do vendedor (decisão de 2026-11-16, espelhada em
+                  OrcamentosService.vendedorDoOrcamento):
+                  - cliente com vendedor válido → o da carteira, bloqueado;
+                  - cliente sem vendedor ou com vendedor inválido/bloqueado →
+                    liberado para escolher;
+                  - não cliente (avulso) → o vendedor de quem usa o sistema.
+                  Bloqueado é seletor desabilitado, não texto solto: quem
+                  atende outra carteira precisa ver de cara quem é o vendedor. */}
               <Field data-tour="orcamento-vendedor" data-invalid={!!form.formState.errors.vendedorId}>
                 <FieldLabel htmlFor="vendedorId">Vendedor</FieldLabel>
-                {vendedorDoCliente ? (
+                {vendedorTravado ? (
                   <>
-                    {/* Seletor bloqueado, e não texto solto: quem atende outra
-                        carteira precisa ver de cara quem é o vendedor do
-                        cliente — só não pode trocar (decisão de 2026-11-16). */}
-                    <Select value={vendedorDoCliente} disabled>
+                    <Select value={vendedorTravado} disabled>
                       <SelectTrigger id="vendedorId" className="w-full">
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value={vendedorDoCliente}>{nomeVendedorDoCliente}</SelectItem>
+                        <SelectItem value={vendedorTravado}>{nomeVendedorTravado}</SelectItem>
                       </SelectContent>
                     </Select>
                     <FieldDescription>
-                      {atendendoOutraCarteira ? (
+                      {!clienteId ? (
+                        "Orçamento para não cliente fica com o vendedor de quem está atendendo."
+                      ) : atendendoOutraCarteira ? (
                         <>
                           Você está atendendo um cliente da carteira de{" "}
-                          <strong>{nomeVendedorDoCliente}</strong> — o orçamento fica nessa
+                          <strong>{nomeVendedorTravado}</strong> — o orçamento fica nessa
                           carteira e o vendedor não pode ser trocado.
                         </>
                       ) : (
@@ -1817,9 +1846,18 @@ export function OrcamentoFormContent({
                         ))}
                       </SelectContent>
                     </Select>
-                    <FieldDescription>
-                      Cliente sem vendedor cadastrado — selecione o responsável.
-                    </FieldDescription>
+                    {clienteId && (
+                      <FieldDescription>
+                        {vendedorDoClienteInvalido ? (
+                          <>
+                            O vendedor do cadastro do cliente (<strong>{nomeVendedorDoCliente}</strong>)
+                            está inativo ou bloqueado — selecione o responsável.
+                          </>
+                        ) : (
+                          "Cliente sem vendedor cadastrado — selecione o responsável."
+                        )}
+                      </FieldDescription>
+                    )}
                   </>
                 )}
                 <FieldError errors={[form.formState.errors.vendedorId]} />

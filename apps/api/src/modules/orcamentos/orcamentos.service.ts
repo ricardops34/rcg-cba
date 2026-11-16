@@ -240,6 +240,81 @@ export class OrcamentosService {
     return cliente.vendedorId;
   }
 
+  /**
+   * Vendedor que pode responder por um orçamento: existe nesta empresa, não
+   * foi excluído, está ativo e não foi desligado.
+   */
+  private async vendedorValido(
+    tx: TenantTx,
+    empresaId: string,
+    vendedorId: string | null | undefined,
+  ): Promise<boolean> {
+    if (!vendedorId) return false;
+    const vendedor = await tx.vendedor.findFirst({
+      where: {
+        id: vendedorId,
+        empresaId,
+        deletedAt: null,
+        ativo: true,
+        desligado: false,
+      },
+      select: { id: true },
+    });
+    return !!vendedor;
+  }
+
+  /**
+   * Quem é o vendedor do orçamento (decisão de 2026-11-16):
+   *
+   * - **cliente com vendedor válido** → o vendedor da carteira, sempre; o que
+   *   vier do payload é ignorado;
+   * - **cliente sem vendedor, ou com vendedor inválido** (excluído, inativo,
+   *   desligado) → o escolhido na tela, que precisa ser válido e estar no
+   *   escopo de quem grava;
+   * - **não cliente (avulso)** → o vendedor de quem está usando o sistema.
+   *   Só quem não tem vendedor ligado (o administrador, por exemplo) escolhe.
+   *
+   * `null` = cliente com vendedor inválido e nada escolhido: o chamador decide
+   * (a edição mantém o gravado; a criação recusa).
+   */
+  private async vendedorDoOrcamento(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    escopo: EscopoVendedores,
+    args: {
+      clienteId: string | null;
+      vendedorDoCliente: string | null;
+      informado: string | null | undefined;
+    },
+  ): Promise<string | null> {
+    if (args.clienteId) {
+      if (await this.vendedorValido(tx, empresaId, args.vendedorDoCliente)) {
+        return args.vendedorDoCliente;
+      }
+    } else {
+      const meu = await tx.vendedor.findFirst({
+        where: {
+          usuarioId: user.id,
+          empresaId,
+          deletedAt: null,
+          ativo: true,
+          desligado: false,
+        },
+        select: { id: true },
+      });
+      if (meu) return meu.id;
+    }
+    if (!args.informado) return null;
+    if (!(await this.vendedorValido(tx, empresaId, args.informado))) {
+      throw new BadRequestException(
+        'Vendedor inválido — escolha um vendedor ativo',
+      );
+    }
+    this.garantirVendedorNoEscopo(escopo, args.informado);
+    return args.informado;
+  }
+
   private async garantirOportunidadeNoEscopo(
     tx: TenantTx,
     empresaId: string,
@@ -660,11 +735,20 @@ export class OrcamentosService {
       const vendedorDoCliente = clienteId
         ? await this.garantirClienteNoEscopo(tx, empresaId, escopo, clienteId)
         : null;
-      // O vendedor do orçamento é o do cadastro do cliente — o que vier no
-      // payload só vale se o cliente não tiver vendedor vinculado (ou se não
-      // houver cliente, que é o orçamento para quem ainda não o é).
-      const vendedorId = vendedorDoCliente ?? input.vendedorId;
-      this.garantirVendedorNoEscopo(escopo, vendedorId);
+      // Regra em vendedorDoOrcamento: vendedor da carteira, ou o escolhido se
+      // o do cliente for vazio/inválido, ou o do usuário no avulso.
+      const vendedorId = await this.vendedorDoOrcamento(
+        tx,
+        empresaId,
+        user,
+        escopo,
+        { clienteId, vendedorDoCliente, informado: input.vendedorId },
+      );
+      if (!vendedorId) {
+        throw new BadRequestException(
+          'O vendedor do cliente está inválido — selecione o vendedor',
+        );
+      }
       if (input.oportunidadeId) {
         await this.garantirOportunidadeNoEscopo(
           tx,
@@ -850,17 +934,35 @@ export class OrcamentosService {
         );
       }
 
-      // O vendedor não se troca por edição: ele acompanha o cliente. Trocar o
-      // cliente traz junto o vendedor do novo cadastro; sem troca de cliente,
-      // fica o que já estava gravado, mesmo que o payload traga outro.
+      // O vendedor acompanha o cliente (regra em vendedorDoOrcamento). Sem
+      // troca de cliente, o do cadastro vale se for válido — corrige o
+      // orçamento de cliente que mudou de carteira —, e o escolhido na tela só
+      // entra se o do cliente estiver vazio/inválido. O avulso que continua
+      // avulso mantém o gravado: quem edita não toma o orçamento para si.
       const clienteTrocado =
         (!!input.clienteId && input.clienteId !== orcamento.clienteId) ||
         virouAvulso;
+      if (clienteId && !input.clienteId) {
+        vendedorDoCliente =
+          (
+            await tx.cliente.findFirst({
+              where: { id: clienteId, empresaId },
+              select: { vendedorId: true },
+            })
+          )?.vendedorId ?? null;
+      }
       const vendedorId =
-        clienteTrocado && vendedorDoCliente
-          ? vendedorDoCliente
+        clienteTrocado || clienteId
+          ? ((await this.vendedorDoOrcamento(tx, empresaId, user, escopo, {
+              clienteId,
+              vendedorDoCliente,
+              // Devolver o mesmo já gravado não é escolha: mantém sem validar.
+              informado:
+                input.vendedorId !== orcamento.vendedorId
+                  ? input.vendedorId
+                  : undefined,
+            })) ?? orcamento.vendedorId)
           : orcamento.vendedorId;
-      this.garantirVendedorNoEscopo(escopo, vendedorId);
 
       const { itens, ...header } = {
         ...input,
