@@ -674,6 +674,7 @@ export function OrcamentoFormContent({
     dataValidade: null,
     dataRetorno: null,
     observacao: "",
+    pedidoCompraCliente: "",
     ativo: true,
     itens: [],
   };
@@ -697,6 +698,7 @@ export function OrcamentoFormContent({
           dataValidade: orcamento.dataValidade ? new Date(orcamento.dataValidade) : null,
           dataRetorno: orcamento.dataRetorno ? new Date(orcamento.dataRetorno) : null,
           observacao: orcamento.observacao ?? "",
+          pedidoCompraCliente: orcamento.pedidoCompraCliente ?? "",
           ativo: orcamento.ativo,
           itens: orcamento.itens.map((i) => ({
             produtoId: i.produtoId,
@@ -1534,6 +1536,8 @@ export function OrcamentoFormContent({
     setCopiando(true);
     setSalvoNaSessao(null);
     form.setValue("status", "rascunho");
+    // A ordem de compra é de um pedido só: o novo orçamento começa sem ela.
+    form.setValue("pedidoCompraCliente", "");
     if (diasValidade != null) {
       const validade = new Date();
       validade.setDate(validade.getDate() + diasValidade);
@@ -2041,6 +2045,21 @@ export function OrcamentoFormContent({
                 )}
               </Field>
             </div>
+
+            {/* Ordem/pedido de compra do cliente (2026-11-16): vai para o pedido no
+                ERP — C6_PEDCLI, que tem 9 caracteres, e o texto no C5_XOBSVEN. */}
+            <Field data-invalid={!!form.formState.errors.pedidoCompraCliente} className="sm:max-w-xs">
+              <FieldLabel htmlFor="pedidoCompraCliente">Ordem/Pedido de compra do cliente</FieldLabel>
+              <Input
+                id="pedidoCompraCliente"
+                maxLength={9}
+                autoComplete="off"
+                placeholder="Só quando o cliente exigir"
+                {...form.register("pedidoCompraCliente")}
+              />
+              <FieldDescription>Até 9 caracteres. Vai para o pedido no ERP.</FieldDescription>
+              <FieldError errors={[form.formState.errors.pedidoCompraCliente]} />
+            </Field>
 
             <Field>
               <FieldLabel htmlFor="observacao">Observação</FieldLabel>

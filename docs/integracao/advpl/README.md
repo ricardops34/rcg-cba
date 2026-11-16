@@ -704,6 +704,16 @@ do pedido some quando o superior liberou sem pedido. A plataforma manda
 autorização vigente. Se em algum dicionário o campo for caractere, o texto é
 cortado no tamanho dele, com WARN no log, para não derrubar o pedido.
 
+**Ordem/pedido de compra do cliente e vendedor que incluiu** (decisão de
+16/11/2026). O vendedor informa no orçamento, quando o cliente exige, a ordem de
+compra (`pedidoCompraCliente`, até 9 caracteres). Ela vai para o `C6_PEDCLI` de
+todos os itens e abre o `C5_XOBSVEN`: `Ordem/Pedido de compra n.: <número> |
+<observação> | <desconto>` — na frente, para não se perder se o campo for
+cortado. Quando quem incluiu o orçamento não é o vendedor da carteira (quem
+atende outras carteiras, supervisor), a plataforma manda
+`vendedorInclusaoChave` e o pedido grava o código no `C5_XVDMAX`; vazio quando
+foi o próprio vendedor. Os dois campos só entram se existirem no dicionário.
+
 **Recusa do `MATA410`.** O `BJErroOrc` grava o erro na SZZ e avisa a
 plataforma (`PATCH /integracao/orcamentos/pendentes/{id}/erro`): o orçamento
 mostra **Erro de integração** com o motivo e sai da fila de pendentes — o

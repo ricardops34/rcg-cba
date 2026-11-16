@@ -4192,6 +4192,13 @@ model Orcamento {
   // vendedor retomar contato, que pode resultar num novo orçamento.
   dataRetorno         DateTime?
   observacao          String?
+  /// Ordem/pedido de compra do cliente, quando ele exige (2026-11-16). Vai para o
+  /// pedido no ERP: C6_PEDCLI (9 caracteres) e o texto no C5_XOBSVEN.
+  pedidoCompraCliente String?         @db.VarChar(9)
+  /// Vendedor de quem incluiu o orçamento, só quando é outro que não o da
+  /// carteira (atende outras carteiras). Vai para o C5_XVDMAX. Sem relação: é
+  /// rastro de quem digitou, gravado na criação (2026-11-16).
+  vendedorInclusaoId  String?
   vlrTotal            Float           @default(0)
   ativo               Boolean         @default(true)
 

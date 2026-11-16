@@ -108,12 +108,30 @@ export class IntegracaoOrcamentosService {
         })
       : [];
     const nomes = new Map(usuarios.map((u) => [u.id, u.nome]));
-    return rows.map((r) => this.paraLeitura(r, nomes));
+    // Vendedor de quem incluiu (C5_XVDMAX): o orçamento guarda só o id.
+    const idsInclusao = [
+      ...new Set(
+        rows
+          .map((r) => r.vendedorInclusaoId)
+          .filter((id): id is string => !!id),
+      ),
+    ];
+    const vendedoresInclusao = idsInclusao.length
+      ? await tx.vendedor.findMany({
+          where: { id: { in: idsInclusao } },
+          select: { id: true, chave: true },
+        })
+      : [];
+    const chavesInclusao = new Map(
+      vendedoresInclusao.map((v) => [v.id, v.chave]),
+    );
+    return rows.map((r) => this.paraLeitura(r, nomes, chavesInclusao));
   }
 
   private paraLeitura(
     row: OrcamentoComRelacoes,
     nomes: Map<string, string>,
+    chavesInclusao: Map<string, string | null> = new Map(),
   ): IntegracaoOrcamento {
     // Autorização de desconto vigente: vai para o pedido no ERP (C5_XOBSVEN,
     // decisão do usuário 2026-11-10 — quem, quando e por quê). Só a vigente:
@@ -132,6 +150,11 @@ export class IntegracaoOrcamentosService {
       dataValidade: row.dataValidade,
       dataRetorno: row.dataRetorno,
       observacao: row.observacao,
+      pedidoCompraCliente: row.pedidoCompraCliente,
+      // Vendedor sem chave (cadastrado só na plataforma) não tem código no ERP.
+      vendedorInclusaoChave: row.vendedorInclusaoId
+        ? (chavesInclusao.get(row.vendedorInclusaoId) ?? null)
+        : null,
       // O pedido do vendedor sobrevive à autorização (só a recusa o apaga);
       // nulo quando o superior liberou sem pedido.
       descontoSolicitadoPor:

@@ -507,6 +507,8 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 	Local cAutEm   := ""
 	Local cJustDes := ""
 	Local cTxtDes  := ""
+	Local cPedCli  := ""
+	Local cVdInc   := ""
 	Local nTamObs  := 0
 	Local cChvCli  := ""
 	Local cLogErr  := ""
@@ -532,6 +534,12 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 	cObs    := AllTrim(cValToChar(oOrc:GetJsonObject("observacao")))
 	aItJson := oOrc:GetJsonObject("itens")
 
+	// Decisao do usuario (16/11/2026): ordem/pedido de compra do cliente, quando
+	// ele exige, e o vendedor de quem incluiu o orcamento em carteira alheia.
+	// Os dois chegam null quando nao se aplicam.
+	cPedCli := AllTrim(cValToChar(oOrc:GetJsonObject("pedidoCompraCliente")))     // C6_PEDCLI e texto no C5_XOBSVEN
+	cVdInc  := AllTrim(cValToChar(oOrc:GetJsonObject("vendedorInclusaoChave")))   // C5_XVDMAX
+
 	// Liberacao do desconto acima do maximo: so vem preenchida quando ha
 	// autorizacao vigente. A data/hora ja chega no horario local (dd/mm/aaaa hh:mm).
 	// O pedido do vendedor vem vazio quando o superior liberou sem pedido.
@@ -546,6 +554,10 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 	// guarda so o codigo, sem filial e sem hifen.
 	cVend := U_BJSEMFIL(cVend, {"A3_FILIAL", "A3_COD"})
 	cCond := U_BJSEMFIL(cCond, {"E4_FILIAL", "E4_CODIGO"})
+
+	If !Empty(cVdInc)
+		cVdInc := U_BJSEMFIL(cVdInc, {"A3_FILIAL", "A3_COD"})
+	EndIf
 
 	If Empty(cChvCli) .Or. ValType(aItJson) != "A" .Or. Len(aItJson) == 0
 		BJErroOrc(cSeqMae, cSeq, cIdPlat, "Orcamento sem cliente ou sem itens. Pedido nao foi criado.")
@@ -610,6 +622,12 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 
 	If !Empty(cVend)
 		aAdd(aCabec, {"C5_VEND1", cVend, Nil})
+	EndIf
+
+	// Vendedor que incluiu o orcamento quando nao e o da carteira (quem atende
+	// outras carteiras, supervisor). Vazio quando foi o proprio vendedor.
+	If !Empty(cVdInc) .And. SC5->(FieldPos("C5_XVDMAX")) > 0
+		aAdd(aCabec, {"C5_XVDMAX", cVdInc, Nil})
 	EndIf
 
 	If !Empty(cCond)
@@ -707,6 +725,16 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 		EndIf
 	EndIf
 
+	// A ordem de compra vai na frente do texto: se o campo for caractere e o
+	// texto for cortado, ela e a parte que nao pode se perder.
+	If !Empty(cPedCli)
+		If Empty(cObs)
+			cObs := "Ordem/Pedido de compra n.: " + cPedCli
+		Else
+			cObs := "Ordem/Pedido de compra n.: " + cPedCli + " | " + cObs
+		EndIf
+	EndIf
+
 	// A observacao so entra se o campo existir neste dicionario
 	If !Empty(cObs) .And. SC5->(FieldPos("C5_XOBSVEN")) > 0
 		// Campo caractere: corta no tamanho do dicionario, senao o ExecAuto pode
@@ -771,6 +799,11 @@ Static Function BJGeraPed(oOrc, cIdPlat, cSeq, cSeqMae)
 		EndIf
 		If !Empty(SB1->B1_LOCPAD)
 			aAdd(aLinha, {"C6_LOCAL", SB1->B1_LOCPAD, Nil})
+		EndIf
+		// Ordem de compra do cliente em todos os itens (C6_PEDCLI, 9 caracteres;
+		// a plataforma ja limita o tamanho).
+		If !Empty(cPedCli)
+			aAdd(aLinha, {"C6_PEDCLI", Left(cPedCli, TamSX3("C6_PEDCLI")[1]), Nil})
 		EndIf
 
 		aAdd(aItens, aLinha)

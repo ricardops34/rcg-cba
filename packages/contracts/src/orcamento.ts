@@ -217,6 +217,15 @@ const orcamentoCreateBase = z.object({
   // orçamento — ver OrcamentosService.
   dataRetorno: z.coerce.date().nullable().optional(),
   observacao: z.string().trim().max(1000).optional().or(z.literal("")),
+  // Ordem/pedido de compra que o cliente exige no pedido. Vai para o C6_PEDCLI
+  // do ERP, que tem 9 caracteres — por isso o limite aqui.
+  pedidoCompraCliente: z
+    .string()
+    .trim()
+    .max(9, "No máximo 9 caracteres (tamanho do campo no ERP)")
+    .nullable()
+    .optional()
+    .or(z.literal("")),
   ativo: z.boolean().default(true),
   itens: z.array(orcamentoItemLinhaSchema).default([]),
 });
@@ -300,6 +309,7 @@ export const orcamentoSchema = z.object({
   dataValidade: z.string().datetime().nullable(),
   dataRetorno: z.string().datetime().nullable(),
   observacao: z.string().nullable(),
+  pedidoCompraCliente: z.string().nullable().optional(),
   vlrTotal: z.number(),
   ativo: z.boolean(),
   // Autorização de desconto (ver autorizacaoDescontoSituacao): preenchidas

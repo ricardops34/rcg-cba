@@ -764,11 +764,23 @@ export class OrcamentosService {
         user,
         vendedorDoCliente ?? vendedorId,
       );
+      // Quem incluiu, quando não é o vendedor da carteira (quem atende outras
+      // carteiras, supervisor): vai para o C5_XVDMAX do pedido (2026-11-16).
+      // Gravado aqui, na criação — o vínculo do usuário pode mudar depois.
+      const vendedorDeQuemInclui = await tx.vendedor.findFirst({
+        where: { usuarioId: user.id, empresaId, deletedAt: null },
+        select: { id: true },
+      });
+      const vendedorInclusaoId =
+        vendedorDeQuemInclui && vendedorDeQuemInclui.id !== vendedorId
+          ? vendedorDeQuemInclui.id
+          : null;
       const { itens, ...header } = {
         ...input,
         clienteId,
         ...(clienteId ? SEM_PROSPECT : {}),
         vendedorId,
+        vendedorInclusaoId,
         origem,
         ...(opcoes.conversaId
           ? { canalOrigem: 'whatsapp', conversaId: opcoes.conversaId }

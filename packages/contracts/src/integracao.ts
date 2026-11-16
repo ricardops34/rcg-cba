@@ -1994,6 +1994,20 @@ export type IntegracaoOrcamentoUpdate = z.infer<
 export const integracaoOrcamentoSchema = integracaoOrcamentoCreateSchema.extend(
   {
     id: z.string().uuid(),
+    // Só leitura (2026-11-16): ordem de compra do cliente e vendedor que
+    // incluiu o orçamento em carteira alheia, para o pedido no ERP.
+    pedidoCompraCliente: z
+      .string()
+      .nullable()
+      .describe(
+        "Ordem/pedido de compra do cliente (até 9 caracteres): C6_PEDCLI em cada item e o texto \"Ordem/Pedido de compra n.:\" no C5_XOBSVEN; null quando não informado",
+      ),
+    vendedorInclusaoChave: z
+      .string()
+      .nullable()
+      .describe(
+        "Chave do vendedor de quem incluiu o orçamento, quando não é o vendedor da carteira (C5_XVDMAX); null quando foi o próprio vendedor",
+      ),
     // Só leitura: o ERP grava no pedido (C5_XOBSVEN, junto da observação),
     // não envia de volta. Preenchidos só com o desconto autorizado agora.
     descontoSolicitadoPor: z
@@ -2098,6 +2112,8 @@ export const INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE: IntegracaoOrcamentoCreate = {
 export const INTEGRACAO_ORCAMENTO_EXAMPLE: IntegracaoOrcamento = {
   ...INTEGRACAO_ORCAMENTO_CREATE_EXAMPLE,
   id: "0d1e2f3a-4b5c-4d6e-7f80-91a2b3c4d5e6",
+  pedidoCompraCliente: "OC4512",
+  vendedorInclusaoChave: "01-000301",
   descontoSolicitadoPor: "JOAO",
   descontoSolicitacaoMotivo: "Cliente comparou com a concorrência e pediu o mesmo preço",
   descontoAutorizadoPor: "ALEXANDER MARCO DA SILVA VELASQUEZ",
