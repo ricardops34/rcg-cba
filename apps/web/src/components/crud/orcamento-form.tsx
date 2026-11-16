@@ -837,6 +837,12 @@ export function OrcamentoFormContent({
    * orçar.
    */
   const vendedorDoCliente = clienteSelecionadoQuery.data?.vendedorId ?? null;
+  const nomeVendedorDoCliente =
+    clienteSelecionadoQuery.data?.vendedor?.nomeReduzido ||
+    clienteSelecionadoQuery.data?.vendedor?.nome ||
+    opcoesVendedor.find((v) => v.id === vendedorDoCliente)?.nomeReduzido ||
+    opcoesVendedor.find((v) => v.id === vendedorDoCliente)?.nome ||
+    "—";
   useEffect(() => {
     if (!vendedorDoCliente) return;
     // Cópia grava um orçamento novo, então segue a regra da criação.
@@ -852,6 +858,10 @@ export function OrcamentoFormContent({
   // vínculo — só na primeira carga; o vendedor do cliente assume depois.
   const [vendedorPadraoAplicado, setVendedorPadraoAplicado] = useState(false);
   const meuVendedorId = vendedoresEscopoQuery.data?.meuVendedorId;
+  // Quem tem vendedor próprio e está num cliente de outro vendedor recebe o
+  // aviso de que está atendendo a carteira alheia.
+  const atendendoOutraCarteira =
+    !!meuVendedorId && !!vendedorDoCliente && meuVendedorId !== vendedorDoCliente;
   useEffect(() => {
     if (orcamento || vendedorPadraoAplicado || clienteIdPadrao) return;
     // Cliente já escolhido: o vendedor é o dele, nunca o do usuário logado
@@ -1762,20 +1772,28 @@ export function OrcamentoFormContent({
                 <FieldLabel htmlFor="vendedorId">Vendedor</FieldLabel>
                 {vendedorDoCliente ? (
                   <>
-                    <Input
-                      id="vendedorId"
-                      readOnly
-                      tabIndex={-1}
-                      className="cursor-default bg-muted/50"
-                      value={
-                        clienteSelecionadoQuery.data?.vendedor?.nomeReduzido ||
-                        clienteSelecionadoQuery.data?.vendedor?.nome ||
-                        opcoesVendedor.find((v) => v.id === vendedorId)?.nomeReduzido ||
-                        opcoesVendedor.find((v) => v.id === vendedorId)?.nome ||
-                        "—"
-                      }
-                    />
-                    <FieldDescription>Definido pelo cadastro do cliente.</FieldDescription>
+                    {/* Seletor bloqueado, e não texto solto: quem atende outra
+                        carteira precisa ver de cara quem é o vendedor do
+                        cliente — só não pode trocar (decisão de 2026-11-16). */}
+                    <Select value={vendedorDoCliente} disabled>
+                      <SelectTrigger id="vendedorId" className="w-full">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value={vendedorDoCliente}>{nomeVendedorDoCliente}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FieldDescription>
+                      {atendendoOutraCarteira ? (
+                        <>
+                          Você está atendendo um cliente da carteira de{" "}
+                          <strong>{nomeVendedorDoCliente}</strong> — o orçamento fica nessa
+                          carteira e o vendedor não pode ser trocado.
+                        </>
+                      ) : (
+                        "Vendedor da carteira do cliente — não pode ser trocado."
+                      )}
+                    </FieldDescription>
                   </>
                 ) : (
                   <>
