@@ -874,6 +874,10 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
  */
 export const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
   ...VENDEDOR_PERMISSOES,
+  // Autorizar e recusar a liberação de desconto: o pedido vai ao superior
+  // direto, que precisa poder decidir (decisão do usuário, 2026-11-16).
+  // Espelha a migration 20261116120000_perm_supervisao_aprovar_orcamentos.
+  orcamentos: ['visualizar', 'cadastrar', 'editar', 'aprovar'],
   'whatsapp-equipe': ['visualizar'],
   'whatsapp-recados': ['visualizar', 'cadastrar'],
   'whatsapp-historico': ['visualizar'],
