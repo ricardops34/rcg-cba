@@ -1122,10 +1122,23 @@ export class OrcamentosService {
     quem: QuemPede,
     id: string,
   ) {
-    // Usuário alcança a carteira dele; o cliente no WhatsApp alcança só os
-    // orçamentos dele. As travas da ação (autorização de desconto pendente,
-    // por exemplo) valem igual nos dois caminhos.
-    const recorte = await recorteDoSolicitante(tx, empresaId, quem);
+    // Usuário alcança o escopo de orçamentos (a carteira dele, ou a empresa
+    // toda se o vendedor tem "atende outras carteiras" — decisão de
+    // 2026-11-16: quem edita o orçamento alheio também solicita autorização,
+    // gera o PDF e, com a permissão de aprovar, autoriza/recusa). O cliente no
+    // WhatsApp alcança só os orçamentos dele. As travas da ação (autorização de
+    // desconto pendente, por exemplo) valem igual nos dois caminhos.
+    const recorte =
+      quem.tipo === 'usuario'
+        ? {
+            escopoVendedores: await resolverEscopoOrcamentos(
+              tx,
+              empresaId,
+              quem.user,
+            ),
+            clienteId: null,
+          }
+        : await recorteDoSolicitante(tx, empresaId, quem);
     const orcamento = await tx.orcamento.findFirst({
       where: {
         id,

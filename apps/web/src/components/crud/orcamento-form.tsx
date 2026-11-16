@@ -854,10 +854,13 @@ export function OrcamentoFormContent({
   const meuVendedorId = vendedoresEscopoQuery.data?.meuVendedorId;
   useEffect(() => {
     if (orcamento || vendedorPadraoAplicado || clienteIdPadrao) return;
+    // Cliente já escolhido: o vendedor é o dele, nunca o do usuário logado
+    // (vale também para quem atende outras carteiras).
+    if (clienteId) return;
     if (!meuVendedorId) return;
     form.setValue("vendedorId", meuVendedorId);
     setVendedorPadraoAplicado(true);
-  }, [orcamento, vendedorPadraoAplicado, clienteIdPadrao, meuVendedorId, form]);
+  }, [orcamento, vendedorPadraoAplicado, clienteIdPadrao, clienteId, meuVendedorId, form]);
 
   // O título é montado a partir do cliente e **não aparece na tela**: ele
   // serve para nomear o orçamento na Agenda e no histórico do cliente, não

@@ -122,7 +122,9 @@ export async function arvoreDoVendedor(
  * Permissão por vendedor (`Vendedor.atendeOutrasCarteiras`), não por perfil —
  * decisão de 2026-10-14. Vale no atendimento de WhatsApp
  * (`WhatsappAcoesService`) e, desde 2026-11-06, na rotina de orçamentos
- * (`resolverEscopoOrcamentos`); nenhuma outra tela olha este campo.
+ * (`resolverEscopoOrcamentos`) — inclusive, desde 2026-11-16, nas ações do
+ * orçamento (PDF, solicitar/autorizar/recusar desconto); nenhuma outra tela
+ * olha este campo.
  */
 export async function podeAtenderOutraCarteira(
   tx: TenantTx,
