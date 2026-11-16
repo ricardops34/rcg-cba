@@ -177,12 +177,10 @@ export async function registrarAtividadeOrcamento(
         }),
       ),
       descricao: descricao ?? orcamento.titulo,
-      // O pedido de liberação abre na Posição de Cliente: o superior decide
-      // com os títulos e o histórico do cliente à vista.
-      rota:
-        tipo === 'desconto_pendente' && orcamento.clienteId
-          ? `/comercial/posicao-cliente/${orcamento.clienteId}?aba=liberacoes`
-          : `/crm/orcamentos/${orcamento.id}`,
+      // Todos abrem no orçamento — inclusive o pedido de liberação, que até
+      // 2026-11-16 ia para a Posição de Cliente: o superior quer autorizar ou
+      // recusar ali mesmo, e os botões estão na tela do orçamento.
+      rota: `/crm/orcamentos/${orcamento.id}`,
       referenciaId: orcamento.id,
       // Quem registrou a resposta do cliente não precisa ser avisado dela;
       // o aviso existe para quando **outra pessoa** (supervisor, integração)

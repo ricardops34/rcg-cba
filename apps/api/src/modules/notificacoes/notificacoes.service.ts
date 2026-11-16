@@ -48,7 +48,13 @@ export class NotificacoesService {
           titulo: l.titulo,
           descricao: l.descricao,
           data: l.ocorridaEm.toISOString(),
-          rota: l.rota,
+          // Pedido de liberação de desconto abre no orçamento, onde estão
+          // Autorizar e Recusar (decisão de 2026-11-16). Os avisos gravados
+          // antes apontam para a Posição de Cliente; corrige-se na entrega.
+          rota:
+            l.tipo === 'desconto_pendente' && l.referenciaId
+              ? `/crm/orcamentos/${l.referenciaId}`
+              : l.rota,
           contador: l.contador,
         })),
       };
