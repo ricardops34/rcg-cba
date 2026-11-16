@@ -1,6 +1,7 @@
 import { Prisma } from '@prisma/client';
 import { numeroOrcamento } from '@plataforma/contracts';
 import type { TenantTx } from '../../common/prisma/prisma.service';
+import { rotaLiberacaoDesconto } from '../notificacoes/rota-da-atividade';
 import {
   registrarNotificacao,
   usuarioDoVendedor,
@@ -180,7 +181,10 @@ export async function registrarAtividadeOrcamento(
       // Todos abrem no orçamento — inclusive o pedido de liberação, que até
       // 2026-11-16 ia para a Posição de Cliente: o superior quer autorizar ou
       // recusar ali mesmo, e os botões estão na tela do orçamento.
-      rota: `/crm/orcamentos/${orcamento.id}`,
+      rota:
+        tipo === 'desconto_pendente'
+          ? rotaLiberacaoDesconto(orcamento.id)
+          : `/crm/orcamentos/${orcamento.id}`,
       referenciaId: orcamento.id,
       // Quem registrou a resposta do cliente não precisa ser avisado dela;
       // o aviso existe para quando **outra pessoa** (supervisor, integração)

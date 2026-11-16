@@ -609,6 +609,7 @@ export function OrcamentoFormContent({
   orcamento,
   clienteIdPadrao,
   iniciarCopia = false,
+  abaInicial,
   onClose,
 }: {
   orcamento?: Orcamento;
@@ -616,6 +617,12 @@ export function OrcamentoFormContent({
   clienteIdPadrao?: string | null;
   /** Abre já em modo cópia ("Copiar" no menu da listagem). */
   iniciarCopia?: boolean;
+  /**
+   * Aba aberta ao entrar (`?aba=` da URL). O aviso de desconto pendente abre
+   * em "integracao" — Aprovação e integração —, que só existe em orçamento
+   * gravado; fora disso cai na aba Orçamento.
+   */
+  abaInicial?: string | null;
   /** Chamado ao cancelar ou depois de salvar com sucesso. */
   onClose: () => void;
 }) {
@@ -780,7 +787,9 @@ export function OrcamentoFormContent({
   // ajustar a data livremente depois.
   const [validadePadraoAplicada, setValidadePadraoAplicada] = useState(false);
   // Aba aberta: o ícone de aviso do item leva à aba Advertências.
-  const [aba, setAba] = useState("orcamento");
+  const [aba, setAba] = useState(() =>
+    abaInicial === "integracao" && orcamento && !iniciarCopia ? "integracao" : "orcamento",
+  );
   const diasValidade = orcamentoConfigQuery.data?.diasValidade;
   useEffect(() => {
     if (!orcamento && !validadePadraoAplicada && diasValidade != null) {
@@ -2985,6 +2994,7 @@ export function OrcamentoForm({ orcamento }: { orcamento?: Orcamento }) {
         orcamento={orcamento}
         clienteIdPadrao={clienteIdPadrao}
         iniciarCopia={iniciarCopia}
+        abaInicial={searchParams.get("aba")}
         onClose={() => router.push(LIST_ROUTE)}
       />
     </div>

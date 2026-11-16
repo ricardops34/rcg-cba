@@ -12,6 +12,7 @@ import {
 } from '../../common/prisma/prisma.service';
 import { whereEmpresaAcessivel } from '../../common/empresa/situacao-empresa';
 import type { NotificacaoTipo } from '@prisma/client';
+import { rotaDaAtividade } from './rota-da-atividade';
 import { registrarNotificacao } from './registrar-notificacao';
 
 /**
@@ -143,6 +144,7 @@ export class NotificacoesVarreduraService
         select: {
           id: true,
           titulo: true,
+          orcamentoId: true,
           dataVencimento: true,
           vendedor: { select: { usuarioId: true } },
           cliente: { select: { razaoSocial: true } },
@@ -158,7 +160,7 @@ export class NotificacoesVarreduraService
           tipo: 'atividade_vencimento',
           titulo: atividade.titulo,
           descricao: atividade.cliente?.razaoSocial ?? null,
-          rota: `/crm/atividades/${atividade.id}`,
+          rota: rotaDaAtividade(atividade),
           referenciaId: atividade.id,
           // A data do prazo, não a da varredura: é o que ordena o feed pelo
           // que está atrasado há mais tempo.

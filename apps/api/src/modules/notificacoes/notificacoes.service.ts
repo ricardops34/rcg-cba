@@ -2,6 +2,7 @@ import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { NotificacoesFeed } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+import { rotaDaAtividade, rotaLiberacaoDesconto } from './rota-da-atividade';
 
 /** Quantas linhas o sino mostra. O contador do badge conta todas. */
 const LIMITE_ITENS = 20;
@@ -40,6 +41,21 @@ export class NotificacoesService {
         }),
       ]);
 
+      // "Tarefa vencendo" gravada antes de 2026-11-16 aponta para a atividade
+      // mesmo quando é a pendência de desconto, que hoje abre o orçamento
+      // (ver rotaDaAtividade). Corrige-se na entrega, sem tocar nos dados.
+      const idsAtividade = linhas
+        .filter((l) => l.tipo === 'atividade_vencimento' && l.referenciaId)
+        .map((l) => l.referenciaId!);
+      const rotaAtividade = new Map<string, string>();
+      if (idsAtividade.length) {
+        const atividades = await tx.atividade.findMany({
+          where: { id: { in: idsAtividade }, orcamentoId: { not: null } },
+          select: { id: true, titulo: true, orcamentoId: true },
+        });
+        for (const a of atividades) rotaAtividade.set(a.id, rotaDaAtividade(a));
+      }
+
       return {
         total,
         itens: linhas.map((l) => ({
@@ -53,8 +69,9 @@ export class NotificacoesService {
           // antes apontam para a Posição de Cliente; corrige-se na entrega.
           rota:
             l.tipo === 'desconto_pendente' && l.referenciaId
-              ? `/crm/orcamentos/${l.referenciaId}`
-              : l.rota,
+              ? rotaLiberacaoDesconto(l.referenciaId)
+              : ((l.referenciaId && rotaAtividade.get(l.referenciaId)) ??
+                l.rota),
           contador: l.contador,
         })),
       };
