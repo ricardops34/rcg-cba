@@ -973,7 +973,7 @@ export function PosicaoClienteConteudo({
             {/* Cadastro e totais numa aba própria, a primeira (17/11/2026): as
                 listas ganham a tela — antes ficavam acima das abas no
                 computador, e só o celular tinha a aba. */}
-            <TabsTrigger value="dados">Cadastro</TabsTrigger>
+            <TabsTrigger value="dados">Dados</TabsTrigger>
             <TabsTrigger value="notas">Notas fiscais ({notasEComodatos.length})</TabsTrigger>
             <TabsTrigger value="devolucoes">Devoluções ({devolucoes.length})</TabsTrigger>
             <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
