@@ -47,7 +47,6 @@ import {
   resumoPorAno,
   usePaginaLocal,
 } from "@/components/comercial/posicao-cliente-ano";
-import { useIsMobile } from "@/hooks/use-mobile";
 import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
 import { ArrowLeft, Loader2, Mail, MessageCircle, MessageSquareText, Search, Wrench } from "lucide-react";
 
@@ -561,7 +560,6 @@ export function PosicaoClienteConteudo({
   aoAbrirConversa?: (conversaId: string) => void;
 }) {
   const id = clienteId;
-  const celular = useIsMobile();
   const router = useRouter();
   // Liberação de desconto: só quem aprova orçamento vê a aba, e o aviso do
   // sino chega com ?aba=liberacoes.
@@ -961,11 +959,9 @@ export function PosicaoClienteConteudo({
         {!cliente.ativo && <Badge variant="destructive">Inativo</Badge>}
       </div>
 
-      {/* No celular, cadastro e totais viram a aba "Dados": a lista ganha a tela. */}
-      {!celular && dadosDoCliente}
 
       <Tabs
-        defaultValue={podeLiberarDesconto && abaPedida === "liberacoes" ? "liberacoes" : "notas"}
+        defaultValue={podeLiberarDesconto && abaPedida === "liberacoes" ? "liberacoes" : "dados"}
         data-tour="posicao-cliente-detalhe-conteudo"
         className={preencherAltura ? "md:min-h-[280px] md:flex-1" : undefined}
       >
@@ -974,7 +970,10 @@ export function PosicaoClienteConteudo({
           data-tour="posicao-cliente-detalhe-abas"
         >
           <TabsList>
-            {celular && <TabsTrigger value="dados">Dados</TabsTrigger>}
+            {/* Cadastro e totais numa aba própria, a primeira (17/11/2026): as
+                listas ganham a tela — antes ficavam acima das abas no
+                computador, e só o celular tinha a aba. */}
+            <TabsTrigger value="dados">Cadastro</TabsTrigger>
             <TabsTrigger value="notas">Notas fiscais ({notasEComodatos.length})</TabsTrigger>
             <TabsTrigger value="devolucoes">Devoluções ({devolucoes.length})</TabsTrigger>
             <TabsTrigger value="titulos">Títulos a receber ({titulos.length})</TabsTrigger>
@@ -999,11 +998,12 @@ export function PosicaoClienteConteudo({
           </TabsList>
         </div>
 
-        {celular && (
-          <TabsContent value="dados" className="space-y-4">
-            {dadosDoCliente}
-          </TabsContent>
-        )}
+        <TabsContent
+          value="dados"
+          className={rolagemAba ? `space-y-4 ${rolagemAba} md:gap-4` : "space-y-4"}
+        >
+          {dadosDoCliente}
+        </TabsContent>
 
         <TabsContent value="notas" className={rolagemAba}>
           <TabelaNotas
