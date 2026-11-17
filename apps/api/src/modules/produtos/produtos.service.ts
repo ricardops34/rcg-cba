@@ -191,7 +191,32 @@ export class ProdutosService {
         }),
         tx.produto.count({ where }),
       ]);
-      return buildPaginatedResult(data, total, query);
+      if (!query.comSaldo) return buildPaginatedResult(data, total, query);
+
+      // Saldo da página, numa consulta só: mesma regra do preço do item no
+      // orçamento (OrcamentosService.precoProduto) — armazéns de revenda,
+      // disponível ou, na falta dele, o saldo.
+      const estoque = await tx.estoque.findMany({
+        where: {
+          empresaId,
+          produtoId: { in: data.map((p) => p.id) },
+          deletedAt: null,
+          armazem: { revenda: true },
+        },
+        select: { produtoId: true, saldo: true, disponivel: true },
+      });
+      const saldo = new Map<string, number>();
+      for (const e of estoque) {
+        saldo.set(
+          e.produtoId,
+          (saldo.get(e.produtoId) ?? 0) + (e.disponivel ?? e.saldo),
+        );
+      }
+      return buildPaginatedResult(
+        data.map((p) => ({ ...p, saldoEstoque: saldo.get(p.id) ?? 0 })),
+        total,
+        query,
+      );
     });
   }
 

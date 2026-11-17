@@ -132,6 +132,12 @@ export const produtoQuerySchema = paginationQuerySchema.extend({
    * O cadastro e o seletor de produto do orçamento não ligam: mostram tudo.
    */
   categoriaAtiva: booleanQueryParam,
+  /**
+   * Devolve `saldoEstoque` em cada produto: soma dos armazéns de revenda
+   * (disponível, ou saldo quando não há disponível) — o mesmo número da coluna
+   * Estoque do orçamento. Usado pelo seletor de produto do orçamento.
+   */
+  comSaldo: booleanQueryParam,
 });
 export type ProdutoQuery = z.infer<typeof produtoQuerySchema>;
 
