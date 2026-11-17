@@ -3082,6 +3082,10 @@ model CondicaoPagamento {
   descricao String
   forma     String?
   ativo     Boolean @default(true)
+  // Habilitada para escolha no orçamento (marcação da plataforma, como o
+  // `usado` da categoria; o import do ERP não mexe). Nasce habilitada: a
+  // condição nova do ERP aparece até alguém desmarcar. Decisão de 2026-11-17.
+  usadoOrcamento Boolean @default(true)
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

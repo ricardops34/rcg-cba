@@ -651,10 +651,12 @@ export function OrcamentoFormContent({
   });
 
   const condicoesQuery = useQuery({
-    queryKey: ["condicoes-pagamento", "select"],
+    // Só as habilitadas para o orçamento (Cadastros > Condições de pagamento,
+    // 17/11/2026); a do cliente e a já gravada entram abaixo.
+    queryKey: ["condicoes-pagamento", "select", "orcamento"],
     queryFn: () =>
       apiFetch<{ data: CondicaoPagamento[] }>("/condicoes-pagamento", {
-        query: { pageSize: 100, ativo: true },
+        query: { pageSize: 100, ativo: true, usadoOrcamento: true },
       }),
   });
   const opcoesCondicao = condicoesQuery.data?.data ?? [];
@@ -948,11 +950,19 @@ export function OrcamentoFormContent({
   // A lista de condições só traz as ativas e exige permissão de cadastro: soma a
   // condição do cadastro do cliente, para o campo não ficar em branco quando
   // ela está inativa ou o vendedor não enxerga a lista.
+  // O mesmo vale para a condição já gravada no orçamento, que pode ter sido
+  // desabilitada depois — o campo não pode aparecer vazio ao editar.
   const condicaoDoCliente = clienteSelecionadoQuery.data?.condicaoPagamento;
-  const opcoesCondicaoComCliente =
-    condicaoDoCliente && !opcoesCondicao.some((c) => c.id === condicaoDoCliente.id)
-      ? [{ id: condicaoDoCliente.id, descricao: condicaoDoCliente.descricao }, ...opcoesCondicao]
-      : opcoesCondicao;
+  const condicaoGravada = orcamento?.condicaoPagamento;
+  const opcoesCondicaoComCliente = [condicaoGravada, condicaoDoCliente].reduce<
+    Array<{ id: string; descricao: string }>
+  >(
+    (lista, extra) =>
+      extra && !lista.some((c) => c.id === extra.id)
+        ? [{ id: extra.id, descricao: extra.descricao }, ...lista]
+        : lista,
+    opcoesCondicao,
+  );
 
   // Tabela de preços: começa a do cadastro do cliente; só dá para trocar se o
   // parâmetro ORCAMENTO_ALTERA_TABELA_PRECO permitir (o servidor também barra).

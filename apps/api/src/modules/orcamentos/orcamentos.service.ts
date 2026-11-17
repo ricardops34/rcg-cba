@@ -244,6 +244,43 @@ export class OrcamentosService {
    * Vendedor que pode responder por um orçamento: existe nesta empresa, não
    * foi excluído, está ativo e não foi desligado.
    */
+  /**
+   * Condição de pagamento escolhida no orçamento (decisão de 2026-11-17): só as
+   * habilitadas para o orçamento (`usadoOrcamento`) e ativas. Passam sempre a
+   * do cadastro do cliente — é a sugerida — e a já gravada no orçamento, para
+   * desmarcar uma condição não travar quem edita um orçamento antigo.
+   */
+  private async garantirCondicaoDoOrcamento(
+    tx: TenantTx,
+    empresaId: string,
+    condicaoPagamentoId: string | null | undefined,
+    clienteId: string | null | undefined,
+    gravada: string | null = null,
+  ) {
+    if (!condicaoPagamentoId || condicaoPagamentoId === gravada) return;
+    if (clienteId) {
+      const cliente = await tx.cliente.findFirst({
+        where: { id: clienteId, empresaId },
+        select: { condicaoPagamentoId: true },
+      });
+      if (cliente?.condicaoPagamentoId === condicaoPagamentoId) return;
+    }
+    const habilitada = await tx.condicaoPagamento.count({
+      where: {
+        id: condicaoPagamentoId,
+        empresaId,
+        deletedAt: null,
+        ativo: true,
+        usadoOrcamento: true,
+      },
+    });
+    if (!habilitada) {
+      throw new BadRequestException(
+        'Condição de pagamento não habilitada para orçamentos. Escolha outra ou peça para habilitá-la em Cadastros > Condições de pagamento.',
+      );
+    }
+  }
+
   private async vendedorValido(
     tx: TenantTx,
     empresaId: string,
@@ -786,6 +823,12 @@ export class OrcamentosService {
           ? { canalOrigem: 'whatsapp', conversaId: opcoes.conversaId }
           : {}),
       };
+      await this.garantirCondicaoDoOrcamento(
+        tx,
+        empresaId,
+        header.condicaoPagamentoId,
+        clienteId,
+      );
       header.dataValidade = await ajustarValidadeOrcamento(tx, empresaId, header.dataValidade);
       if (header.dataRetorno) {
         header.dataRetorno = await ajustarRetornoOrcamento(tx, empresaId, {
@@ -982,6 +1025,13 @@ export class OrcamentosService {
         ...(clienteId ? SEM_PROSPECT : {}),
         vendedorId,
       };
+      await this.garantirCondicaoDoOrcamento(
+        tx,
+        empresaId,
+        header.condicaoPagamentoId,
+        clienteId,
+        orcamento.condicaoPagamentoId,
+      );
       header.dataValidade = await ajustarValidadeOrcamento(tx, empresaId, header.dataValidade);
       // Retorno e validade se conferem sempre que um dos dois vem no payload:
       // mudar só a validade para antes do retorno gravado também é erro.

@@ -23,6 +23,7 @@ export function CondicaoPagamentoDetalheContent({ condicao }: { condicao: Condic
         <Info label="Integração" value={<span className="font-mono">{condicao.chave || "—"}</span>} />
         <Info label="Descrição" value={condicao.descricao} />
         <Info label="Forma" value={condicao.forma} />
+        <Info label="Usar no orçamento" value={condicao.usadoOrcamento ? "Sim" : "Não"} />
         <Info label="Status" value={<StatusDot active={condicao.ativo} />} />
       </CardContent>
     </Card>

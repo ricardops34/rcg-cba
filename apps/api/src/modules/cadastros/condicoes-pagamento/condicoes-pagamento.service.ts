@@ -4,13 +4,18 @@ import {
   buildPaginatedResult,
   paginationToSkipTake,
 } from '../../../common/pagination/paginate';
-import type { CondicaoPagamentoQuery } from '@plataforma/contracts';
+import type {
+  CondicaoPagamentoQuery,
+  CondicaoPagamentoUpdate,
+} from '@plataforma/contracts';
+import type { AuthenticatedUser } from '../../../common/decorators/current-user.decorator';
 
 const SORT_FIELDS = new Set([
   'descricao',
   'codigoErp',
   'forma',
   'ativo',
+  'usadoOrcamento',
   'createdAt',
 ]);
 
@@ -25,6 +30,9 @@ export class CondicoesPagamentoService {
         deletedAt: null,
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(query.forma ? { forma: query.forma } : {}),
+        ...(query.usadoOrcamento !== undefined
+          ? { usadoOrcamento: query.usadoOrcamento }
+          : {}),
         ...(query.search
           ? {
               OR: [
@@ -68,6 +76,27 @@ export class CondicoesPagamentoService {
       if (!condicao)
         throw new NotFoundException('Condição de pagamento não encontrada');
       return condicao;
+    });
+  }
+
+  /** Só a marcação da plataforma se edita; o resto vem do import. */
+  async update(
+    empresaId: string,
+    user: AuthenticatedUser,
+    id: string,
+    dto: CondicaoPagamentoUpdate,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const existe = await tx.condicaoPagamento.findFirst({
+        where: { id, empresaId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!existe)
+        throw new NotFoundException('Condição de pagamento não encontrada');
+      return tx.condicaoPagamento.update({
+        where: { id },
+        data: { usadoOrcamento: dto.usadoOrcamento, updatedBy: user.id },
+      });
     });
   }
 }
