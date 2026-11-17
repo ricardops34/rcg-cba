@@ -2258,6 +2258,7 @@ export function OrcamentoFormContent({
                               <TableCell className="min-w-36 px-1.5">
                                 <ProdutoCombobox
                                   mostrarSaldo
+                                  apenasCategoriaAtiva
                                   value={produtoId || null}
                                   onChange={(produto) => onSelecionarProduto(index, produto)}
                                 />
@@ -2373,6 +2374,7 @@ export function OrcamentoFormContent({
                               <div className="min-w-0 flex-1">
                                 <ProdutoCombobox
                                   mostrarSaldo
+                                  apenasCategoriaAtiva
                                   value={produtoId || null}
                                   onChange={(produto) => onSelecionarProduto(index, produto)}
                                 />

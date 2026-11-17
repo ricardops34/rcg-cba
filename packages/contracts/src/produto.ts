@@ -129,7 +129,8 @@ export const produtoQuerySchema = paginationQuerySchema.extend({
   /**
    * Só produtos de categoria ativa e marcada como usada — o catálogo que se
    * vende (tela Comercial › Produtos, mesmo critério da Consulta de Estoque).
-   * O cadastro e o seletor de produto do orçamento não ligam: mostram tudo.
+   * O cadastro não liga: mostra tudo. O seletor de produto do orçamento liga
+   * desde 2026-11-17.
    */
   categoriaAtiva: booleanQueryParam,
   /**

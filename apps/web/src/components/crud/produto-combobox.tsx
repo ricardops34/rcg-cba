@@ -25,23 +25,28 @@ const saldoBr = (n: number) =>
  * `mostrarSaldo` (orçamento, 17/11/2026): cada opção traz o saldo em estoque
  * depois da descrição — "DESCRIÇÃO (8,00)" —, o mesmo número da coluna Estoque.
  * As opções quebram linha conforme a largura da tela, em vez de cortar.
+ *
+ * `apenasCategoriaAtiva` (orçamento, 17/11/2026): só produto de categoria ativa
+ * e marcada como usada — o mesmo catálogo de Comercial › Produtos.
  */
 export function ProdutoCombobox({
   value,
   onChange,
   placeholder = "Selecionar produto",
   mostrarSaldo = false,
+  apenasCategoriaAtiva = false,
 }: {
   value: string | null;
   onChange: (produto: Produto | null) => void;
   placeholder?: string;
   mostrarSaldo?: boolean;
+  apenasCategoriaAtiva?: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [search, setSearch] = useState("");
 
   const { data } = useQuery({
-    queryKey: ["produtos", "combobox", search, mostrarSaldo],
+    queryKey: ["produtos", "combobox", search, mostrarSaldo, apenasCategoriaAtiva],
     queryFn: () =>
       apiFetch<{ data: Array<Produto & { saldoEstoque?: number }> }>("/produtos", {
         query: {
@@ -49,6 +54,7 @@ export function ProdutoCombobox({
           search: search || undefined,
           ativo: true,
           ...(mostrarSaldo ? { comSaldo: true } : {}),
+          ...(apenasCategoriaAtiva ? { categoriaAtiva: true } : {}),
         },
       }),
     enabled: open,
