@@ -21,6 +21,8 @@ const ARMAZEM_SELECT = { select: { id: true, codigoErp: true, descricao: true, a
 // o saldo apresentado é a soma em todos os armazéns, ou só no armazém
 // filtrado quando query.armazemId é informado. O detalhamento por armazém
 // fica na tela de visualização (findByProduto).
+import { PRODUTO_DE_CATEGORIA_ATIVA } from '../../common/produtos/produto-de-categoria-ativa';
+
 @Injectable()
 export class EstoqueService {
   constructor(private readonly prisma: PrismaService) {}
@@ -46,13 +48,10 @@ export class EstoqueService {
       const where: Prisma.ProdutoWhereInput = {
         empresaId,
         deletedAt: null,
-        // Regra de negócio: listar somente produtos de categorias usadas
-        // (usado = true, marcação da plataforma) e ativas (status do ERP).
-        categoria: {
-          usado: true,
-          ativo: true,
-          ...(query.categoriaId ? { id: query.categoriaId } : {}),
-        },
+        // Regra de negócio: só o catálogo que se vende — categoria ou
+        // subcategoria ativa e usada (ver PRODUTO_DE_CATEGORIA_ATIVA, entra no
+        // AND abaixo).
+        ...(query.categoriaId ? { categoriaId: query.categoriaId } : {}),
         // Regra de negócio: itens (produtos) inativos/bloqueados só aparecem se tiverem saldo (> 0)
         OR: [
           { ativo: true },
@@ -63,18 +62,19 @@ export class EstoqueService {
             },
           },
         ],
-        ...(query.search
-          ? {
-              AND: [
+        AND: [
+          PRODUTO_DE_CATEGORIA_ATIVA,
+          ...(query.search
+            ? [
                 {
                   OR: [
                     { descricao: { contains: query.search, mode: 'insensitive' as const } },
                     { codigoErp: { contains: query.search, mode: 'insensitive' as const } },
                   ],
                 },
-              ],
-            }
-          : {}),
+              ]
+            : []),
+        ],
         ...(query.comSaldo === false
           ? {
               estoques: {

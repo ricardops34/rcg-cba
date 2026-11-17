@@ -91,6 +91,8 @@ const PRODUTO_INCLUDE = {
   },
 };
 
+import { PRODUTO_DE_CATEGORIA_ATIVA } from '../../common/produtos/produto-de-categoria-ativa';
+
 @Injectable()
 export class ProdutosService {
   constructor(private readonly prisma: PrismaService) {}
@@ -112,12 +114,11 @@ export class ProdutosService {
       const where = {
         empresaId,
         deletedAt: null,
-        // Comercial › Produtos: só categoria ativa (status do ERP) e usada
-        // (marcação da plataforma) — o mesmo critério da Consulta de Estoque.
-        // O cadastro e o seletor do orçamento não pedem, e veem tudo.
-        ...(query.categoriaAtiva
-          ? { categoria: { is: { ativo: true, usado: true } } }
-          : {}),
+        // Comercial › Produtos e seletor do orçamento: só o catálogo que se
+        // vende (categoria ou subcategoria ativa e usada — ver
+        // PRODUTO_DE_CATEGORIA_ATIVA), o mesmo da Consulta de Estoque. O
+        // cadastro não pede, e vê tudo. Em AND porque a busca já usa o OR.
+        ...(query.categoriaAtiva ? { AND: [PRODUTO_DE_CATEGORIA_ATIVA] } : {}),
         ...(query.ativo !== undefined ? { ativo: query.ativo } : {}),
         ...(categoriaIds ? { categoriaId: { in: categoriaIds } } : {}),
         ...(query.fabricanteIds?.length

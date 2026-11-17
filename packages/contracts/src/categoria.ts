@@ -38,8 +38,10 @@ export type CategoriaQuery = z.infer<typeof categoriaQuerySchema>;
  * Comercial usa para escolher o que entra na tabela de Vendas por Categoria, e
  * o que a Sugestão de Compra usa para saber o que é mercadoria vendida (só
  * produto de categoria usada é sugerido; desde 2026-10-07).
- * Vale só para categoria raiz: subcategoria não tem a marcação (nasce nula no
- * import) e não aparece no dashboard.
+ * Na subcategoria (nasce nula no import) vale para o catálogo que se vende
+ * (17/11/2026): com a categoria não usada, o produto aparece se a subcategoria
+ * dele estiver usada — ver PRODUTO_DE_CATEGORIA_ATIVA na API. O dashboard
+ * segue olhando só a categoria.
  *
  * `equipamentoComodato` marca a categoria de equipamento: produto dela não
  * entra como aplicável de equipamento de comodato.

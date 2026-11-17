@@ -78,9 +78,13 @@ export default function CategoriasPage() {
       });
       await refetch();
       toast.success(
-        valor
-          ? `"${c.descricao}" passa a aparecer no Dashboard Comercial`
-          : `"${c.descricao}" sai do Dashboard Comercial`,
+        c.categoriaPaiId
+          ? valor
+            ? `Produtos da subcategoria "${c.descricao}" passam a aparecer no catálogo e no orçamento`
+            : `Produtos da subcategoria "${c.descricao}" só aparecem se a categoria estiver usada`
+          : valor
+            ? `"${c.descricao}" passa a aparecer no catálogo, no orçamento e no Dashboard Comercial`
+            : `"${c.descricao}" sai do Dashboard Comercial e do catálogo (fica só a subcategoria usada)`,
       );
     } catch (err) {
       toast.error(err instanceof ApiError ? err.message : "Erro ao salvar");
@@ -137,10 +141,11 @@ export default function CategoriasPage() {
       sortKey: "usado",
       // Editável na própria linha: marcar categoria é um vaivém de "esta sim,
       // esta não" — abrir o detalhe de cada uma para um clique seria pior.
-      // Subcategoria fica de fora: a marcação é só de categoria raiz, e é ela
-      // que o Dashboard Comercial usa.
+      // Subcategoria também (17/11/2026): com a categoria não usada, o produto
+      // da subcategoria usada continua no catálogo e no orçamento. O Dashboard
+      // Comercial segue olhando só a categoria.
       cell: (c) =>
-        podeEditar && !c.categoriaPaiId ? (
+        podeEditar ? (
           <Switch
             checked={c.usado === true}
             disabled={salvandoId === c.id}
