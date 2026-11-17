@@ -4,7 +4,11 @@ import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { Wrench } from "lucide-react";
 import { useQuery } from "@tanstack/react-query";
-import type { CnaeEscopoRow, PosicaoClienteListRow } from "@plataforma/contracts";
+import type {
+  CnaeEscopoRow,
+  PosicaoClienteListRow,
+  PosicaoClienteMapaQuery,
+} from "@plataforma/contracts";
 import { useResourceList } from "@/hooks/use-resource";
 import { apiFetch } from "@/lib/api-client";
 import { dataCivilBr } from "@/lib/data";
@@ -37,6 +41,7 @@ import { CnaeEscopoCombobox } from "@/components/crud/cnae-escopo-combobox";
 import { ClienteSheet } from "@/components/crud/cliente-form";
 import { OrcamentosClienteSheet } from "@/components/crud/orcamentos-cliente-sheet";
 import { PosicaoClienteSheet } from "@/components/comercial/posicao-cliente-sheet";
+import { MapaClientesDialog } from "@/components/comercial/mapa-clientes-dialog";
 import { IconeWhatsapp } from "@/components/ui/icone-whatsapp";
 import { useAtendimentoDisponivel } from "@/components/whatsapp/atendimento-cliente-janela";
 import { useAtendimentoJanelaStore } from "@/stores/atendimento-janela-store";
@@ -66,6 +71,7 @@ import {
   Eye,
   FileText,
   Lock,
+  MapPinned,
   MoreHorizontal,
   Pencil,
   X,
@@ -244,24 +250,31 @@ export default function PosicaoClientePage() {
   });
   const opcoesMunicipio = municipiosEscopoQuery.data?.data ?? [];
 
+  // Os filtros da tela, sem página e ordem: valem para a listagem e para o
+  // mapa, que mostra exatamente a mesma carteira.
+  const filtrosTela: PosicaoClienteMapaQuery = {
+    ...(search ? { search } : {}),
+    ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
+    ...(uf ? { uf } : {}),
+    ...(municipio ? { municipio } : {}),
+    ...(vendedorId ? { vendedorId } : {}),
+    ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
+    ...(diasSemComprar !== undefined ? { diasSemComprar } : {}),
+    ...(temTituloVencido !== undefined ? { temTituloVencido } : {}),
+    ...(produtoId ? { produtoId } : {}),
+    ...(comodatoSemConsumo ? { comodatoSemConsumo } : {}),
+    ...(cnae?.codigoErp ? { cnae: cnae.codigoErp } : {}),
+  };
   const { data, isLoading, isFetching, refetch, error } =
     useResourceList<PosicaoClienteListRow>("clientes/posicao", {
+      ...filtrosTela,
       search,
       page,
       pageSize,
       sortBy,
       sortOrder,
-      ...(status !== "todos" ? { ativo: status === "ativos" } : {}),
-      ...(uf ? { uf } : {}),
-      ...(municipio ? { municipio } : {}),
-      ...(vendedorId ? { vendedorId } : {}),
-      ...(carteira !== "todos" ? { carteira: carteira === "sim" } : {}),
-      ...(diasSemComprar !== undefined ? { diasSemComprar } : {}),
-      ...(temTituloVencido !== undefined ? { temTituloVencido } : {}),
-      ...(produtoId ? { produtoId } : {}),
-      ...(comodatoSemConsumo ? { comodatoSemConsumo } : {}),
-      ...(cnae?.codigoErp ? { cnae: cnae.codigoErp } : {}),
     });
+  const [mapaAberto, setMapaAberto] = useState(false);
 
   // Volta ao mesmo ponto da lista. Quem rola é o <main> do layout, e numa
   // troca de rota o navegador não restaura a rolagem dele sozinho.
@@ -524,212 +537,225 @@ export default function PosicaoClientePage() {
           onRefresh={() => refetch()}
           isRefreshing={isFetching}
           actions={
-            <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
-              <div className="space-y-2">
-                <FieldLabel>Produto comprado</FieldLabel>
-                <div className="flex items-center gap-1">
-                  <div className="min-w-0 flex-1">
-                    <ProdutoCombobox
-                      value={produtoId ?? null}
-                      placeholder="Qualquer produto"
-                      onChange={(p) => {
-                        setProdutoId(p?.id);
-                        setPage(1);
-                      }}
-                    />
-                  </div>
-                  {produtoId && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 shrink-0"
-                      aria-label="Tirar o filtro de produto"
-                      onClick={() => {
-                        setProdutoId(undefined);
-                        setPage(1);
-                      }}
-                    >
-                      <X className="size-4" />
-                    </Button>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Clientes que já compraram este produto.
-                </p>
-              </div>
-
-              <div className="space-y-2">
-                <FieldLabel>UF</FieldLabel>
-                <Select
-                  value={uf ?? "todas"}
-                  onValueChange={(v) => {
-                    setUf(v === "todas" ? undefined : v);
-                    // Um município de outra UF deixaria de existir na lista —
-                    // evita ficar com um filtro de município inválido/invisível.
-                    setMunicipio(undefined);
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Todas" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todas">Todas</SelectItem>
-                    {opcoesUf.map((o) => (
-                      <SelectItem key={o.uf} value={o.uf}>
-                        {o.uf} ({o.total})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="space-y-2">
-                <FieldLabel>Município</FieldLabel>
-                <Select
-                  value={municipio ?? "todos"}
-                  onValueChange={(v) => {
-                    setMunicipio(v === "todos" ? undefined : v);
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder="Todos" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos</SelectItem>
-                    {opcoesMunicipio.map((o) => (
-                      <SelectItem key={o.municipio} value={o.municipio}>
-                        {o.municipio} ({o.total})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Mesmo padrão do campo "Produto comprado" acima: busca só
-                  entre os CNAEs em uso na carteira visível (não o catálogo
-                  inteiro do IBGE) — por código ou por descrição, no CNAE
-                  principal ou nos secundários. */}
-              <div className="space-y-2">
-                <FieldLabel>Ramo (CNAE)</FieldLabel>
-                <div className="flex items-center gap-1">
-                  <div className="min-w-0 flex-1">
-                    <CnaeEscopoCombobox
-                      value={cnae}
-                      placeholder="Qualquer ramo"
-                      onChange={(c) => {
-                        setCnae(c);
-                        setPage(1);
-                      }}
-                      uf={uf}
-                      municipio={municipio}
-                      vendedorId={vendedorId}
-                    />
-                  </div>
-                  {cnae && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      className="size-8 shrink-0"
-                      aria-label="Tirar o filtro de ramo"
-                      onClick={() => {
-                        setCnae(null);
-                        setPage(1);
-                      }}
-                    >
-                      <X className="size-4" />
-                    </Button>
-                  )}
-                </div>
-                <p className="text-xs text-muted-foreground">
-                  Clientes com este CNAE, principal ou secundário.
-                </p>
-              </div>
-
-              {mostrarFiltroVendedor && (
+            <>
+              <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
                 <div className="space-y-2">
-                  <FieldLabel>Vendedor</FieldLabel>
+                  <FieldLabel>Produto comprado</FieldLabel>
+                  <div className="flex items-center gap-1">
+                    <div className="min-w-0 flex-1">
+                      <ProdutoCombobox
+                        value={produtoId ?? null}
+                        placeholder="Qualquer produto"
+                        onChange={(p) => {
+                          setProdutoId(p?.id);
+                          setPage(1);
+                        }}
+                      />
+                    </div>
+                    {produtoId && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 shrink-0"
+                        aria-label="Tirar o filtro de produto"
+                        onClick={() => {
+                          setProdutoId(undefined);
+                          setPage(1);
+                        }}
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Clientes que já compraram este produto.
+                  </p>
+                </div>
+
+                <div className="space-y-2">
+                  <FieldLabel>UF</FieldLabel>
                   <Select
-                    value={vendedorId ?? "none"}
+                    value={uf ?? "todas"}
                     onValueChange={(v) => {
-                      setVendedorId(v === "none" ? undefined : v);
+                      setUf(v === "todas" ? undefined : v);
+                      // Um município de outra UF deixaria de existir na lista —
+                      // evita ficar com um filtro de município inválido/invisível.
+                      setMunicipio(undefined);
                       setPage(1);
                     }}
                   >
                     <SelectTrigger className="w-full">
-                      <SelectValue placeholder="Qualquer" />
+                      <SelectValue placeholder="Todas" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="none">Qualquer</SelectItem>
-                      {opcoesVendedor.map((v) => (
-                        <SelectItem key={v.id} value={v.id}>
-                          <span className="flex items-center gap-1.5">
-                            {vendedorFiltroLabel(v)}
-                            {!v.ativo && (
-                              <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
-                                <Lock className="size-3" />
-                                bloqueado
-                              </span>
-                            )}
-                          </span>
+                      <SelectItem value="todas">Todas</SelectItem>
+                      {opcoesUf.map((o) => (
+                        <SelectItem key={o.uf} value={o.uf}>
+                          {o.uf} ({o.total})
                         </SelectItem>
                       ))}
                     </SelectContent>
                   </Select>
                 </div>
-              )}
 
-              <div className="space-y-2">
-                <FieldLabel>Cliente de carteira</FieldLabel>
-                <Select
-                  value={carteira}
-                  onValueChange={(v) => {
-                    setCarteira(v as SimNaoTodos);
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos</SelectItem>
-                    <SelectItem value="sim">Sim</SelectItem>
-                    <SelectItem value="nao">Não</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
+                <div className="space-y-2">
+                  <FieldLabel>Município</FieldLabel>
+                  <Select
+                    value={municipio ?? "todos"}
+                    onValueChange={(v) => {
+                      setMunicipio(v === "todos" ? undefined : v);
+                      setPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue placeholder="Todos" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      {opcoesMunicipio.map((o) => (
+                        <SelectItem key={o.municipio} value={o.municipio}>
+                          {o.municipio} ({o.total})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
 
-              <div className="space-y-2">
-                <FieldLabel>Título vencido</FieldLabel>
-                <Select
-                  value={
-                    temTituloVencido === true
-                      ? "sim"
-                      : temTituloVencido === false
-                        ? "nao"
-                        : "todos"
-                  }
-                  onValueChange={(v) => {
-                    setTemTituloVencido(
-                      v === "sim" ? true : v === "nao" ? false : undefined,
-                    );
-                    setPage(1);
-                  }}
-                >
-                  <SelectTrigger className="w-full">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="todos">Todos</SelectItem>
-                    <SelectItem value="sim">Com título vencido</SelectItem>
-                    <SelectItem value="nao">Sem título vencido</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </FiltersPopover>
+                {/* Mesmo padrão do campo "Produto comprado" acima: busca só
+                    entre os CNAEs em uso na carteira visível (não o catálogo
+                    inteiro do IBGE) — por código ou por descrição, no CNAE
+                    principal ou nos secundários. */}
+                <div className="space-y-2">
+                  <FieldLabel>Ramo (CNAE)</FieldLabel>
+                  <div className="flex items-center gap-1">
+                    <div className="min-w-0 flex-1">
+                      <CnaeEscopoCombobox
+                        value={cnae}
+                        placeholder="Qualquer ramo"
+                        onChange={(c) => {
+                          setCnae(c);
+                          setPage(1);
+                        }}
+                        uf={uf}
+                        municipio={municipio}
+                        vendedorId={vendedorId}
+                      />
+                    </div>
+                    {cnae && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        className="size-8 shrink-0"
+                        aria-label="Tirar o filtro de ramo"
+                        onClick={() => {
+                          setCnae(null);
+                          setPage(1);
+                        }}
+                      >
+                        <X className="size-4" />
+                      </Button>
+                    )}
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Clientes com este CNAE, principal ou secundário.
+                  </p>
+                </div>
+
+                {mostrarFiltroVendedor && (
+                  <div className="space-y-2">
+                    <FieldLabel>Vendedor</FieldLabel>
+                    <Select
+                      value={vendedorId ?? "none"}
+                      onValueChange={(v) => {
+                        setVendedorId(v === "none" ? undefined : v);
+                        setPage(1);
+                      }}
+                    >
+                      <SelectTrigger className="w-full">
+                        <SelectValue placeholder="Qualquer" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="none">Qualquer</SelectItem>
+                        {opcoesVendedor.map((v) => (
+                          <SelectItem key={v.id} value={v.id}>
+                            <span className="flex items-center gap-1.5">
+                              {vendedorFiltroLabel(v)}
+                              {!v.ativo && (
+                                <span className="flex items-center gap-0.5 text-xs text-muted-foreground">
+                                  <Lock className="size-3" />
+                                  bloqueado
+                                </span>
+                              )}
+                            </span>
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+
+                <div className="space-y-2">
+                  <FieldLabel>Cliente de carteira</FieldLabel>
+                  <Select
+                    value={carteira}
+                    onValueChange={(v) => {
+                      setCarteira(v as SimNaoTodos);
+                      setPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="sim">Sim</SelectItem>
+                      <SelectItem value="nao">Não</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <FieldLabel>Título vencido</FieldLabel>
+                  <Select
+                    value={
+                      temTituloVencido === true
+                        ? "sim"
+                        : temTituloVencido === false
+                          ? "nao"
+                          : "todos"
+                    }
+                    onValueChange={(v) => {
+                      setTemTituloVencido(
+                        v === "sim" ? true : v === "nao" ? false : undefined,
+                      );
+                      setPage(1);
+                    }}
+                  >
+                    <SelectTrigger className="w-full">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="todos">Todos</SelectItem>
+                      <SelectItem value="sim">Com título vencido</SelectItem>
+                      <SelectItem value="nao">Sem título vencido</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </FiltersPopover>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button variant="outline" onClick={() => setMapaAberto(true)}>
+                    <MapPinned className="size-4" />
+                    <span className="hidden sm:inline">Mapa</span>
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  Clientes filtrados com coordenadas, no mapa
+                </TooltipContent>
+              </Tooltip>
+            </>
           }
         />
       </div>
@@ -930,6 +956,12 @@ export default function PosicaoClientePage() {
         id={clienteSheet?.id ?? null}
         modo={clienteSheet?.modo ?? "visualizar"}
         onOpenChange={(open) => !open && setClienteSheet(null)}
+      />
+      <MapaClientesDialog
+        aberto={mapaAberto}
+        onOpenChange={setMapaAberto}
+        filtros={filtrosTela}
+        onAbrirPosicao={setPosicaoClienteId}
       />
       <PosicaoClienteSheet
         clienteId={posicaoClienteId}

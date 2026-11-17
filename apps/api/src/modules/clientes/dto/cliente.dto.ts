@@ -8,6 +8,7 @@ import {
   cnaesEscopoQuerySchema,
   municipiosEscopoQuerySchema,
   posicaoClienteListQuerySchema,
+  posicaoClienteMapaQuerySchema,
   ufsEscopoQuerySchema,
   vendedoresEscopoQuerySchema,
 } from '@plataforma/contracts';
@@ -17,6 +18,9 @@ export class ClienteUpdateDto extends createZodDto(clienteUpdateSchema) {}
 export class ClienteQueryDto extends createZodDto(clienteQuerySchema) {}
 export class PosicaoClienteListQueryDto extends createZodDto(
   posicaoClienteListQuerySchema,
+) {}
+export class PosicaoClienteMapaQueryDto extends createZodDto(
+  posicaoClienteMapaQuerySchema,
 ) {}
 export class VendedoresEscopoQueryDto extends createZodDto(
   vendedoresEscopoQuerySchema,

@@ -63,7 +63,13 @@ export default function GeolocalizacaoPage() {
         <>
           {/* A chave refaz o formulário quando a configuração gravada muda. */}
           <Configuracao
-            key={JSON.stringify({ ...cfg, pendentes: 0, naoEncontrados: 0 })}
+            key={JSON.stringify({
+              ...cfg,
+              pendentes: 0,
+              naoEncontrados: 0,
+              leadsPendentes: 0,
+              leadsNaoEncontrados: 0,
+            })}
             cfg={cfg}
           />
           <Teste habilitado={cfg.chavePreenchida} />
@@ -310,7 +316,10 @@ function Lote({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
     onError: (err) => toast.error(erroDe(err, "Não foi possível iniciar o lote")),
   });
 
-  const aConsultar = cfg.pendentes + (incluirNaoEncontrados ? cfg.naoEncontrados : 0);
+  const aConsultar =
+    cfg.pendentes +
+    cfg.leadsPendentes +
+    (incluirNaoEncontrados ? cfg.naoEncontrados + cfg.leadsNaoEncontrados : 0);
   const nestaExecucao = Math.min(aConsultar, cfg.loteLimite);
   const progresso = lote?.total ? Math.round((lote.processados / lote.total) * 100) : 0;
 
@@ -318,14 +327,15 @@ function Lote({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
     <Card>
       <CardContent className="space-y-4">
         <div>
-          <p className="font-medium">Clientes sem coordenadas</p>
+          <p className="font-medium">Clientes e leads sem coordenadas</p>
           <p className="text-xs text-muted-foreground">
             Clientes ativos com rua, cidade e UF e sem latitude/longitude. A coordenada achada entra
-            no cadastro (histórico com origem &quot;Coordenadas (Google)&quot;) e vai ao ERP.
+            no cadastro (histórico com origem &quot;Coordenadas (Google)&quot;) e vai ao ERP. Depois
+            dos clientes, o lote completa o limite com os leads abertos que têm endereço.
           </p>
         </div>
 
-        <div className="grid grid-cols-2 gap-3 sm:max-w-md">
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
           <div className="rounded-lg border p-3">
             <p className="text-xs text-muted-foreground">Ainda não consultados</p>
             <p className="text-2xl font-semibold tabular-nums">{numero(cfg.pendentes)}</p>
@@ -333,6 +343,16 @@ function Lote({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
           <div className="rounded-lg border p-3">
             <p className="text-xs text-muted-foreground">Google não achou</p>
             <p className="text-2xl font-semibold tabular-nums">{numero(cfg.naoEncontrados)}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">Leads não consultados</p>
+            <p className="text-2xl font-semibold tabular-nums">{numero(cfg.leadsPendentes)}</p>
+          </div>
+          <div className="rounded-lg border p-3">
+            <p className="text-xs text-muted-foreground">Leads que o Google não achou</p>
+            <p className="text-2xl font-semibold tabular-nums">
+              {numero(cfg.leadsNaoEncontrados)}
+            </p>
           </div>
         </div>
 

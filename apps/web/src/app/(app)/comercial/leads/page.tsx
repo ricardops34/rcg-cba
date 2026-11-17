@@ -2,7 +2,13 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Flame, MessageCircle, Snowflake, Thermometer } from "lucide-react";
+import {
+  Flame,
+  MapPin,
+  MessageCircle,
+  Snowflake,
+  Thermometer,
+} from "lucide-react";
 import type { Lead, LeadSituacao, LeadTemperatura } from "@plataforma/contracts";
 import {
   LEAD_SITUACAO_LABEL,
@@ -28,6 +34,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { cn } from "@/lib/utils";
+import { LeadEnderecoDialog } from "@/components/comercial/lead-endereco-dialog";
 
 /**
  * Leads: quem procurou a empresa pelo número institucional e ainda não é
@@ -99,6 +106,7 @@ export default function LeadsPage() {
   const [search, setSearch] = useState("");
   const [situacao, setSituacao] = useState<LeadSituacao | null>("novo");
   const [page, setPage] = useState(1);
+  const [leadEndereco, setLeadEndereco] = useState<Lead | null>(null);
 
   const podeDistribuir = useAuthStore((s) => s.hasPermission("leads", "editar"));
 
@@ -224,6 +232,21 @@ export default function LeadsPage() {
                   </div>
 
                   <p className="text-sm">{lead.interesse}</p>
+                  {(lead.endereco || lead.municipio) && (
+                    <p className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <MapPin className="size-3.5 shrink-0" />
+                      {[
+                        lead.endereco,
+                        lead.bairro,
+                        lead.municipio && lead.uf
+                          ? `${lead.municipio} - ${lead.uf}`
+                          : lead.municipio,
+                      ]
+                        .filter(Boolean)
+                        .join(", ")}
+                      {lead.latitude == null && " · sem coordenadas"}
+                    </p>
+                  )}
                   {/* Por que a IA classificou assim — para quem recebe poder
                       discordar, em vez de acreditar. */}
                   {lead.motivoClassificacao && (
@@ -259,6 +282,14 @@ export default function LeadsPage() {
                         </SelectContent>
                       </Select>
 
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setLeadEndereco(lead)}
+                      >
+                        <MapPin className="size-4" />
+                        Endereço
+                      </Button>
                       {lead.situacao !== "convertido" && (
                         <Button
                           variant="outline"
@@ -321,6 +352,10 @@ export default function LeadsPage() {
           </Button>
         </div>
       )}
+      <LeadEnderecoDialog
+        lead={leadEndereco}
+        onOpenChange={(aberto) => !aberto && setLeadEndereco(null)}
+      />
     </div>
   );
 }

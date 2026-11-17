@@ -42,6 +42,9 @@ export type GeocodificacaoConfiguracao = Omit<GeocodificacaoConfiguracaoUpdate, 
   pendentes: number;
   /** Clientes ativos sem coordenadas que o Google já consultou sem achar. */
   naoEncontrados: number;
+  /** Leads abertos (novo/em atendimento) com endereço, sem coordenadas, não consultados. */
+  leadsPendentes: number;
+  leadsNaoEncontrados: number;
 };
 
 export const geocodificacaoTesteSchema = z.object({

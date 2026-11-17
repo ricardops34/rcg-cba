@@ -57,6 +57,14 @@ export const leadSchema = z.object({
   /** Conversa de WhatsApp que o originou, para abrir o histórico. */
   conversaId: z.string().uuid().nullable(),
   observacao: z.string().nullable(),
+  /** Endereço informado por quem atende; as coordenadas vêm do Google. */
+  endereco: z.string().nullable(),
+  bairro: z.string().nullable(),
+  municipio: z.string().nullable(),
+  uf: z.string().nullable(),
+  cep: z.string().nullable(),
+  latitude: z.number().nullable(),
+  longitude: z.number().nullable(),
   createdAt: z.string().datetime(),
 });
 export type Lead = z.infer<typeof leadSchema>;
@@ -75,6 +83,24 @@ export const leadAtualizarSchema = z.object({
    */
   vendedorId: z.string().uuid().nullable().optional(),
   observacao: z.string().trim().max(2000).nullable().optional(),
+  endereco: z.string().trim().max(200).nullable().optional(),
+  bairro: z.string().trim().max(100).nullable().optional(),
+  municipio: z.string().trim().max(100).nullable().optional(),
+  uf: z
+    .string()
+    .trim()
+    .toUpperCase()
+    .regex(/^[A-Z]{2}$/, "UF com 2 letras")
+    .nullable()
+    .optional()
+    .or(z.literal("").transform(() => null)),
+  cep: z.string().trim().max(9).nullable().optional(),
+  /**
+   * Digitadas na tela valem; vazias, o Google preenche ao salvar o endereço
+   * (com a geolocalização habilitada).
+   */
+  latitude: z.number().min(-90).max(90).nullable().optional(),
+  longitude: z.number().min(-180).max(180).nullable().optional(),
 });
 export type LeadAtualizar = z.infer<typeof leadAtualizarSchema>;
 
@@ -93,5 +119,12 @@ export const LEAD_EXAMPLE: Lead = {
   assumidoEm: null,
   conversaId: "9b8c7d6e-5f40-4312-a1b2-c3d4e5f60718",
   observacao: null,
+  endereco: null,
+  bairro: null,
+  municipio: "CAMPO GRANDE",
+  uf: "MS",
+  cep: null,
+  latitude: null,
+  longitude: null,
   createdAt: "2026-09-05T13:20:00.000Z",
 };

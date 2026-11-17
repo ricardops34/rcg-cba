@@ -30,6 +30,7 @@ import {
   CnaesEscopoQueryDto,
   MunicipiosEscopoQueryDto,
   PosicaoClienteListQueryDto,
+  PosicaoClienteMapaQueryDto,
   UfsEscopoQueryDto,
   VendedoresEscopoQueryDto,
 } from './dto/cliente.dto';
@@ -154,6 +155,23 @@ export class ClientesController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.cnaesEscopo(user.empresaAtivaId, user, query);
+  }
+
+  // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.
+  @ApiOperation({
+    summary: 'Mapa da Posição de Cliente',
+    description:
+      'Os clientes filtrados (mesmos filtros da listagem, sem paginação) que têm latitude e ' +
+      'longitude, com a situação que dá a cor do pin: bloqueado, título vencido, título em ' +
+      'aberto, ativo ou inativo. Até 3.000 pins. Requer posicao-cliente.visualizar.',
+  })
+  @RequirePermission('posicao-cliente', 'visualizar')
+  @Get('posicao/mapa')
+  mapaPosicao(
+    @Query() query: PosicaoClienteMapaQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.mapaPosicao(user.empresaAtivaId, user, query);
   }
 
   // Declarado antes de GET :id pelo mesmo motivo de vendedores-escopo.

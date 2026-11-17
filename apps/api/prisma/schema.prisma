@@ -5537,6 +5537,18 @@ model Lead {
 
   observacao String? @db.Text
 
+  /// Endereço do lead, informado por quem atende (a IA não pergunta). Serve
+  /// para o mapa da Posição de Cliente: as coordenadas vêm do Google ao salvar
+  /// (Administração > Geolocalização), como no cliente — decisão de 16/11/2026.
+  endereco                 String?
+  bairro                   String?
+  municipio                String?
+  uf                       String?
+  cep                      String?
+  latitude                 Float?
+  longitude                Float?
+  coordenadasConsultadasEm DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

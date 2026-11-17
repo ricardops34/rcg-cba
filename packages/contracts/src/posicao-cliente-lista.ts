@@ -104,3 +104,81 @@ export const POSICAO_CLIENTE_LIST_ROW_EXAMPLE: PosicaoClienteListRow = {
   temTituloVencendo: false,
   temTituloNaoVencido: true,
 };
+
+/**
+ * Mapa da Posição de Cliente: os mesmos filtros da listagem, sem página nem
+ * ordem — o mapa mostra todos os clientes filtrados que têm coordenadas.
+ */
+export const posicaoClienteMapaQuerySchema = posicaoClienteListQuerySchema.omit({
+  page: true,
+  pageSize: true,
+  sortBy: true,
+  sortOrder: true,
+});
+export type PosicaoClienteMapaQuery = z.infer<typeof posicaoClienteMapaQuerySchema>;
+
+/**
+ * Situação que define a cor do pin. Vale a pior: bloqueado > título vencido >
+ * título em aberto (a vencer) > ativo; inativo à parte.
+ */
+export const situacaoPinClienteSchema = z.enum([
+  "bloqueado",
+  "titulo_vencido",
+  "titulo_aberto",
+  "ativo",
+  "inativo",
+]);
+export type SituacaoPinCliente = z.infer<typeof situacaoPinClienteSchema>;
+
+export const SITUACAO_PIN_CLIENTE_ROTULO: Record<SituacaoPinCliente, string> = {
+  bloqueado: "Bloqueado",
+  titulo_vencido: "Título vencido",
+  titulo_aberto: "Título em aberto (a vencer)",
+  ativo: "Ativo",
+  inativo: "Inativo",
+};
+
+export type PosicaoClienteMapaPin = {
+  id: string;
+  codigoErp: string | null;
+  razaoSocial: string;
+  nomeFantasia: string | null;
+  municipio: string | null;
+  uf: string | null;
+  latitude: number;
+  longitude: number;
+  ultimaCompra: string | null;
+  situacao: SituacaoPinCliente;
+};
+
+/**
+ * Lead aberto (novo ou em atendimento) no mapa, com pin próprio. Só vem para
+ * quem tem leads.visualizar.
+ */
+export type PosicaoClienteMapaLead = {
+  id: string;
+  nome: string | null;
+  empresaInformada: string | null;
+  telefone: string;
+  interesse: string;
+  temperatura: "quente" | "morno" | "frio";
+  situacao: "novo" | "em_atendimento";
+  vendedorNome: string | null;
+  municipio: string | null;
+  uf: string | null;
+  latitude: number;
+  longitude: number;
+};
+
+export type PosicaoClienteMapa = {
+  pins: PosicaoClienteMapaPin[];
+  /**
+   * Leads abertos com coordenadas, da mesma carteira: vendedor (e UF/município)
+   * do filtro da tela. Os demais filtros são de cliente e não se aplicam.
+   */
+  leads: PosicaoClienteMapaLead[];
+  /** Clientes filtrados, com ou sem coordenadas. */
+  totalFiltrados: number;
+  /** Mais pins que o limite: o mapa mostra só os primeiros. */
+  limitado: boolean;
+};

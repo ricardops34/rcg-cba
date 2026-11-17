@@ -55,6 +55,50 @@ export function filtroPendentes(
   };
 }
 
+/** Lead aberto, sem coordenada e com endereço (mesma regra do cliente). */
+export function filtroLeadsPendentes(
+  empresaId: string,
+  incluirNaoEncontrados: boolean,
+) {
+  return {
+    empresaId,
+    situacao: { in: ['novo' as const, 'em_atendimento' as const] },
+    OR: [{ latitude: null }, { longitude: null }],
+    AND: [
+      { endereco: { not: null } },
+      { endereco: { not: '' } },
+      { municipio: { not: null } },
+      { municipio: { not: '' } },
+      { uf: { not: null } },
+      { uf: { not: '' } },
+    ],
+    ...(incluirNaoEncontrados ? {} : { coordenadasConsultadasEm: null }),
+  };
+}
+
+type ItemLote = {
+  tipo: 'cliente' | 'lead';
+  id: string;
+  endereco: string | null;
+  bairro: string | null;
+  municipio: string | null;
+  uf: string | null;
+  cep: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
+const SELECT_ENDERECO = {
+  id: true,
+  endereco: true,
+  bairro: true,
+  municipio: true,
+  uf: true,
+  cep: true,
+  latitude: true,
+  longitude: true,
+} as const;
+
 /**
  * Lote dos clientes sem coordenadas (botão da tela Administração >
  * Geolocalização). Corre em segundo plano e a tela acompanha pela situação.
@@ -85,11 +129,19 @@ export class GeocodificacaoLoteService {
   /** Quantos o lote pegaria e quantos o Google já não achou. */
   async contagem(empresaId: string) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const [pendentes, comNaoEncontrados] = await Promise.all([
-        tx.cliente.count({ where: filtroPendentes(empresaId, false) }),
-        tx.cliente.count({ where: filtroPendentes(empresaId, true) }),
-      ]);
-      return { pendentes, naoEncontrados: comNaoEncontrados - pendentes };
+      const [pendentes, comNaoEncontrados, leadsPendentes, leadsComNao] =
+        await Promise.all([
+          tx.cliente.count({ where: filtroPendentes(empresaId, false) }),
+          tx.cliente.count({ where: filtroPendentes(empresaId, true) }),
+          tx.lead.count({ where: filtroLeadsPendentes(empresaId, false) }),
+          tx.lead.count({ where: filtroLeadsPendentes(empresaId, true) }),
+        ]);
+      return {
+        pendentes,
+        naoEncontrados: comNaoEncontrados - pendentes,
+        leadsPendentes,
+        leadsNaoEncontrados: leadsComNao - leadsPendentes,
+      };
     });
   }
 
@@ -108,34 +160,43 @@ export class GeocodificacaoLoteService {
       );
     }
 
-    const clientes = await this.prisma.withTenant(empresaId, (tx) =>
-      tx.cliente.findMany({
+    // Clientes primeiro; os leads abertos completam o limite da execução.
+    const itens = await this.prisma.withTenant(empresaId, async (tx) => {
+      const clientes = await tx.cliente.findMany({
         where: filtroPendentes(empresaId, body.incluirNaoEncontrados),
         orderBy: { razaoSocial: 'asc' },
         take: cfg.loteLimite,
-        select: {
-          id: true,
-          endereco: true,
-          bairro: true,
-          municipio: true,
-          uf: true,
-          cep: true,
-          latitude: true,
-          longitude: true,
-        },
-      }),
-    );
+        select: SELECT_ENDERECO,
+      });
+      const resta = cfg.loteLimite - clientes.length;
+      const leads =
+        resta > 0
+          ? await tx.lead.findMany({
+              where: filtroLeadsPendentes(
+                empresaId,
+                body.incluirNaoEncontrados,
+              ),
+              orderBy: { createdAt: 'desc' },
+              take: resta,
+              select: SELECT_ENDERECO,
+            })
+          : [];
+      return [
+        ...clientes.map((c) => ({ ...c, tipo: 'cliente' as const })),
+        ...leads.map((l) => ({ ...l, tipo: 'lead' as const })),
+      ] satisfies ItemLote[];
+    });
 
     const situacao: GeocodificacaoLoteSituacao = {
       ...SITUACAO_VAZIA,
       rodando: true,
       iniciadoEm: new Date().toISOString(),
-      total: clientes.length,
+      total: itens.length,
     };
     this.situacoes.set(empresaId, situacao);
 
     // Sem await: a requisição volta na hora e a tela acompanha.
-    void this.executar(empresaId, user.id, cfg, clientes, situacao);
+    void this.executar(empresaId, user.id, cfg, itens, situacao);
     return situacao;
   }
 
@@ -143,22 +204,13 @@ export class GeocodificacaoLoteService {
     empresaId: string,
     autorId: string,
     cfg: Awaited<ReturnType<GeocodificacaoService['config']>>,
-    clientes: Array<{
-      id: string;
-      endereco: string | null;
-      bairro: string | null;
-      municipio: string | null;
-      uf: string | null;
-      cep: string | null;
-      latitude: number | null;
-      longitude: number | null;
-    }>,
+    itens: ItemLote[],
     s: GeocodificacaoLoteSituacao,
   ) {
     let falhasSeguidas = 0;
     try {
-      for (const cliente of clientes) {
-        const endereco = textoDoEndereco(cliente);
+      for (const item of itens) {
+        const endereco = textoDoEndereco(item);
         if (!endereco) {
           s.processados++;
           continue;
@@ -178,11 +230,24 @@ export class GeocodificacaoLoteService {
         falhasSeguidas = 0;
         try {
           await this.prisma.withTenant(empresaId, async (tx) => {
+            // Lead não vai ao ERP nem tem fila de alterações: grava direto.
+            if (item.tipo === 'lead') {
+              await tx.lead.update({
+                where: { id: item.id },
+                data: {
+                  ...(r.tipo === 'encontrado'
+                    ? { latitude: r.latitude, longitude: r.longitude }
+                    : {}),
+                  coordenadasConsultadasEm: new Date(),
+                },
+              });
+              return;
+            }
             if (r.tipo === 'encontrado') {
               await this.alteracoes.registrar(tx, {
                 empresaId,
-                clienteId: cliente.id,
-                atual: cliente,
+                clienteId: item.id,
+                atual: item,
                 input: { latitude: r.latitude, longitude: r.longitude },
                 origem: 'geocodificacao',
                 autorId,
@@ -194,7 +259,7 @@ export class GeocodificacaoLoteService {
               });
             }
             await tx.cliente.update({
-              where: { id: cliente.id },
+              where: { id: item.id },
               data: { coordenadasConsultadasEm: new Date() },
             });
           });
@@ -203,7 +268,7 @@ export class GeocodificacaoLoteService {
         } catch (erro) {
           s.erros++;
           this.logger.warn(
-            `Coordenadas do cliente ${cliente.id} não gravadas: ${(erro as Error).message}`,
+            `Coordenadas do ${item.tipo} ${item.id} não gravadas: ${(erro as Error).message}`,
           );
         }
         s.processados++;

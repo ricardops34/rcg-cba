@@ -6,8 +6,19 @@ import {
 } from '../../common/pagination/paginate';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import { registrarNotificacao } from '../notificacoes/registrar-notificacao';
+import { GeocodificacaoService } from '../geocodificacao/geocodificacao.service';
 import type { LeadAtualizar, LeadQuery } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
+
+const CAMPOS_ENDERECO_LEAD = [
+  'endereco',
+  'bairro',
+  'municipio',
+  'uf',
+  'cep',
+  'latitude',
+  'longitude',
+] as const;
 
 /**
  * Leads captados pela IA no número institucional.
@@ -17,7 +28,10 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
  */
 @Injectable()
 export class LeadsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly geo: GeocodificacaoService,
+  ) {}
 
   /**
    * O recorte aqui é **diferente** do resto do sistema, e de propósito.
@@ -128,9 +142,26 @@ export class LeadsService {
     id: string,
     input: LeadAtualizar,
   ) {
+    // Coordenadas pelo Google, antes da transação (a consulta é HTTP): mesma
+    // regra do cliente — endereço mudou, ou está sem coordenada e ainda não
+    // foi consultado; coordenada digitada vence.
+    const antes = await this.prisma.withTenant(empresaId, (tx) =>
+      tx.lead.findFirst({ where: { id, empresaId } }),
+    );
+    if (!antes) throw new NotFoundException('Lead não encontrado');
+    const geo = await this.geo.aoSalvar(empresaId, antes, input);
+
     return this.prisma.withTenant(empresaId, async (tx) => {
       const lead = await tx.lead.findFirst({ where: { id, empresaId } });
       if (!lead) throw new NotFoundException('Lead não encontrado');
+
+      // Endereço e coordenadas: só o que veio no PATCH.
+      const endereco = Object.fromEntries(
+        CAMPOS_ENDERECO_LEAD.filter((c) => input[c] !== undefined).map((c) => [
+          c,
+          typeof input[c] === 'string' ? input[c].trim() || null : input[c],
+        ]),
+      );
 
       const direcionou =
         input.vendedorId !== undefined && input.vendedorId !== lead.vendedorId;
@@ -138,6 +169,9 @@ export class LeadsService {
       const atualizado = await tx.lead.update({
         where: { id },
         data: {
+          ...endereco,
+          ...(geo.coordenadas ?? {}),
+          ...(geo.consultou ? { coordenadasConsultadasEm: new Date() } : {}),
           ...(input.situacao !== undefined ? { situacao: input.situacao } : {}),
           ...(input.observacao !== undefined
             ? { observacao: input.observacao }

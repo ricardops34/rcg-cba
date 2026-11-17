@@ -28,6 +28,8 @@ import type {
   ClienteQuery,
   ClienteUpdate,
   PosicaoClienteListQuery,
+  PosicaoClienteMapa,
+  PosicaoClienteMapaQuery as PosicaoClienteFiltro,
   PosicaoClienteListRow,
 } from '@plataforma/contracts';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
@@ -171,6 +173,9 @@ const DETALHE_INCLUDE = {
 // — compartilhada com Notas de Saída, Itens e Títulos a Receber.
 
 const texto = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+
+/** Teto de pins no mapa da Posição de Cliente (ver mapaPosicao). */
+const LIMITE_PINS_MAPA = 3000;
 
 @Injectable()
 export class ClientesService {
@@ -851,18 +856,40 @@ export class ClientesService {
       ) as ClienteUpdate;
       this.validarVendedorNoEscopo(escopo, inputPermitido.vendedorId);
 
-      // A coordenada achada vai junto do endereço, na mesma solicitação:
-      // aprovada (ou aplicada direto) com ele, e ao ERP pela fila. Entra
-      // depois do filtro de campos travados — não foi a pessoa que digitou.
+      // Coordenada do Google (decisão de 16/11/2026):
+      // - estava vazia → preenchimento, aplicado direto (sem aprovação), em
+      //   registro próprio com origem `geocodificacao`;
+      // - substitui uma existente (o endereço mudou) → vai junto do endereço,
+      //   na mesma solicitação, e é aprovada ou recusada com ele.
+      // Nos dois casos vai ao ERP pela fila, e entra depois do filtro de
+      // campos travados — não foi a pessoa que digitou.
+      const coordenadaVazia =
+        cliente.latitude == null || cliente.longitude == null;
       const registro = await this.alteracoes.registrar(tx, {
         empresaId,
         clienteId: id,
         atual: cliente,
-        input: { ...this.limpar(inputPermitido), ...(geo.coordenadas ?? {}) },
+        input: {
+          ...this.limpar(inputPermitido),
+          ...(coordenadaVazia ? {} : (geo.coordenadas ?? {})),
+        },
         origem: 'manual',
         autorId: user.id,
         aplicarDireto,
       });
+      if (geo.coordenadas && coordenadaVazia) {
+        await this.alteracoes.registrar(tx, {
+          empresaId,
+          clienteId: id,
+          atual: cliente,
+          input: geo.coordenadas,
+          origem: 'geocodificacao',
+          autorId: user.id,
+          aplicarDireto: true,
+          justificativa: 'Coordenadas pelo Google ao salvar (estavam vazias)',
+          registrarNaAgenda: false,
+        });
+      }
       if (geo.consultou) {
         await tx.cliente.update({
           where: { id },
@@ -1494,6 +1521,298 @@ export class ClientesService {
   }
 
   /**
+   * Mapa da Posição de Cliente: os clientes filtrados na tela que têm
+   * coordenadas, com a situação que dá a cor do pin. Sem paginação, mas com
+   * teto: acima dele o navegador sofre e o mapa vira mancha — a tela avisa
+   * para filtrar mais.
+   */
+  async mapaPosicao(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: PosicaoClienteFiltro,
+  ): Promise<PosicaoClienteMapa> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const { where, corteVencidos } = await this.filtroPosicao(
+        tx,
+        empresaId,
+        user,
+        query,
+      );
+      const desde = Prisma.sql`
+        FROM clientes c
+        LEFT JOIN (
+          SELECT "clienteId", MAX("dtEmissao") AS "ultimaData"
+          FROM notas_saida
+          WHERE "empresaId" = ${empresaId} AND ${NOTA_DE_VENDA_SQL}
+          GROUP BY "clienteId"
+        ) u ON u."clienteId" = c.id
+        WHERE ${where}`;
+      const comCoordenadas = Prisma.sql`c."latitude" IS NOT NULL AND c."longitude" IS NOT NULL`;
+      const [rows, contagem] = await Promise.all([
+        tx.$queryRaw<
+          Array<{
+            id: string;
+            codigoErp: string | null;
+            razaoSocial: string;
+            nomeFantasia: string | null;
+            municipio: string | null;
+            uf: string | null;
+            latitude: number;
+            longitude: number;
+            ativo: boolean;
+            ultimaCompra: Date | null;
+            bloqueado: boolean;
+            temTituloVencido: boolean;
+            temTituloAberto: boolean;
+          }>
+        >(Prisma.sql`
+          SELECT
+            c.id, c."codigoErp", c."razaoSocial", c."nomeFantasia",
+            c."municipio", c."uf", c."latitude", c."longitude", c."ativo",
+            COALESCE(u."ultimaData", c."ultimaCompra") AS "ultimaCompra",
+            (c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio")) AS "bloqueado",
+            EXISTS (
+              SELECT 1 FROM titulos_receber tv
+              WHERE tv."clienteId" = c.id AND tv."empresaId" = c."empresaId"
+                AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < ${corteVencidos}
+            ) AS "temTituloVencido",
+            EXISTS (
+              SELECT 1 FROM titulos_receber ta
+              WHERE ta."clienteId" = c.id AND ta."empresaId" = c."empresaId"
+                AND ta."deletedAt" IS NULL AND ta."dtBaixa" IS NULL
+            ) AS "temTituloAberto"
+          ${desde} AND ${comCoordenadas}
+          ORDER BY c."razaoSocial"
+          LIMIT ${LIMITE_PINS_MAPA + 1}
+        `),
+        tx.$queryRaw<{ total: number }[]>(
+          Prisma.sql`SELECT COUNT(*)::int AS total ${desde}`,
+        ),
+      ]);
+      const limitado = rows.length > LIMITE_PINS_MAPA;
+      const leads = await this.leadsDoMapa(tx, empresaId, user, query);
+      return {
+        leads,
+        pins: rows.slice(0, LIMITE_PINS_MAPA).map((r) => ({
+          id: r.id,
+          codigoErp: r.codigoErp,
+          razaoSocial: r.razaoSocial,
+          nomeFantasia: r.nomeFantasia,
+          municipio: r.municipio,
+          uf: r.uf,
+          latitude: r.latitude,
+          longitude: r.longitude,
+          ultimaCompra: r.ultimaCompra ? r.ultimaCompra.toISOString() : null,
+          situacao: r.bloqueado
+            ? 'bloqueado'
+            : r.temTituloVencido
+              ? 'titulo_vencido'
+              : r.temTituloAberto
+                ? 'titulo_aberto'
+                : r.ativo
+                  ? 'ativo'
+                  : 'inativo',
+        })),
+        totalFiltrados: contagem[0]?.total ?? 0,
+        limitado,
+      };
+    });
+  }
+
+  /**
+   * Leads abertos (novo ou em atendimento) com coordenadas, para o mapa. Lead
+   * não tem os dados de venda dos filtros de cliente, então valem só a
+   * carteira (escopo do usuário e vendedor do filtro) e UF/município. Lead sem
+   * vendedor aparece para quem não tem restrição de carteira — é a fila da
+   * supervisão. Sem leads.visualizar, nenhum.
+   */
+  private async leadsDoMapa(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: PosicaoClienteFiltro,
+  ): Promise<PosicaoClienteMapa['leads']> {
+    if (!user.isAdmin && !user.permissoes.includes('leads.visualizar'))
+      return [];
+    const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+    const vendedores = query.vendedorId
+      ? escopo === null || escopo.includes(query.vendedorId)
+        ? [query.vendedorId]
+        : []
+      : escopo;
+    const linhas = await tx.lead.findMany({
+      where: {
+        empresaId,
+        situacao: { in: ['novo', 'em_atendimento'] },
+        latitude: { not: null },
+        longitude: { not: null },
+        ...(vendedores ? { vendedorId: { in: vendedores } } : {}),
+        ...(query.uf ? { uf: query.uf } : {}),
+        ...(query.municipio
+          ? { municipio: { equals: query.municipio, mode: 'insensitive' } }
+          : {}),
+      },
+      take: LIMITE_PINS_MAPA,
+      orderBy: { createdAt: 'desc' },
+    });
+    const ids = [
+      ...new Set(
+        linhas.map((l) => l.vendedorId).filter((v): v is string => !!v),
+      ),
+    ];
+    const nomes = new Map(
+      (ids.length
+        ? await tx.vendedor.findMany({
+            where: { empresaId, id: { in: ids } },
+            select: { id: true, nome: true },
+          })
+        : []
+      ).map((v) => [v.id, v.nome]),
+    );
+    return linhas.map((l) => ({
+      id: l.id,
+      nome: l.nome,
+      empresaInformada: l.empresaInformada,
+      telefone: l.telefone,
+      interesse: l.interesse,
+      temperatura: l.temperatura,
+      situacao: l.situacao as 'novo' | 'em_atendimento',
+      vendedorNome: l.vendedorId ? (nomes.get(l.vendedorId) ?? null) : null,
+      municipio: l.municipio,
+      uf: l.uf,
+      latitude: l.latitude!,
+      longitude: l.longitude!,
+    }));
+  }
+
+  /**
+   * Os filtros da Posição de Cliente, em SQL: a listagem e o mapa usam os
+   * mesmos, para o mapa mostrar exatamente a carteira filtrada na tela. A
+   * consulta precisa do alias `c` (clientes) e `u` (última compra).
+   */
+  private async filtroPosicao(
+    tx: TenantTx,
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: PosicaoClienteFiltro,
+  ) {
+    const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+    const calendario = await carregarCalendarioUtil(tx, empresaId);
+    const corteVencidos = calendario.corteVencidos(inicioDoDia());
+
+    const condicoes: Prisma.Sql[] = [
+      Prisma.sql`c."empresaId" = ${empresaId}`,
+      Prisma.sql`c."deletedAt" IS NULL`,
+    ];
+
+    if (escopo !== null) {
+      condicoes.push(
+        escopo.length > 0
+          ? Prisma.sql`c."vendedorId" IN (${Prisma.join(escopo)})`
+          : Prisma.sql`false`,
+      );
+    }
+    if (query.vendedorId) {
+      condicoes.push(
+        escopo !== null && !escopo.includes(query.vendedorId)
+          ? Prisma.sql`false`
+          : Prisma.sql`c."vendedorId" = ${query.vendedorId}`,
+      );
+    }
+    if (query.ativo !== undefined)
+      condicoes.push(Prisma.sql`c."ativo" = ${query.ativo}`);
+    if (query.uf) condicoes.push(Prisma.sql`c."uf" = ${query.uf}`);
+    if (query.municipio)
+      condicoes.push(Prisma.sql`c."municipio" = ${query.municipio}`);
+    if (query.carteira !== undefined)
+      condicoes.push(Prisma.sql`c."carteira" = ${query.carteira}`);
+    const buscaSql = condicaoBuscaTermosSql(query.search, [
+      Prisma.sql`c."razaoSocial"`,
+      Prisma.sql`c."nomeFantasia"`,
+      Prisma.sql`c."codigoErp"`,
+      Prisma.sql`c."cnpjCpf"`,
+    ]);
+    if (buscaSql) condicoes.push(buscaSql);
+    if (query.diasSemComprar !== undefined) {
+      condicoes.push(
+        Prisma.sql`(COALESCE(u."ultimaData", c."ultimaCompra") IS NULL OR COALESCE(u."ultimaData", c."ultimaCompra") <= now() - (${query.diasSemComprar} * interval '1 day'))`,
+      );
+    }
+    // "Quem compra este produto?": já comprou em alguma nota de venda — a
+    // mesma regra de NOTA_DE_VENDA_SQL das colunas de venda, lida pelo item.
+    // Conjunto sem correlação com a linha (como comodatoSemConsumoSql): o
+    // Postgres monta a lista de clientes uma vez pelo índice
+    // (empresaId, produtoId) dos itens e só confere a pertença.
+    if (query.produtoId) {
+      condicoes.push(Prisma.sql`c."id" IN (
+        SELECT i."clienteId"
+          FROM "notas_saida_itens" i
+          JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+         WHERE i."empresaId" = ${empresaId} AND i."produtoId" = ${query.produtoId}
+           AND i."clienteId" IS NOT NULL
+           AND i."deletedAt" IS NULL AND i."ativo" = true AND i."comodato" = false
+           AND n."deletedAt" IS NULL AND n."ativo" = true AND n."comodato" = false
+           AND n."tipo" = 'N' AND n."condicaoPagamentoId" IS NOT NULL
+      )`);
+    }
+    // Ramo por prefixo do código CNAE, principal ou secundário (basta um
+    // bater) — mesma regra do filtro da listagem de Clientes. Vínculo
+    // excluído não conta.
+    if (query.cnae) {
+      condicoes.push(Prisma.sql`c."id" IN (
+        SELECT cc."clienteId"
+          FROM "cliente_cnaes" cc
+          JOIN "cnaes" k ON k."id" = cc."cnaeId"
+         WHERE cc."empresaId" = ${empresaId} AND cc."deletedAt" IS NULL
+           AND k."codigoErp" LIKE ${`${query.cnae}%`}
+      )`);
+    }
+    if (query.bloqueado !== undefined) {
+      const bloqueadoExpr = Prisma.sql`(c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio"))`;
+      condicoes.push(
+        query.bloqueado ? bloqueadoExpr : Prisma.sql`NOT ${bloqueadoExpr}`,
+      );
+    }
+    // Aviso de comodato sem consumo e baixas: a mesma expressão da coluna
+    // (ver comodato-sql.ts), para o filtro e o ícone dizerem a mesma coisa.
+    if (query.comodatoSemConsumo !== undefined) {
+      condicoes.push(
+        query.comodatoSemConsumo
+          ? comodatoSemConsumoSql(empresaId)
+          : Prisma.sql`NOT ${comodatoSemConsumoSql(empresaId)}`,
+      );
+    }
+    if (query.comodatoBaixado !== undefined) {
+      condicoes.push(
+        query.comodatoBaixado
+          ? comodatoBaixadoSql
+          : Prisma.sql`NOT ${comodatoBaixadoSql}`,
+      );
+    }
+    if (query.comodatoEmPoder !== undefined) {
+      condicoes.push(
+        query.comodatoEmPoder
+          ? comodatoEmPoderSql(empresaId)
+          : Prisma.sql`NOT ${comodatoEmPoderSql(empresaId)}`,
+      );
+    }
+    if (query.temTituloVencido !== undefined) {
+      const temVencidoExpr = Prisma.sql`EXISTS (
+        SELECT 1 FROM titulos_receber tv
+        WHERE tv."clienteId" = c.id AND tv."empresaId" = c."empresaId"
+          AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < ${corteVencidos}
+      )`;
+      condicoes.push(
+        query.temTituloVencido
+          ? temVencidoExpr
+          : Prisma.sql`NOT ${temVencidoExpr}`,
+      );
+    }
+
+    return { where: Prisma.join(condicoes, ' AND '), corteVencidos };
+  }
+
+  /**
    * Listagem de Posição de Cliente: mesma carteira de Clientes, mas com
    * colunas de venda calculadas ao vivo por agregação de notas_saida (venda
    * dos últimos 30 dias, média mensal dos últimos 90 dias, diferença entre
@@ -1507,120 +1826,12 @@ export class ClientesService {
     query: PosicaoClienteListQuery,
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
-      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
-      const calendario = await carregarCalendarioUtil(tx, empresaId);
-      const corteVencidos = calendario.corteVencidos(inicioDoDia());
-
-      const condicoes: Prisma.Sql[] = [
-        Prisma.sql`c."empresaId" = ${empresaId}`,
-        Prisma.sql`c."deletedAt" IS NULL`,
-      ];
-
-      if (escopo !== null) {
-        condicoes.push(
-          escopo.length > 0
-            ? Prisma.sql`c."vendedorId" IN (${Prisma.join(escopo)})`
-            : Prisma.sql`false`,
-        );
-      }
-      if (query.vendedorId) {
-        condicoes.push(
-          escopo !== null && !escopo.includes(query.vendedorId)
-            ? Prisma.sql`false`
-            : Prisma.sql`c."vendedorId" = ${query.vendedorId}`,
-        );
-      }
-      if (query.ativo !== undefined)
-        condicoes.push(Prisma.sql`c."ativo" = ${query.ativo}`);
-      if (query.uf) condicoes.push(Prisma.sql`c."uf" = ${query.uf}`);
-      if (query.municipio)
-        condicoes.push(Prisma.sql`c."municipio" = ${query.municipio}`);
-      if (query.carteira !== undefined)
-        condicoes.push(Prisma.sql`c."carteira" = ${query.carteira}`);
-      const buscaSql = condicaoBuscaTermosSql(query.search, [
-        Prisma.sql`c."razaoSocial"`,
-        Prisma.sql`c."nomeFantasia"`,
-        Prisma.sql`c."codigoErp"`,
-        Prisma.sql`c."cnpjCpf"`,
-      ]);
-      if (buscaSql) condicoes.push(buscaSql);
-      if (query.diasSemComprar !== undefined) {
-        condicoes.push(
-          Prisma.sql`(COALESCE(u."ultimaData", c."ultimaCompra") IS NULL OR COALESCE(u."ultimaData", c."ultimaCompra") <= now() - (${query.diasSemComprar} * interval '1 day'))`,
-        );
-      }
-      // "Quem compra este produto?": já comprou em alguma nota de venda — a
-      // mesma regra de NOTA_DE_VENDA_SQL das colunas de venda, lida pelo item.
-      // Conjunto sem correlação com a linha (como comodatoSemConsumoSql): o
-      // Postgres monta a lista de clientes uma vez pelo índice
-      // (empresaId, produtoId) dos itens e só confere a pertença.
-      if (query.produtoId) {
-        condicoes.push(Prisma.sql`c."id" IN (
-          SELECT i."clienteId"
-            FROM "notas_saida_itens" i
-            JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
-           WHERE i."empresaId" = ${empresaId} AND i."produtoId" = ${query.produtoId}
-             AND i."clienteId" IS NOT NULL
-             AND i."deletedAt" IS NULL AND i."ativo" = true AND i."comodato" = false
-             AND n."deletedAt" IS NULL AND n."ativo" = true AND n."comodato" = false
-             AND n."tipo" = 'N' AND n."condicaoPagamentoId" IS NOT NULL
-        )`);
-      }
-      // Ramo por prefixo do código CNAE, principal ou secundário (basta um
-      // bater) — mesma regra do filtro da listagem de Clientes. Vínculo
-      // excluído não conta.
-      if (query.cnae) {
-        condicoes.push(Prisma.sql`c."id" IN (
-          SELECT cc."clienteId"
-            FROM "cliente_cnaes" cc
-            JOIN "cnaes" k ON k."id" = cc."cnaeId"
-           WHERE cc."empresaId" = ${empresaId} AND cc."deletedAt" IS NULL
-             AND k."codigoErp" LIKE ${`${query.cnae}%`}
-        )`);
-      }
-      if (query.bloqueado !== undefined) {
-        const bloqueadoExpr = Prisma.sql`(c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio"))`;
-        condicoes.push(
-          query.bloqueado ? bloqueadoExpr : Prisma.sql`NOT ${bloqueadoExpr}`,
-        );
-      }
-      // Aviso de comodato sem consumo e baixas: a mesma expressão da coluna
-      // (ver comodato-sql.ts), para o filtro e o ícone dizerem a mesma coisa.
-      if (query.comodatoSemConsumo !== undefined) {
-        condicoes.push(
-          query.comodatoSemConsumo
-            ? comodatoSemConsumoSql(empresaId)
-            : Prisma.sql`NOT ${comodatoSemConsumoSql(empresaId)}`,
-        );
-      }
-      if (query.comodatoBaixado !== undefined) {
-        condicoes.push(
-          query.comodatoBaixado
-            ? comodatoBaixadoSql
-            : Prisma.sql`NOT ${comodatoBaixadoSql}`,
-        );
-      }
-      if (query.comodatoEmPoder !== undefined) {
-        condicoes.push(
-          query.comodatoEmPoder
-            ? comodatoEmPoderSql(empresaId)
-            : Prisma.sql`NOT ${comodatoEmPoderSql(empresaId)}`,
-        );
-      }
-      if (query.temTituloVencido !== undefined) {
-        const temVencidoExpr = Prisma.sql`EXISTS (
-          SELECT 1 FROM titulos_receber tv
-          WHERE tv."clienteId" = c.id AND tv."empresaId" = c."empresaId"
-            AND tv."deletedAt" IS NULL AND tv."dtBaixa" IS NULL AND tv."vencimento" < ${corteVencidos}
-        )`;
-        condicoes.push(
-          query.temTituloVencido
-            ? temVencidoExpr
-            : Prisma.sql`NOT ${temVencidoExpr}`,
-        );
-      }
-
-      const where = Prisma.join(condicoes, ' AND ');
+      const { where, corteVencidos } = await this.filtroPosicao(
+        tx,
+        empresaId,
+        user,
+        query,
+      );
 
       const sortField =
         query.sortBy && Object.hasOwn(LISTAGEM_POSICAO_SORT_EXPR, query.sortBy)
