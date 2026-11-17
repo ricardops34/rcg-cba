@@ -221,6 +221,16 @@ export const MENUS: DefinicaoMenu[] = [
     moduloId: MODULO.administracao,
   },
   {
+    // Coordenadas do cliente pela Geocoding API do Google: chave, URL e o lote
+    // dos clientes sem coordenadas (docs/planos/geocodificacao-clientes.md).
+    id: 'seed-menu-geolocalizacao',
+    nome: 'Geolocalização',
+    rota: '/admin/geolocalizacao',
+    icone: 'map-pin',
+    codigo: 'geolocalizacao',
+    moduloId: MODULO.administracao,
+  },
+  {
     id: 'seed-menu-dashboard-comercial',
     nome: 'Dashboard',
     rota: '/comercial/dashboard',

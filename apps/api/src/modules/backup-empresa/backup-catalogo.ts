@@ -95,7 +95,7 @@ export const NAO_SAO_SEGREDO: Record<string, string[]> = {
 };
 
 /** Parâmetros (`parametros_empresa.parametro`) com credencial no `conteudo`. */
-export const PARAMETROS_SECRETOS = ['SMTP_SENHA', 'SMS_TOKEN'];
+export const PARAMETROS_SECRETOS = ['SMTP_SENHA', 'SMS_TOKEN', 'GEO_CHAVE'];
 
 /**
  * Campos que guardam só o **nome** do arquivo, sem o `/uploads/<pasta>/` — a

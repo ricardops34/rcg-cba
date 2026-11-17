@@ -10,9 +10,10 @@ import { ClientesReceitaLoteService } from './clientes-receita-lote.service';
 import { ComodatoBaixasController } from './comodato-baixas.controller';
 import { ComodatoBaixasService } from './comodato-baixas.service';
 import { ClienteCampoConfigModule } from '../cliente-campo-config/cliente-campo-config.module';
+import { GeocodificacaoModule } from '../geocodificacao/geocodificacao.module';
 
 @Module({
-  imports: [ClienteCampoConfigModule],
+  imports: [ClienteCampoConfigModule, GeocodificacaoModule],
   // ClientesController antes do aninhado: as rotas mais específicas de
   // /clientes (consulta-cnpj, posicao…) precisam ser avaliadas antes de :id.
   controllers: [

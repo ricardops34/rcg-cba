@@ -11,6 +11,7 @@ export * from "./cliente-contato";
 export * from "./cliente-campo-config";
 export * from "./cliente-cnae";
 export * from "./cliente-alteracao";
+export * from "./geocodificacao";
 export * from "./enriquecimento";
 export * from "./pais";
 export * from "./estado";

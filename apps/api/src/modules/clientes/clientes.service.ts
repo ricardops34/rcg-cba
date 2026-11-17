@@ -44,6 +44,7 @@ import {
 } from './cliente-alteracoes.service';
 import { EnriquecimentoService } from './enriquecimento.service';
 import { ClientesReceitaLoteService } from './clientes-receita-lote.service';
+import { GeocodificacaoService } from '../geocodificacao/geocodificacao.service';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 import {
   condicaoBuscaTermosSql,
@@ -179,6 +180,7 @@ export class ClientesService {
     private readonly alteracoes: ClienteAlteracoesService,
     private readonly enriquecimento: EnriquecimentoService,
     private readonly receita: ClientesReceitaLoteService,
+    private readonly geo: GeocodificacaoService,
   ) {}
 
   /**
@@ -739,13 +741,22 @@ export class ClientesService {
     return cliente;
   }
 
-  create(empresaId: string, user: AuthenticatedUser, input: ClienteCreate) {
+  async create(
+    empresaId: string,
+    user: AuthenticatedUser,
+    input: ClienteCreate,
+  ) {
+    // Coordenadas pelo Google antes da transação: a consulta é HTTP e não
+    // segura conexão do banco. Entram na inclusão e vão ao ERP com ela.
+    const geo = await this.geo.aoSalvar(empresaId, null, input);
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       this.validarVendedorNoEscopo(escopo, input.vendedorId ?? null);
       const criado = await tx.cliente.create({
         data: {
           ...(this.limpar(input) as object),
+          ...(geo.coordenadas ?? {}),
+          ...(geo.consultou ? { coordenadasConsultadasEm: new Date() } : {}),
           empresaId,
           createdBy: user.id,
           updatedBy: user.id,
@@ -789,6 +800,34 @@ export class ClientesService {
 
     const aplicarDireto = this.alteracoes.usuarioAprova(user);
 
+    // Coordenadas pelo Google (decisão de 16/11/2026), antes da transação: a
+    // consulta é HTTP. Lê o cadastro só para saber se o endereço mudou; o
+    // escopo é conferido de novo lá dentro, como sempre.
+    const antes = await this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      return tx.cliente.findFirst({
+        where: {
+          id,
+          empresaId,
+          deletedAt: null,
+          ...(escopo ? { vendedorId: { in: escopo } } : {}),
+        },
+        select: {
+          endereco: true,
+          bairro: true,
+          municipio: true,
+          uf: true,
+          cep: true,
+          latitude: true,
+          longitude: true,
+          coordenadasConsultadasEm: true,
+        },
+      });
+    });
+    const geo = antes
+      ? await this.geo.aoSalvar(empresaId, antes, input)
+      : { consultou: false, coordenadas: null };
+
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
       const cliente = await tx.cliente.findFirst({
@@ -812,15 +851,24 @@ export class ClientesService {
       ) as ClienteUpdate;
       this.validarVendedorNoEscopo(escopo, inputPermitido.vendedorId);
 
+      // A coordenada achada vai junto do endereço, na mesma solicitação:
+      // aprovada (ou aplicada direto) com ele, e ao ERP pela fila. Entra
+      // depois do filtro de campos travados — não foi a pessoa que digitou.
       const registro = await this.alteracoes.registrar(tx, {
         empresaId,
         clienteId: id,
         atual: cliente,
-        input: this.limpar(inputPermitido),
+        input: { ...this.limpar(inputPermitido), ...(geo.coordenadas ?? {}) },
         origem: 'manual',
         autorId: user.id,
         aplicarDireto,
       });
+      if (geo.consultou) {
+        await tx.cliente.update({
+          where: { id },
+          data: { coordenadasConsultadasEm: new Date() },
+        });
+      }
 
       if (registro.resultado === 'pendente') {
         const solicitacao = await tx.clienteAlteracao.findUniqueOrThrow({

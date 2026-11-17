@@ -1938,6 +1938,10 @@ model Cliente {
   cep         String?
   latitude    Float?
   longitude   Float?
+  // Última consulta das coordenadas no Google (Administração > Geolocalização),
+  // achando ou não. O lote pula quem já foi consultado: endereço que o Google
+  // não acha não gasta cota de novo a cada execução.
+  coordenadasConsultadasEm DateTime?
 
   ativo            Boolean   @default(true)
   carteira         Boolean?
@@ -2193,6 +2197,7 @@ enum OrigemAlteracaoCliente {
   enriquecimento
   integracao
   agente
+  geocodificacao
 }
 
 enum StatusAlteracaoCliente {
