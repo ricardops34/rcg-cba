@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { SugestaoCompraCalculada } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
@@ -7,7 +8,19 @@ import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
+import { SortableTableHead } from "@/components/crud/sortable-table-head";
+import { useLargurasColunas } from "@/components/crud/larguras-colunas";
 import { Lightbulb } from "lucide-react";
+
+type CampoSugestao = "codigoErp" | "descricao" | "motivo";
 
 const dataHoraBr = (v: string | null) => {
   if (!v) return null;
@@ -30,6 +43,24 @@ export function SugestaoCompraCalculadaTabela({
   isLoading: boolean;
   isError: boolean;
 }) {
+  // Busca, ordenação e larguras arrastáveis (16/11/2026), como no Mix.
+  const [busca, setBusca] = useState("");
+  const [ordem, setOrdem] = useState<{ campo: CampoSugestao | null; sentido: "asc" | "desc" }>({
+    campo: null,
+    sentido: "asc",
+  });
+  const colunas = useLargurasColunas("sugestao-compra:larguras", {
+    codigo: 110,
+    descricao: 320,
+    motivo: 360,
+  });
+  const ordenar = (campo: CampoSugestao) =>
+    setOrdem((a) =>
+      a.campo === campo
+        ? { campo, sentido: a.sentido === "asc" ? "desc" : "asc" }
+        : { campo, sentido: "asc" },
+    );
+
   if (isLoading) return <Skeleton className="h-40 w-full rounded-xl" />;
   if (isError) {
     return (
@@ -48,6 +79,24 @@ export function SugestaoCompraCalculadaTabela({
   }
 
   const ultimoCalculo = dataHoraBr(data.ultimoCalculo);
+  const termo = busca.trim().toLowerCase();
+  const itens = data.itens
+    .filter(
+      (it) =>
+        !termo ||
+        it.codigoErp.toLowerCase().includes(termo) ||
+        it.descricao.toLowerCase().includes(termo) ||
+        (it.motivo ?? "").toLowerCase().includes(termo),
+    )
+    .sort((a, b) => {
+      if (!ordem.campo) return 0;
+      const va = a[ordem.campo] ?? "";
+      const vb = b[ordem.campo] ?? "";
+      if (!va) return vb ? 1 : 0;
+      if (!vb) return -1;
+      const c = String(va).localeCompare(String(vb), "pt-BR", { numeric: true });
+      return ordem.sentido === "asc" ? c : -c;
+    });
 
   return (
     <div className="space-y-3">
@@ -56,27 +105,59 @@ export function SugestaoCompraCalculadaTabela({
           Calculado em {ultimoCalculo}
         </Badge>
       )}
-      <div className="overflow-x-auto">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b text-left text-xs text-muted-foreground">
-              <th className="py-1.5 pr-3 font-medium">Produto</th>
-              <th className="py-1.5 font-medium">Por quê</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.itens.map((it) => (
-              <tr key={it.produtoId} className="border-b last:border-0">
-                <td className="py-2 pr-3">
-                  <div className="font-mono text-xs text-muted-foreground">{it.codigoErp}</div>
-                  <div>{it.descricao}</div>
-                </td>
-                <td className="py-2 text-muted-foreground">{it.motivo ?? "—"}</td>
-              </tr>
+      <Input
+        placeholder="Buscar por código, descrição ou motivo..."
+        value={busca}
+        onChange={(e) => setBusca(e.target.value)}
+        className="max-w-sm"
+      />
+      {itens.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nenhuma sugestão corresponde à busca.</p>
+      ) : (
+        <Table className="table-fixed [&_td]:overflow-hidden [&_td]:text-ellipsis [&_th]:overflow-hidden" style={colunas.estiloTabela}>
+          <TableHeader>
+            <TableRow>
+              <SortableTableHead
+                label="Código"
+                active={ordem.campo === "codigoErp"}
+                order={ordem.sentido}
+                onClick={() => ordenar("codigoErp")}
+                style={{ width: colunas.larguras.codigo }}
+                alca={colunas.alca("codigo")}
+              />
+              <SortableTableHead
+                label="Produto"
+                active={ordem.campo === "descricao"}
+                order={ordem.sentido}
+                onClick={() => ordenar("descricao")}
+                style={{ width: colunas.larguras.descricao }}
+                alca={colunas.alca("descricao")}
+              />
+              <SortableTableHead
+                label="Por quê"
+                active={ordem.campo === "motivo"}
+                order={ordem.sentido}
+                onClick={() => ordenar("motivo")}
+                style={{ width: colunas.larguras.motivo }}
+                alca={colunas.alca("motivo")}
+              />
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {itens.map((it) => (
+              <TableRow key={it.produtoId}>
+                <TableCell className="font-mono text-xs text-muted-foreground">
+                  {it.codigoErp}
+                </TableCell>
+                <TableCell className="whitespace-normal break-words">{it.descricao}</TableCell>
+                <TableCell className="whitespace-normal break-words text-muted-foreground">
+                  {it.motivo ?? "—"}
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
-      </div>
+          </TableBody>
+        </Table>
+      )}
     </div>
   );
 }

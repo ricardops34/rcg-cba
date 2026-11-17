@@ -10,12 +10,18 @@ export function SortableTableHead({
   order,
   onClick,
   className,
+  style,
+  alca,
 }: {
   label: string;
   active: boolean;
   order: "asc" | "desc";
   onClick: () => void;
   className?: string;
+  /** Largura da coluna, quando a tabela é redimensionável. */
+  style?: React.CSSProperties;
+  /** Alça de arrastar a largura (ver `useLargurasColunas`). */
+  alca?: React.ReactNode;
 }) {
   // O rótulo mora dentro de um botão flex, que por padrão encosta à esquerda
   // e ignora o text-align do cabeçalho. Em coluna numérica (text-right) isso
@@ -27,7 +33,7 @@ export function SortableTableHead({
       ? "w-full justify-center"
       : "";
   return (
-    <TableHead className={className}>
+    <TableHead className={cn(alca && "relative", className)} style={style}>
       <button
         type="button"
         className={cn(
@@ -48,6 +54,27 @@ export function SortableTableHead({
           <ChevronsUpDown className="size-3.5 opacity-40" />
         )}
       </button>
+      {alca}
+    </TableHead>
+  );
+}
+
+/** Cabeçalho sem ordenação, mas com a largura arrastável. */
+export function TableHeadRedimensionavel({
+  children,
+  className,
+  style,
+  alca,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+  style?: React.CSSProperties;
+  alca: React.ReactNode;
+}) {
+  return (
+    <TableHead className={cn("relative", className)} style={style}>
+      {children}
+      {alca}
     </TableHead>
   );
 }

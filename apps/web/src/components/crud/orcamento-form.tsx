@@ -75,7 +75,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { StatusDot } from "@/components/crud/status-dot";
-import { SortableTableHead } from "@/components/crud/sortable-table-head";
+import {
+  SortableTableHead,
+  TableHeadRedimensionavel,
+} from "@/components/crud/sortable-table-head";
+import { useLargurasColunas } from "@/components/crud/larguras-colunas";
 import { OrcamentoTimeline } from "@/components/crud/orcamento-timeline";
 import { OrcamentoHistorico } from "@/components/crud/orcamento-historico";
 import {
@@ -1192,6 +1196,18 @@ export function OrcamentoFormContent({
   const podeVerSugestao =
     hasPermission("sugestao-compra", "visualizar") ||
     hasPermission("orcamentos", "visualizar");
+  // Busca e ordenação da aba Sugestão, no cliente como as do Mix.
+  const [sugestaoBusca, setSugestaoBusca] = useState("");
+  const [sugestaoSort, setSugestaoSort] = useState<{
+    campo: "codigoErp" | "descricao" | "precoTabelaCliente" | "motivo" | null;
+    ordem: "asc" | "desc";
+  }>({ campo: null, ordem: "asc" });
+  const ordenarSugestao = (campo: NonNullable<typeof sugestaoSort.campo>) =>
+    setSugestaoSort((atual) =>
+      atual.campo === campo
+        ? { campo, ordem: atual.ordem === "asc" ? "desc" : "asc" }
+        : { campo, ordem: "asc" },
+    );
   const sugestaoQuery = useQuery({
     queryKey: ["sugestao-compra", "calculada", clienteId],
     queryFn: () =>
@@ -1201,6 +1217,29 @@ export function OrcamentoFormContent({
     enabled: !!clienteId && podeVerSugestao,
   });
   const sugestoes = sugestaoQuery.data?.itens ?? [];
+  const termoSugestao = sugestaoBusca.trim().toLowerCase();
+  const sugestoesVisiveis = sugestoes
+    .filter(
+      (s) =>
+        !termoSugestao ||
+        s.codigoErp.toLowerCase().includes(termoSugestao) ||
+        s.descricao.toLowerCase().includes(termoSugestao) ||
+        (s.motivo ?? "").toLowerCase().includes(termoSugestao),
+    )
+    .sort((a, b) => {
+      const campo = sugestaoSort.campo;
+      if (!campo) return 0;
+      const va = a[campo];
+      const vb = b[campo];
+      // Vazio sempre por último, nas duas direções.
+      if (va == null || va === "") return vb == null || vb === "" ? 0 : 1;
+      if (vb == null || vb === "") return -1;
+      const c =
+        typeof va === "number" && typeof vb === "number"
+          ? va - vb
+          : String(va).localeCompare(String(vb), "pt-BR", { numeric: true });
+      return sugestaoSort.ordem === "asc" ? c : -c;
+    });
 
   const integracao = registro ? situacaoIntegracao(registro) : null;
   const diferencas = registro?.itensErp ? diferencasPedido(registro) : null;
@@ -1300,15 +1339,36 @@ export function OrcamentoFormContent({
       setMixSortOrder(mixSortOrder === "asc" ? "desc" : "asc");
     }
   };
+  const [mixSituacao, setMixSituacao] = useState<"todos" | "ativos" | "inativos">("todos");
   const termoMix = mixBusca.trim().toLowerCase();
   const mixVisivel = [...mix]
     .filter(
       (m) =>
-        !termoMix ||
-        m.codigoErp.toLowerCase().includes(termoMix) ||
-        m.descricao.toLowerCase().includes(termoMix),
+        (mixSituacao === "todos" || m.ativo === (mixSituacao === "ativos")) &&
+        (!termoMix ||
+          m.codigoErp.toLowerCase().includes(termoMix) ||
+          m.descricao.toLowerCase().includes(termoMix)),
     )
     .sort((a, b) => compararMix(a, b, mixSortBy, mixSortOrder));
+  // Larguras arrastáveis das tabelas de Mix e Sugestão, lembradas no navegador
+  // (16/11/2026).
+  const colunasMix = useLargurasColunas("orcamento:mix:larguras", {
+    acao: 44,
+    codigo: 100,
+    descricao: 320,
+    compra: 120,
+    preco: 110,
+    desconto: 110,
+    tabela: 110,
+    situacao: 100,
+  });
+  const colunasSugestao = useLargurasColunas("orcamento:sugestao:larguras", {
+    acao: 44,
+    codigo: 100,
+    descricao: 300,
+    tabela: 120,
+    motivo: 320,
+  });
 
   const adicionarItem = () => {
     linhas.append({ produtoId: "", quantidade: 1, vlrUnitario: 0 });
@@ -2513,12 +2573,27 @@ export function OrcamentoFormContent({
                     </p>
                   )}
                   {mix.length > 0 && (
-                    <Input
-                      placeholder="Buscar produto por código ou descrição..."
-                      value={mixBusca}
-                      onChange={(e) => setMixBusca(e.target.value)}
-                      className="max-w-sm"
-                    />
+                    <div className="flex flex-wrap items-center gap-2">
+                      <Input
+                        placeholder="Buscar produto por código ou descrição..."
+                        value={mixBusca}
+                        onChange={(e) => setMixBusca(e.target.value)}
+                        className="max-w-sm"
+                      />
+                      <Select
+                        value={mixSituacao}
+                        onValueChange={(v) => setMixSituacao(v as typeof mixSituacao)}
+                      >
+                        <SelectTrigger className="w-40">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="todos">Todas as situações</SelectItem>
+                          <SelectItem value="ativos">Só ativos</SelectItem>
+                          <SelectItem value="inativos">Só inativos</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
                   )}
                   {mix.length > 0 && mixVisivel.length === 0 && (
                     <p className="text-sm text-muted-foreground">
@@ -2526,30 +2601,41 @@ export function OrcamentoFormContent({
                     </p>
                   )}
                   {mixVisivel.length > 0 && (
-                    <Table>
+                    <Table className="table-fixed [&_td]:overflow-hidden [&_td]:text-ellipsis [&_th]:overflow-hidden" style={colunasMix.estiloTabela}>
                       <TableHeader>
                         <TableRow>
-                          <TableHead className="w-9" />
+                          <TableHeadRedimensionavel
+                            style={{ width: colunasMix.larguras.acao }}
+                            alca={colunasMix.alca("acao")}
+                          />
                           <SortableTableHead
                             label="Código"
+                            style={{ width: colunasMix.larguras.codigo }}
+                            alca={colunasMix.alca("codigo")}
                             active={mixSortBy === "codigoErp"}
                             order={mixSortOrder}
                             onClick={() => ordenarMix("codigoErp")}
                           />
                           <SortableTableHead
                             label="Descrição"
+                            style={{ width: colunasMix.larguras.descricao }}
+                            alca={colunasMix.alca("descricao")}
                             active={mixSortBy === "descricao"}
                             order={mixSortOrder}
                             onClick={() => ordenarMix("descricao")}
                           />
                           <SortableTableHead
                             label="Última compra"
+                            style={{ width: colunasMix.larguras.compra }}
+                            alca={colunasMix.alca("compra")}
                             active={mixSortBy === "ultimaCompra"}
                             order={mixSortOrder}
                             onClick={() => ordenarMix("ultimaCompra")}
                           />
                           <SortableTableHead
                             label="Últ. preço"
+                            style={{ width: colunasMix.larguras.preco }}
+                            alca={colunasMix.alca("preco")}
                             className="text-right"
                             active={mixSortBy === "ultimoPrecoUnitario"}
                             order={mixSortOrder}
@@ -2557,6 +2643,8 @@ export function OrcamentoFormContent({
                           />
                           <SortableTableHead
                             label="Últ. desconto"
+                            style={{ width: colunasMix.larguras.desconto }}
+                            alca={colunasMix.alca("desconto")}
                             className="text-right"
                             active={mixSortBy === "ultimoDesconto"}
                             order={mixSortOrder}
@@ -2564,6 +2652,8 @@ export function OrcamentoFormContent({
                           />
                           <SortableTableHead
                             label="Preço tabela"
+                            style={{ width: colunasMix.larguras.tabela }}
+                            alca={colunasMix.alca("tabela")}
                             className="text-right"
                             active={mixSortBy === "precoTabela"}
                             order={mixSortOrder}
@@ -2571,6 +2661,8 @@ export function OrcamentoFormContent({
                           />
                           <SortableTableHead
                             label="Situação"
+                            style={{ width: colunasMix.larguras.situacao }}
+                            alca={colunasMix.alca("situacao")}
                             active={mixSortBy === "ativo"}
                             order={mixSortOrder}
                             onClick={() => ordenarMix("ativo")}
@@ -2598,7 +2690,9 @@ export function OrcamentoFormContent({
                                 )}
                               </TableCell>
                               <TableCell>{m.codigoErp}</TableCell>
-                              <TableCell className="max-w-56 truncate">{m.descricao}</TableCell>
+                              <TableCell className="min-w-56 whitespace-normal break-words">
+                                {m.descricao}
+                              </TableCell>
                               <TableCell className="text-muted-foreground">
                                 {dataBr(m.ultimaCompra)}
                               </TableCell>
@@ -2636,18 +2730,63 @@ export function OrcamentoFormContent({
                       </p>
                     )}
                     {sugestoes.length > 0 && (
-                      <Table>
+                      <Input
+                        placeholder="Buscar por código, descrição ou motivo..."
+                        value={sugestaoBusca}
+                        onChange={(e) => setSugestaoBusca(e.target.value)}
+                        className="max-w-sm"
+                      />
+                    )}
+                    {sugestoes.length > 0 && sugestoesVisiveis.length === 0 && (
+                      <p className="text-sm text-muted-foreground">
+                        Nenhuma sugestão corresponde à busca.
+                      </p>
+                    )}
+                    {sugestoesVisiveis.length > 0 && (
+                      <Table className="table-fixed [&_td]:overflow-hidden [&_td]:text-ellipsis [&_th]:overflow-hidden" style={colunasSugestao.estiloTabela}>
                         <TableHeader>
                           <TableRow>
-                            <TableHead className="w-9" />
-                            <TableHead>Produto</TableHead>
-                            <TableHead>Descrição</TableHead>
-                            <TableHead className="text-right">Preço tabela</TableHead>
-                            <TableHead>Motivo da sugestão</TableHead>
+                            <TableHeadRedimensionavel
+                              style={{ width: colunasSugestao.larguras.acao }}
+                              alca={colunasSugestao.alca("acao")}
+                            />
+                            <SortableTableHead
+                              label="Produto"
+                              active={sugestaoSort.campo === "codigoErp"}
+                              order={sugestaoSort.ordem}
+                              onClick={() => ordenarSugestao("codigoErp")}
+                              style={{ width: colunasSugestao.larguras.codigo }}
+                              alca={colunasSugestao.alca("codigo")}
+                            />
+                            <SortableTableHead
+                              label="Descrição"
+                              active={sugestaoSort.campo === "descricao"}
+                              order={sugestaoSort.ordem}
+                              onClick={() => ordenarSugestao("descricao")}
+                              style={{ width: colunasSugestao.larguras.descricao }}
+                              alca={colunasSugestao.alca("descricao")}
+                            />
+                            <SortableTableHead
+                              label="Preço tabela"
+                              className="text-right"
+                              active={sugestaoSort.campo === "precoTabelaCliente"}
+                              order={sugestaoSort.ordem}
+                              onClick={() => ordenarSugestao("precoTabelaCliente")}
+                              style={{ width: colunasSugestao.larguras.tabela }}
+                              alca={colunasSugestao.alca("tabela")}
+                            />
+                            <SortableTableHead
+                              label="Motivo da sugestão"
+                              active={sugestaoSort.campo === "motivo"}
+                              order={sugestaoSort.ordem}
+                              onClick={() => ordenarSugestao("motivo")}
+                              style={{ width: colunasSugestao.larguras.motivo }}
+                              alca={colunasSugestao.alca("motivo")}
+                            />
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {sugestoes.map((s) => {
+                          {sugestoesVisiveis.map((s) => {
                             const jaAdicionado = itensAtuais.some((it) => it.produtoId === s.produtoId);
                             return (
                               <TableRow key={s.produtoId}>
@@ -2665,7 +2804,7 @@ export function OrcamentoFormContent({
                                   </Button>
                                 </TableCell>
                                 <TableCell>{s.codigoErp}</TableCell>
-                                <TableCell className="max-w-56 truncate" title={s.descricao}>
+                                <TableCell className="min-w-56 whitespace-normal break-words">
                                   {s.descricao}
                                 </TableCell>
                                 <TableCell className="text-right">

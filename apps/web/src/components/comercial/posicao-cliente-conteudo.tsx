@@ -17,6 +17,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { StatusDot } from "@/components/crud/status-dot";
 import { TituloStatusBadge } from "@/components/comercial/titulo-status-badge";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
+import { useLargurasColunas } from "@/components/crud/larguras-colunas";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { NotaSaidaSheet } from "@/components/comercial/nota-saida-detalhe";
 import { NotaEntradaSheet } from "@/components/compras/nota-entrada-detalhe";
@@ -575,6 +576,17 @@ export function PosicaoClienteConteudo({
   const [tituloSearch, setTituloSearch] = useState("");
   const [tituloSituacao, setTituloSituacao] = useState<TituloSituacaoFiltro>("todos");
   const [mixSearch, setMixSearch] = useState("");
+  const [mixSituacao, setMixSituacao] = useState<"todos" | "ativos" | "inativos">("todos");
+  // Larguras arrastáveis da tabela do Mix, lembradas no navegador (16/11/2026).
+  const colunasMix = useLargurasColunas("posicao-cliente:mix:larguras", {
+    codigo: 110,
+    produto: 360,
+    preco: 130,
+    desconto: 120,
+    tabela: 130,
+    compra: 120,
+    situacao: 100,
+  });
   // Ano de cada aba datada: emissão nas notas e devoluções, vencimento nos
   // títulos (é a data que a tabela mostra e a que importa na cobrança).
   const [notaAno, setNotaAno] = useState(TODOS_OS_ANOS);
@@ -658,11 +670,14 @@ export function PosicaoClienteConteudo({
 
   const mixFiltrado = useMemo(() => {
     const termo = mixSearch.trim().toLowerCase();
-    if (!termo) return mix;
     return mix.filter(
-      (m) => m.codigoErp.toLowerCase().includes(termo) || m.descricao.toLowerCase().includes(termo),
+      (m) =>
+        (mixSituacao === "todos" || m.ativo === (mixSituacao === "ativos")) &&
+        (!termo ||
+          m.codigoErp.toLowerCase().includes(termo) ||
+          m.descricao.toLowerCase().includes(termo)),
     );
-  }, [mix, mixSearch]);
+  }, [mix, mixSearch, mixSituacao]);
 
   // O back-end manda venda e remessa separadas (o resumo de compra é só da
   // venda); a aba as junta. Os dois conjuntos são disjuntos pelo `comodato`,
@@ -1270,6 +1285,7 @@ export function PosicaoClienteConteudo({
         <TabsContent value="mix" className={rolagemAba}>
           <Card className="min-h-0">
             <CardContent className="flex min-h-0 flex-col gap-3">
+              <div className="flex flex-wrap items-center gap-2">
               <div className="relative w-full sm:max-w-xs">
                 <Search className="absolute top-1/2 left-2.5 size-3.5 -translate-y-1/2 text-muted-foreground" />
                 <Input
@@ -1278,6 +1294,20 @@ export function PosicaoClienteConteudo({
                   value={mixSearch}
                   onChange={(e) => setMixSearch(e.target.value)}
                 />
+              </div>
+              <Select
+                value={mixSituacao}
+                onValueChange={(v) => setMixSituacao(v as typeof mixSituacao)}
+              >
+                <SelectTrigger className="w-40 max-sm:flex-1">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todos">Todas as situações</SelectItem>
+                  <SelectItem value="ativos">Só ativos</SelectItem>
+                  <SelectItem value="inativos">Só inativos</SelectItem>
+                </SelectContent>
+              </Select>
               </div>
 
               {mixOrdenado.length > 0 && (
@@ -1318,23 +1348,29 @@ export function PosicaoClienteConteudo({
                 <p className="text-sm text-muted-foreground">Nenhum produto encontrado.</p>
               ) : (
                 <div className="min-h-0 flex-1 overflow-auto rounded-lg border max-md:hidden [&>[data-slot=table-container]]:overflow-visible">
-                  <Table>
+                  <Table className="table-fixed [&_td]:overflow-hidden [&_td]:text-ellipsis [&_th]:overflow-hidden" style={colunasMix.estiloTabela}>
                     <TableHeader className="sticky top-0 z-10 bg-card">
                       <TableRow>
                         <SortableTableHead
                           label="Código"
+                          style={{ width: colunasMix.larguras.codigo }}
+                          alca={colunasMix.alca("codigo")}
                           active={mixSortBy === "codigoErp"}
                           order={mixSortOrder}
                           onClick={() => toggleSort("codigoErp", mixSortBy, setMixSortBy, setMixSortOrder)}
                         />
                         <SortableTableHead
                           label="Produto"
+                          style={{ width: colunasMix.larguras.produto }}
+                          alca={colunasMix.alca("produto")}
                           active={mixSortBy === "descricao"}
                           order={mixSortOrder}
                           onClick={() => toggleSort("descricao", mixSortBy, setMixSortBy, setMixSortOrder)}
                         />
                         <SortableTableHead
                           label="Últ. preço unit."
+                          style={{ width: colunasMix.larguras.preco }}
+                          alca={colunasMix.alca("preco")}
                           className="text-right"
                           active={mixSortBy === "ultimoPrecoUnitario"}
                           order={mixSortOrder}
@@ -1344,6 +1380,8 @@ export function PosicaoClienteConteudo({
                         />
                         <SortableTableHead
                           label="Últ. desconto"
+                          style={{ width: colunasMix.larguras.desconto }}
+                          alca={colunasMix.alca("desconto")}
                           className="text-right"
                           active={mixSortBy === "ultimoDesconto"}
                           order={mixSortOrder}
@@ -1353,6 +1391,8 @@ export function PosicaoClienteConteudo({
                         />
                         <SortableTableHead
                           label="Preço de tabela"
+                          style={{ width: colunasMix.larguras.tabela }}
+                          alca={colunasMix.alca("tabela")}
                           className="text-right"
                           active={mixSortBy === "precoTabela"}
                           order={mixSortOrder}
@@ -1362,6 +1402,8 @@ export function PosicaoClienteConteudo({
                         />
                         <SortableTableHead
                           label="Última compra"
+                          style={{ width: colunasMix.larguras.compra }}
+                          alca={colunasMix.alca("compra")}
                           active={mixSortBy === "ultimaCompra"}
                           order={mixSortOrder}
                           onClick={() =>
@@ -1370,6 +1412,8 @@ export function PosicaoClienteConteudo({
                         />
                         <SortableTableHead
                           label="Situação"
+                          style={{ width: colunasMix.larguras.situacao }}
+                          alca={colunasMix.alca("situacao")}
                           active={mixSortBy === "ativo"}
                           order={mixSortOrder}
                           onClick={() => toggleSort("ativo", mixSortBy, setMixSortBy, setMixSortOrder)}
@@ -1384,7 +1428,8 @@ export function PosicaoClienteConteudo({
                           onClick={() => setProdutoSelecionadoId(m.produtoId)}
                         >
                           <TableCell className="font-mono text-xs">{m.codigoErp}</TableCell>
-                          <TableCell>
+                          {/* Quebra linha: descrição longa aparece inteira (16/11/2026). */}
+                          <TableCell className="min-w-64 whitespace-normal break-words">
                             {m.descricao}
                             {m.unidade && <span className="text-xs text-muted-foreground"> ({m.unidade})</span>}
                           </TableCell>
