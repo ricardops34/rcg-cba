@@ -12,6 +12,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Sheet, SheetHeader, SheetTitle } from "@/components/ui/sheet";
 import { ResizableSheetContent } from "@/components/ui/resizable-sheet-content";
+import { SegundaViaNota } from "@/components/comercial/segunda-via";
 import {
   Table,
   TableBody,
@@ -211,7 +212,7 @@ export function NotaSaidaSheet({
   return (
     <Sheet open={!!id} onOpenChange={onOpenChange}>
       <ResizableSheetContent defaultWidth={720}>
-        <SheetHeader>
+        <SheetHeader className="flex-row items-center justify-between gap-2 pr-12">
           <SheetTitle className="flex items-center gap-2">
             {nota ? (
               <>
@@ -224,6 +225,9 @@ export function NotaSaidaSheet({
               "Nota fiscal de saída"
             )}
           </SheetTitle>
+          {/* DANFE e XML (17/11/2026): os mesmos botões da listagem; sem o XML
+              do ERP ficam desabilitados, com o motivo. */}
+          {nota && <SegundaViaNota notaId={nota.id} numero={nota.numero} temXml={nota.temXml} />}
         </SheetHeader>
         <div className="px-4 pb-4">
           {isLoading && (

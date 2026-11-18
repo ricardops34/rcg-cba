@@ -6,6 +6,7 @@ import { apiFetch } from "@/lib/api-client";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
+import { SegundaViaNota } from "@/components/comercial/segunda-via";
 import { NotaSaidaDetalheContent, type NotaSaidaDetalhe } from "@/components/comercial/nota-saida-detalhe";
 import { ArrowLeft } from "lucide-react";
 
@@ -46,6 +47,9 @@ export default function NotaSaidaDetalhePage() {
         </h1>
         {nota.comodato && <Badge variant="outline">Comodato</Badge>}
         {!nota.ativo && <Badge variant="destructive">Inativa</Badge>}
+        <div className="ml-auto">
+          <SegundaViaNota notaId={nota.id} numero={nota.numero} temXml={nota.temXml} />
+        </div>
       </div>
 
       <NotaSaidaDetalheContent nota={nota} />
