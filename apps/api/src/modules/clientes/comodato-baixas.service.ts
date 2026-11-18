@@ -13,6 +13,17 @@ import type { AuthenticatedUser } from '../../common/decorators/current-user.dec
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import { saldoComodatoSql } from './comodato-sql';
 
+type MovimentoComodato = {
+  itemId: string;
+  notaId: string;
+  numero: string;
+  serie: string | null;
+  item: number | null;
+  dtEmissao: Date | null;
+  cfop: string | null;
+  quantidade: number;
+};
+
 const qtd = (v: number) =>
   v.toLocaleString('pt-BR', { maximumFractionDigits: 3 });
 
@@ -112,10 +123,18 @@ export class ComodatoBaixasService {
   }
 
   /**
-   * Detalhe do equipamento na aba Equipamentos (pedido de 17/11/2026): cada
-   * item de comodato das notas do cliente com esse produto — remessa (saída)
-   * e retorno (entrada) —, mais recente primeiro. Os mesmos filtros de
-   * `saldoComodatoSql`, para a lista bater com as quantidades da linha.
+   * Detalhe do equipamento na aba Equipamentos (pedido de 17/11/2026): as
+   * remessas (itens de comodato das notas de saída) do produto no cliente,
+   * cada uma com os retornos (notas de entrada) que a devolvem e o saldo.
+   *
+   * O retorno aponta a remessa pela nota de origem do item (D1_NFORI,
+   * D1_SERIORI, D1_ITEMORI), casada aqui com número, série e item da nota de
+   * saída, na mesma filial (1º trecho da chave) e no mesmo produto. Retorno sem
+   * origem — importado antes de a integração mandá-la — ou com origem que não
+   * está na base vai para `retornosSemVinculo`: o total continua batendo com
+   * enviada − devolvida da linha da aba.
+   *
+   * Os mesmos filtros de `saldoComodatoSql`.
    */
   movimentos(
     empresaId: string,
@@ -125,38 +144,80 @@ export class ComodatoBaixasService {
   ) {
     return this.prisma.withTenant(empresaId, async (tx) => {
       await this.clienteNaCarteira(tx, empresaId, user, clienteId);
-      return tx.$queryRaw<
-        {
-          tipo: 'remessa' | 'retorno';
-          notaId: string;
-          numero: string;
-          serie: string | null;
-          item: number | null;
-          dtEmissao: Date | null;
-          cfop: string | null;
-          quantidade: number;
-        }[]
-      >`
-        SELECT 'remessa' AS "tipo", n."id" AS "notaId", n."numero", n."serie",
-               i."item", COALESCE(i."dtEmissao", n."dtEmissao") AS "dtEmissao",
-               i."cfop", i."quantidade"::float8 AS "quantidade"
-          FROM "notas_saida_itens" i
-          JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
-         WHERE i."empresaId" = ${empresaId} AND i."clienteId" = ${clienteId}
-           AND i."produtoId" = ${produtoId} AND i."comodato" = true
-           AND i."deletedAt" IS NULL AND i."ativo" = true
-           AND n."deletedAt" IS NULL AND n."ativo" = true
-        UNION ALL
-        SELECT 'retorno', n."id", n."numero", n."serie",
-               i."item", COALESCE(i."dtEmissao", n."dtEmissao"),
-               i."cfop", i."quantidade"::float8
-          FROM "notas_entrada_itens" i
-          JOIN "notas_entrada" n ON n."id" = i."notaEntradaId"
-         WHERE i."empresaId" = ${empresaId} AND i."clienteId" = ${clienteId}
-           AND i."produtoId" = ${produtoId} AND i."comodato" = true
-           AND i."deletedAt" IS NULL AND i."ativo" = true
-           AND n."deletedAt" IS NULL AND n."ativo" = true
-         ORDER BY "dtEmissao" DESC NULLS LAST, "numero" DESC, "item"`;
+      const [remessas, retornos] = await Promise.all([
+        tx.$queryRaw<(MovimentoComodato & { filial: string | null })[]>`
+          SELECT i."id" AS "itemId", n."id" AS "notaId", n."numero", n."serie",
+                 i."item", COALESCE(i."dtEmissao", n."dtEmissao") AS "dtEmissao",
+                 i."cfop", i."quantidade"::float8 AS "quantidade",
+                 split_part(n."chave", '-', 1) AS "filial"
+            FROM "notas_saida_itens" i
+            JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+           WHERE i."empresaId" = ${empresaId} AND i."clienteId" = ${clienteId}
+             AND i."produtoId" = ${produtoId} AND i."comodato" = true
+             AND i."deletedAt" IS NULL AND i."ativo" = true
+             AND n."deletedAt" IS NULL AND n."ativo" = true
+           ORDER BY "dtEmissao" DESC NULLS LAST, n."numero" DESC, i."item"`,
+        tx.$queryRaw<
+          (MovimentoComodato & {
+            filial: string | null;
+            notaOrigem: string | null;
+            serieOrigem: string | null;
+            itemOrigem: number | null;
+          })[]
+        >`
+          SELECT i."id" AS "itemId", n."id" AS "notaId", n."numero", n."serie",
+                 i."item", COALESCE(i."dtEmissao", n."dtEmissao") AS "dtEmissao",
+                 i."cfop", i."quantidade"::float8 AS "quantidade",
+                 split_part(n."chave", '-', 1) AS "filial",
+                 i."notaOrigem", i."serieOrigem", i."itemOrigem"
+            FROM "notas_entrada_itens" i
+            JOIN "notas_entrada" n ON n."id" = i."notaEntradaId"
+           WHERE i."empresaId" = ${empresaId} AND i."clienteId" = ${clienteId}
+             AND i."produtoId" = ${produtoId} AND i."comodato" = true
+             AND i."deletedAt" IS NULL AND i."ativo" = true
+             AND n."deletedAt" IS NULL AND n."ativo" = true
+           ORDER BY "dtEmissao" DESC NULLS LAST, n."numero" DESC, i."item"`,
+      ]);
+
+      // Número e série sem os espaços do ERP; nota sem chave casa em qualquer filial.
+      const t = (v: string | null) => (v ?? '').trim();
+      const chave = (
+        filial: string | null,
+        numero: string | null,
+        serie: string | null,
+        item: number | null,
+      ) => `${t(filial)}|${t(numero)}|${t(serie)}|${item ?? ''}`;
+      const porChave = new Map(
+        remessas.map(({ filial, ...r }) => [
+          chave(filial, r.numero, r.serie, r.item),
+          { ...r, retornos: [] as Omit<(typeof retornos)[number], 'filial'>[] },
+        ]),
+      );
+      const semVinculo: Omit<(typeof retornos)[number], 'filial'>[] = [];
+      for (const { filial, ...r } of retornos) {
+        const destino = r.notaOrigem
+          ? porChave.get(
+              chave(filial, r.notaOrigem, r.serieOrigem, r.itemOrigem),
+            )
+          : undefined;
+        if (destino) destino.retornos.push(r);
+        else semVinculo.push(r);
+      }
+
+      return {
+        remessas: [...porChave.values()].map((r) => {
+          const quantidadeRetornada = r.retornos.reduce(
+            (s, x) => s + x.quantidade,
+            0,
+          );
+          return {
+            ...r,
+            quantidadeRetornada,
+            saldo: r.quantidade - quantidadeRetornada,
+          };
+        }),
+        retornosSemVinculo: semVinculo,
+      };
     });
   }
 

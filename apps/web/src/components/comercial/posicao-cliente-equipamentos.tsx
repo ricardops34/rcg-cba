@@ -4,11 +4,11 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search, Undo2, Wrench } from "lucide-react";
-import type {
-  PosicaoClienteEquipamento,
-  PosicaoClienteEquipamentoMovimento,
-} from "@plataforma/contracts";
-import { EquipamentoMovimentosSheet } from "@/components/comercial/equipamento-movimentos-sheet";
+import type { PosicaoClienteEquipamento } from "@plataforma/contracts";
+import {
+  EquipamentoMovimentosSheet,
+  type TipoNotaComodato,
+} from "@/components/comercial/equipamento-movimentos-sheet";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { dataCivilBr } from "@/lib/data";
 import { cn } from "@/lib/utils";
@@ -73,7 +73,7 @@ export function TabelaEquipamentos({
   clienteId: string;
   equipamentos: PosicaoClienteEquipamento[];
   /** Nota da cortina do equipamento: remessa é de saída, retorno é de entrada. */
-  onAbrirNota: (tipo: PosicaoClienteEquipamentoMovimento["tipo"], notaId: string) => void;
+  onAbrirNota: (tipo: TipoNotaComodato, notaId: string) => void;
 }) {
   const queryClient = useQueryClient();
   const [busca, setBusca] = useState("");

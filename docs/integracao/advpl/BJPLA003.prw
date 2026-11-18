@@ -3754,6 +3754,7 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 	Local lItAlIpi := SD1->(FieldPos("D1_IPI"))     > 0
 	Local lItAlIcm := SD1->(FieldPos("D1_PICM"))    > 0
 	Local lItPeso  := SD1->(FieldPos("D1_PESO"))    > 0
+	Local lItOrig  := SD1->(FieldPos("D1_NFORI")) > 0 .And. SD1->(FieldPos("D1_SERIORI")) > 0 .And. SD1->(FieldPos("D1_ITEMORI")) > 0
 	Local nRecAnt  := 0
 
 	Default cMarca    := ""
@@ -3825,6 +3826,9 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 	EndIf
 	If lItPeso
 		cQuery += ", D1_PESO "
+	EndIf
+	If lItOrig
+		cQuery += ", D1_NFORI, D1_SERIORI, D1_ITEMORI "
 	EndIf
 
 	// O JOIN inclui itens ativos e excluidos; o D_E_L_E_T_ vira delete no JSON.
@@ -4135,6 +4139,15 @@ User Function BJMAPNFE(cMarca, cChave, cMarcaFim, lEnvDel)
 
 			If lItPeso
 				oItem["peso"] := (cAlias)->D1_PESO
+			EndIf
+
+			// Nota de saida que o item devolve (decisao do usuario, 17/11/2026):
+			// liga o retorno de comodato a remessa, para o saldo por remessa na
+			// Posicao de Cliente. So vai quando o item tem origem.
+			If lItOrig .And. !Empty((cAlias)->D1_NFORI)
+				oItem["notaOrigem"]  := AllTrim((cAlias)->D1_NFORI)   // SD1.D1_NFORI   -> notas_entrada_itens.notaOrigem
+				oItem["serieOrigem"] := AllTrim((cAlias)->D1_SERIORI) // SD1.D1_SERIORI -> notas_entrada_itens.serieOrigem
+				oItem["itemOrigem"]  := Val((cAlias)->D1_ITEMORI)     // SD1.D1_ITEMORI -> notas_entrada_itens.itemOrigem
 			EndIf
 
 			aAdd(aItens, oItem)

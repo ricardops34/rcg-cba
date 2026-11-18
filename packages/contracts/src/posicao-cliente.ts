@@ -104,11 +104,14 @@ export const posicaoClienteEquipamentoSchema = z.object({
 export type PosicaoClienteEquipamento = z.infer<typeof posicaoClienteEquipamentoSchema>;
 
 /**
- * Detalhe de um equipamento na Posição de Cliente (pedido de 17/11/2026): os
- * itens das notas em que ele foi ao cliente (remessa) e voltou (retorno).
+ * Detalhe de um equipamento na Posição de Cliente (pedido de 17/11/2026): as
+ * remessas dele ao cliente, cada uma com os retornos que a devolvem e o saldo.
+ * O retorno aponta a remessa pela nota de origem do item (D1_NFORI/D1_SERIORI/
+ * D1_ITEMORI); o que chegou sem essa informação — notas importadas antes dela —
+ * fica em `retornosSemVinculo`, para o total continuar batendo com a linha.
  */
-export const posicaoClienteEquipamentoMovimentoSchema = z.object({
-  tipo: z.enum(["remessa", "retorno"]),
+export const posicaoClienteEquipamentoRetornoSchema = z.object({
+  itemId: z.string().uuid(),
   notaId: z.string().uuid(),
   numero: z.string(),
   serie: z.string().nullable(),
@@ -116,9 +119,35 @@ export const posicaoClienteEquipamentoMovimentoSchema = z.object({
   dtEmissao: z.string().datetime().nullable(),
   cfop: z.string().nullable(),
   quantidade: z.number(),
+  /** Remessa que o ERP diz que este item devolve, mesmo que ela não esteja na base. */
+  notaOrigem: z.string().nullable(),
+  serieOrigem: z.string().nullable(),
+  itemOrigem: z.number().int().nullable(),
 });
-export type PosicaoClienteEquipamentoMovimento = z.infer<
-  typeof posicaoClienteEquipamentoMovimentoSchema
+export type PosicaoClienteEquipamentoRetorno = z.infer<typeof posicaoClienteEquipamentoRetornoSchema>;
+
+export const posicaoClienteEquipamentoRemessaSchema = z.object({
+  itemId: z.string().uuid(),
+  notaId: z.string().uuid(),
+  numero: z.string(),
+  serie: z.string().nullable(),
+  item: z.number().int().nullable(),
+  dtEmissao: z.string().datetime().nullable(),
+  cfop: z.string().nullable(),
+  quantidade: z.number(),
+  /** Soma dos retornos vinculados a esta remessa. */
+  quantidadeRetornada: z.number(),
+  saldo: z.number(),
+  retornos: z.array(posicaoClienteEquipamentoRetornoSchema),
+});
+export type PosicaoClienteEquipamentoRemessa = z.infer<typeof posicaoClienteEquipamentoRemessaSchema>;
+
+export const posicaoClienteEquipamentoMovimentosSchema = z.object({
+  remessas: z.array(posicaoClienteEquipamentoRemessaSchema),
+  retornosSemVinculo: z.array(posicaoClienteEquipamentoRetornoSchema),
+});
+export type PosicaoClienteEquipamentoMovimentos = z.infer<
+  typeof posicaoClienteEquipamentoMovimentosSchema
 >;
 
 /** Baixar o saldo de um equipamento no cliente. */

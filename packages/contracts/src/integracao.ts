@@ -1348,6 +1348,11 @@ export const integracaoNotaEntradaItemSchema = z.object({
   aliqIpi: z.coerce.number().nullable().optional().describe("Alíquota de IPI do item (D1_IPI), em %"),
   aliqIcms: z.coerce.number().nullable().optional().describe("Alíquota de ICMS do item (D1_PICM), em %"),
   peso: z.coerce.number().nullable().optional(),
+  // Nota de saída que o item devolve: liga o retorno de comodato à remessa
+  // (17/11/2026). Opcionais, como as alíquotas.
+  notaOrigem: z.string().trim().max(20).nullable().optional().describe("Número da nota de saída devolvida (D1_NFORI)"),
+  serieOrigem: z.string().trim().max(5).nullable().optional().describe("Série da nota de saída devolvida (D1_SERIORI)"),
+  itemOrigem: z.coerce.number().int().nullable().optional().describe("Item da nota de saída devolvida (D1_ITEMORI)"),
   ativo: z.boolean().default(true),
 });
 export type IntegracaoNotaEntradaItem = z.infer<

@@ -3718,6 +3718,12 @@ model NotaEntradaItem {
   /// mandar (2026-10-13).
   aliqIpi    Float?
   aliqIcms   Float?
+  /// Nota de saída que o item devolve (D1_NFORI, D1_SERIORI, D1_ITEMORI), como
+  /// o ERP manda. Liga o retorno de comodato à remessa (17/11/2026); a ligação
+  /// é feita na consulta, pelo cliente + número + série + item.
+  notaOrigem  String?
+  serieOrigem String?
+  itemOrigem  Int?
 
   peso     Float?
   // CFOP 1909/2909 — retorno de comodato (ver `integracao/common/comodato`).
@@ -3741,6 +3747,7 @@ model NotaEntradaItem {
   @@unique([notaEntradaId, chave])
   @@index([notaEntradaId])
   @@index([empresaId, produtoId])
+  @@index([empresaId, clienteId, notaOrigem])
   @@index([empresaId, fornecedorId, dtEmissao])
   @@index([empresaId, clienteId, produtoId])
   @@map("notas_entrada_itens")

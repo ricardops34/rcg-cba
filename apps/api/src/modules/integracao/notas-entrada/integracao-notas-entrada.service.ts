@@ -228,6 +228,9 @@ export class IntegracaoNotasEntradaService {
           aliqIpi: item.aliqIpi ?? null,
           aliqIcms: item.aliqIcms ?? null,
           peso: item.peso ?? null,
+          notaOrigem: item.notaOrigem || null,
+          serieOrigem: item.serieOrigem ?? null,
+          itemOrigem: item.itemOrigem ?? null,
           // O ERP não informa: sai só do CFOP (ver `common/comodato`).
           comodato: itemEhComodato(item.cfop, CFOPS_RETORNO_COMODATO),
           ativo: item.ativo,
