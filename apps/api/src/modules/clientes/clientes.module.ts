@@ -7,7 +7,10 @@ import { ClienteAlteracoesController } from './cliente-alteracoes.controller';
 import { ClienteAlteracoesService } from './cliente-alteracoes.service';
 import { EnriquecimentoService } from './enriquecimento.service';
 import { ClientesReceitaLoteService } from './clientes-receita-lote.service';
-import { ComodatoBaixasController } from './comodato-baixas.controller';
+import {
+  ComodatoBaixasController,
+  EquipamentosClienteController,
+} from './comodato-baixas.controller';
 import { ComodatoBaixasService } from './comodato-baixas.service';
 import { ClienteCampoConfigModule } from '../cliente-campo-config/cliente-campo-config.module';
 import { GeocodificacaoModule } from '../geocodificacao/geocodificacao.module';
@@ -21,6 +24,7 @@ import { GeocodificacaoModule } from '../geocodificacao/geocodificacao.module';
     ClienteCnaesController,
     ClienteAlteracoesController,
     ComodatoBaixasController,
+    EquipamentosClienteController,
   ],
   providers: [
     ClientesService,

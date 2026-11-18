@@ -2,7 +2,9 @@ import {
   Body,
   Controller,
   Delete,
+  Get,
   Param,
+  ParseUUIDPipe,
   Post,
   UseGuards,
 } from '@nestjs/common';
@@ -61,5 +63,35 @@ export class ComodatoBaixasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.desfazer(user.empresaAtivaId, user, id, baixaId);
+  }
+}
+
+/**
+ * Detalhe de um equipamento na aba Equipamentos: as notas de remessa e de
+ * retorno dele no cliente. Mesma permissão e mesmo recorte de carteira da
+ * baixa.
+ */
+@ApiTags('clientes')
+@ApiBearerAuth()
+@UseGuards(JwtAuthGuard, PermissionsGuard)
+@Controller('clientes/:id/equipamentos')
+export class EquipamentosClienteController {
+  constructor(private readonly service: ComodatoBaixasService) {}
+
+  @ApiOperation({
+    summary: 'Notas de remessa e retorno de um equipamento no cliente',
+    description:
+      'Itens de comodato das notas de saída (remessa) e de entrada (retorno) ' +
+      'do produto no cliente, mais recente primeiro. Requer ' +
+      'posicao-cliente.visualizar e o cliente na carteira.',
+  })
+  @RequirePermission('posicao-cliente', 'visualizar')
+  @Get(':produtoId/movimentos')
+  movimentos(
+    @Param('id', ParseUUIDPipe) id: string,
+    @Param('produtoId', ParseUUIDPipe) produtoId: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.movimentos(user.empresaAtivaId, user, id, produtoId);
   }
 }

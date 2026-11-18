@@ -1278,7 +1278,9 @@ export function PosicaoClienteConteudo({
           <TabelaEquipamentos
             clienteId={id}
             equipamentos={equipamentos}
-            onSelecionarProduto={setProdutoSelecionadoId}
+            onAbrirNota={(tipo, notaId) =>
+              tipo === "remessa" ? setNotaSelecionadaId(notaId) : setDevolucaoSelecionadaId(notaId)
+            }
           />
         </TabsContent>
 
@@ -1464,10 +1466,15 @@ export function PosicaoClienteConteudo({
         </TabsContent>
       </Tabs>
 
-      <NotaSaidaSheet id={notaSelecionadaId} onOpenChange={(o) => !o && setNotaSelecionadaId(null)} />
+      <NotaSaidaSheet
+        id={notaSelecionadaId}
+        onOpenChange={(o) => !o && setNotaSelecionadaId(null)}
+        onSelecionarProduto={setProdutoSelecionadoId}
+      />
       <NotaEntradaSheet
         id={devolucaoSelecionadaId}
         onOpenChange={(o) => !o && setDevolucaoSelecionadaId(null)}
+        onSelecionarProduto={setProdutoSelecionadoId}
       />
       <TituloReceberSheet
         id={tituloSelecionadoId}

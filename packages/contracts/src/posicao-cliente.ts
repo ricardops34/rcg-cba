@@ -103,6 +103,24 @@ export const posicaoClienteEquipamentoSchema = z.object({
 });
 export type PosicaoClienteEquipamento = z.infer<typeof posicaoClienteEquipamentoSchema>;
 
+/**
+ * Detalhe de um equipamento na Posição de Cliente (pedido de 17/11/2026): os
+ * itens das notas em que ele foi ao cliente (remessa) e voltou (retorno).
+ */
+export const posicaoClienteEquipamentoMovimentoSchema = z.object({
+  tipo: z.enum(["remessa", "retorno"]),
+  notaId: z.string().uuid(),
+  numero: z.string(),
+  serie: z.string().nullable(),
+  item: z.number().int().nullable(),
+  dtEmissao: z.string().datetime().nullable(),
+  cfop: z.string().nullable(),
+  quantidade: z.number(),
+});
+export type PosicaoClienteEquipamentoMovimento = z.infer<
+  typeof posicaoClienteEquipamentoMovimentoSchema
+>;
+
 /** Baixar o saldo de um equipamento no cliente. */
 export const comodatoBaixaCriarSchema = z.object({
   produtoId: z.string().uuid(),

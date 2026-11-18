@@ -111,6 +111,55 @@ export class ComodatoBaixasService {
     });
   }
 
+  /**
+   * Detalhe do equipamento na aba Equipamentos (pedido de 17/11/2026): cada
+   * item de comodato das notas do cliente com esse produto — remessa (saída)
+   * e retorno (entrada) —, mais recente primeiro. Os mesmos filtros de
+   * `saldoComodatoSql`, para a lista bater com as quantidades da linha.
+   */
+  movimentos(
+    empresaId: string,
+    user: AuthenticatedUser,
+    clienteId: string,
+    produtoId: string,
+  ) {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      await this.clienteNaCarteira(tx, empresaId, user, clienteId);
+      return tx.$queryRaw<
+        {
+          tipo: 'remessa' | 'retorno';
+          notaId: string;
+          numero: string;
+          serie: string | null;
+          item: number | null;
+          dtEmissao: Date | null;
+          cfop: string | null;
+          quantidade: number;
+        }[]
+      >`
+        SELECT 'remessa' AS "tipo", n."id" AS "notaId", n."numero", n."serie",
+               i."item", COALESCE(i."dtEmissao", n."dtEmissao") AS "dtEmissao",
+               i."cfop", i."quantidade"::float8 AS "quantidade"
+          FROM "notas_saida_itens" i
+          JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+         WHERE i."empresaId" = ${empresaId} AND i."clienteId" = ${clienteId}
+           AND i."produtoId" = ${produtoId} AND i."comodato" = true
+           AND i."deletedAt" IS NULL AND i."ativo" = true
+           AND n."deletedAt" IS NULL AND n."ativo" = true
+        UNION ALL
+        SELECT 'retorno', n."id", n."numero", n."serie",
+               i."item", COALESCE(i."dtEmissao", n."dtEmissao"),
+               i."cfop", i."quantidade"::float8
+          FROM "notas_entrada_itens" i
+          JOIN "notas_entrada" n ON n."id" = i."notaEntradaId"
+         WHERE i."empresaId" = ${empresaId} AND i."clienteId" = ${clienteId}
+           AND i."produtoId" = ${produtoId} AND i."comodato" = true
+           AND i."deletedAt" IS NULL AND i."ativo" = true
+           AND n."deletedAt" IS NULL AND n."ativo" = true
+         ORDER BY "dtEmissao" DESC NULLS LAST, "numero" DESC, "item"`;
+    });
+  }
+
   /** Fora da carteira responde 404, como a Posição: não confirma que existe. */
   private async clienteNaCarteira(
     tx: TenantTx,

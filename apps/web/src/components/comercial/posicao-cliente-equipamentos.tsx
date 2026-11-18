@@ -4,7 +4,11 @@ import { useMemo, useState } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import { Search, Undo2, Wrench } from "lucide-react";
-import type { PosicaoClienteEquipamento } from "@plataforma/contracts";
+import type {
+  PosicaoClienteEquipamento,
+  PosicaoClienteEquipamentoMovimento,
+} from "@plataforma/contracts";
+import { EquipamentoMovimentosSheet } from "@/components/comercial/equipamento-movimentos-sheet";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { dataCivilBr } from "@/lib/data";
 import { cn } from "@/lib/utils";
@@ -64,11 +68,12 @@ function comparar(a: string | number | null, b: string | number | null): number 
 export function TabelaEquipamentos({
   clienteId,
   equipamentos,
-  onSelecionarProduto,
+  onAbrirNota,
 }: {
   clienteId: string;
   equipamentos: PosicaoClienteEquipamento[];
-  onSelecionarProduto: (produtoId: string) => void;
+  /** Nota da cortina do equipamento: remessa é de saída, retorno é de entrada. */
+  onAbrirNota: (tipo: PosicaoClienteEquipamentoMovimento["tipo"], notaId: string) => void;
 }) {
   const queryClient = useQueryClient();
   const [busca, setBusca] = useState("");
@@ -78,6 +83,8 @@ export function TabelaEquipamentos({
   const [sortOrder, setSortOrder] = useState<SortOrder>("desc");
   const [baixando, setBaixando] = useState<PosicaoClienteEquipamento | null>(null);
   const [motivo, setMotivo] = useState("");
+  // Linha clicada: abre a cortina com as notas de remessa e retorno.
+  const [detalhe, setDetalhe] = useState<PosicaoClienteEquipamento | null>(null);
 
   const recarregar = () => {
     void queryClient.invalidateQueries({ queryKey: ["clientes", clienteId] });
@@ -252,7 +259,7 @@ export function TabelaEquipamentos({
                 key={e.produtoId ?? e.descricao}
                 role={e.produtoId ? "button" : undefined}
                 tabIndex={e.produtoId ? 0 : undefined}
-                onClick={() => e.produtoId && onSelecionarProduto(e.produtoId)}
+                onClick={() => e.produtoId && setDetalhe(e)}
                 className={cn(
                   "space-y-1.5 border-b px-3 py-3 last:border-b-0",
                   e.produtoId && "cursor-pointer active:bg-muted/60",
@@ -328,7 +335,7 @@ export function TabelaEquipamentos({
                   <TableRow
                     key={e.produtoId ?? e.descricao}
                     className={e.produtoId ? "cursor-pointer" : undefined}
-                    onClick={() => e.produtoId && onSelecionarProduto(e.produtoId)}
+                    onClick={() => e.produtoId && setDetalhe(e)}
                   >
                     <TableCell className="font-mono text-xs">{e.codigoErp ?? "—"}</TableCell>
                     <TableCell>
@@ -405,6 +412,13 @@ export function TabelaEquipamentos({
           </>
         )}
       </CardContent>
+
+      <EquipamentoMovimentosSheet
+        clienteId={clienteId}
+        equipamento={detalhe}
+        onOpenChange={(o) => !o && setDetalhe(null)}
+        onAbrirNota={onAbrirNota}
+      />
 
       <Dialog open={!!baixando} onOpenChange={(o) => !o && setBaixando(null)}>
         <DialogContent>

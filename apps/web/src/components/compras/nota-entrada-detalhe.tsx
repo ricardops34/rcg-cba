@@ -1,5 +1,6 @@
 "use client";
 
+import { cn } from "@/lib/utils";
 import { useQuery } from "@tanstack/react-query";
 import type { NotaEntrada, NotaEntradaItem } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
@@ -58,7 +59,16 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
  * saída: o documento de entrada é do fornecedor, e não é a plataforma que o
  * reimprime.
  */
-export function NotaEntradaDetalheContent({ nota }: { nota: NotaEntradaDetalhe }) {
+export function NotaEntradaDetalheContent({
+  nota,
+  onSelecionarProduto,
+}: {
+  nota: NotaEntradaDetalhe;
+  /** Clique no item abre o produto (na Posição de Cliente, a cortina do produto). */
+  onSelecionarProduto?: (produtoId: string) => void;
+}) {
+  const abrirProduto = (it: { produto?: { id: string } | null }) =>
+    onSelecionarProduto && it.produto ? () => onSelecionarProduto(it.produto!.id) : undefined;
   return (
     <div className="space-y-4">
       <Card>
@@ -107,7 +117,14 @@ export function NotaEntradaDetalheContent({ nota }: { nota: NotaEntradaDetalhe }
           <p className="mb-3 text-sm font-medium">Itens ({nota.itens.length})</p>
           <div className="space-y-2 md:hidden">
             {nota.itens.map((it) => (
-              <div key={it.id} className="space-y-1 rounded-lg border px-3 py-2.5">
+              <div
+                key={it.id}
+                onClick={abrirProduto(it)}
+                className={cn(
+                  "space-y-1 rounded-lg border px-3 py-2.5",
+                  abrirProduto(it) && "cursor-pointer active:bg-muted/60",
+                )}
+              >
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="text-sm break-words">
@@ -154,7 +171,11 @@ export function NotaEntradaDetalheContent({ nota }: { nota: NotaEntradaDetalhe }
               </TableHeader>
               <TableBody>
                 {nota.itens.map((it) => (
-                  <TableRow key={it.id}>
+                  <TableRow
+                    key={it.id}
+                    onClick={abrirProduto(it)}
+                    className={abrirProduto(it) ? "cursor-pointer" : undefined}
+                  >
                     <TableCell className="text-muted-foreground">{it.item ?? "—"}</TableCell>
                     <TableCell>
                       <p>{it.produto?.descricao ?? "—"}</p>
@@ -194,9 +215,11 @@ export function NotaEntradaDetalheContent({ nota }: { nota: NotaEntradaDetalhe }
 export function NotaEntradaSheet({
   id,
   onOpenChange,
+  onSelecionarProduto,
 }: {
   id: string | null;
   onOpenChange: (open: boolean) => void;
+  onSelecionarProduto?: (produtoId: string) => void;
 }) {
   const { data: nota, isLoading, isError } = useQuery({
     queryKey: ["notas-entrada", id],
@@ -229,7 +252,7 @@ export function NotaEntradaSheet({
             </div>
           )}
           {isError && <p className="text-sm text-muted-foreground">Nota de entrada não encontrada.</p>}
-          {nota && <NotaEntradaDetalheContent nota={nota} />}
+          {nota && <NotaEntradaDetalheContent nota={nota} onSelecionarProduto={onSelecionarProduto} />}
         </div>
       </ResizableSheetContent>
     </Sheet>
