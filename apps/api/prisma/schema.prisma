@@ -3086,6 +3086,11 @@ model CondicaoPagamento {
   // `usado` da categoria; o import do ERP não mexe). Nasce habilitada: a
   // condição nova do ERP aparece até alguém desmarcar. Decisão de 2026-11-17.
   usadoOrcamento Boolean @default(true)
+  // Direto do ERP (SE4), decisão de 2026-11-19: % Acres.Fin. (E4_ACRSFIN) e
+  // Lim.Inferior (E4_INFER, valor mínimo de venda para a condição). Exibidos
+  // no seletor do orçamento como "código - descrição (acréscimo, mínimo)".
+  acrescimoFinanceiro Float?
+  valorMinimo         Float?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

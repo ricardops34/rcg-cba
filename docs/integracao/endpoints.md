@@ -90,6 +90,11 @@ Hierarquia de duas pontas no mesmo recurso: uma subcategoria é uma categoria co
 Referenciada por cliente, nota de saída e orçamento (`condicaoChave` /
 `condicaoPagamentoChave`).
 
+`acrescimoFinanceiro` (SE4 `E4_ACRSFIN`, %) e `valorMinimo` (SE4 `E4_INFER`,
+valor mínimo de venda para usar a condição) vêm direto do ERP — decisão de
+2026-11-19. Exibidos no seletor do orçamento como
+"código - descrição (acréscimo, mínimo)".
+
 ### Armazéns — `/integracao/armazens`
 
 Referenciado pelo produto (`armazemChave`, armazém padrão) e pelo saldo de

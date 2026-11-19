@@ -122,7 +122,15 @@ const VENDEDOR_SELECT = {
   },
 };
 const OPORTUNIDADE_SELECT = { select: { id: true, titulo: true } };
-const CONDICAO_PAGAMENTO_SELECT = { select: { id: true, descricao: true } };
+const CONDICAO_PAGAMENTO_SELECT = {
+  select: {
+    id: true,
+    codigoErp: true,
+    descricao: true,
+    acrescimoFinanceiro: true,
+    valorMinimo: true,
+  },
+};
 const PRODUTO_SELECT = {
   select: {
     id: true,
@@ -399,18 +407,20 @@ export class OrcamentosService {
         ? await resolverTabelaPrecoCliente(tx, empresaId, clienteId)
         : await resolverTabelaPrecoPorPraca(tx, empresaId, praca);
       const podeAlterar =
-      (await this.parametros.obterBoolean(
-        empresaId,
-        PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
-        false,
-      )) ||
-      !clienteId; // sem cliente (orçamento avulso), a tabela é livre
+        (await this.parametros.obterBoolean(
+          empresaId,
+          PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
+          false,
+        )) || !clienteId; // sem cliente (orçamento avulso), a tabela é livre
       const select = { id: true, descricao: true } as const;
       // As opções vêm daqui, e não de /tabelas-preco, porque aquela lista pede
       // permissão de cadastro, que o vendedor não tem.
       const [tabela, opcoes] = await Promise.all([
         tabelaPrecoId
-          ? tx.tabelaPreco.findFirst({ where: { id: tabelaPrecoId, empresaId }, select })
+          ? tx.tabelaPreco.findFirst({
+              where: { id: tabelaPrecoId, empresaId },
+              select,
+            })
           : null,
         podeAlterar
           ? tx.tabelaPreco.findMany({
@@ -447,8 +457,7 @@ export class OrcamentosService {
           empresaId,
           PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
           false,
-        )) ||
-        !clienteId, // sem cliente, a tabela é livre
+        )) || !clienteId, // sem cliente, a tabela é livre
         null,
         praca,
       );
@@ -829,7 +838,11 @@ export class OrcamentosService {
         header.condicaoPagamentoId,
         clienteId,
       );
-      header.dataValidade = await ajustarValidadeOrcamento(tx, empresaId, header.dataValidade);
+      header.dataValidade = await ajustarValidadeOrcamento(
+        tx,
+        empresaId,
+        header.dataValidade,
+      );
       if (header.dataRetorno) {
         header.dataRetorno = await ajustarRetornoOrcamento(tx, empresaId, {
           retorno: header.dataRetorno,
@@ -852,8 +865,7 @@ export class OrcamentosService {
           empresaId,
           PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
           false,
-        )) ||
-        !clienteId, // sem cliente, a tabela é livre
+        )) || !clienteId, // sem cliente, a tabela é livre
         null,
         { municipio: input.prospectMunicipio, uf: input.prospectUf },
       );
@@ -1032,7 +1044,11 @@ export class OrcamentosService {
         clienteId,
         orcamento.condicaoPagamentoId,
       );
-      header.dataValidade = await ajustarValidadeOrcamento(tx, empresaId, header.dataValidade);
+      header.dataValidade = await ajustarValidadeOrcamento(
+        tx,
+        empresaId,
+        header.dataValidade,
+      );
       // Retorno e validade se conferem sempre que um dos dois vem no payload:
       // mudar só a validade para antes do retorno gravado também é erro.
       if (header.dataRetorno || header.dataValidade) {
@@ -1067,8 +1083,7 @@ export class OrcamentosService {
           empresaId,
           PARAMETRO_ORCAMENTO_ALTERA_TABELA_PRECO,
           false,
-        )) ||
-        !clienteId, // sem cliente, a tabela é livre
+        )) || !clienteId, // sem cliente, a tabela é livre
         clienteTrocado ? null : orcamento.tabelaPrecoId,
         {
           municipio: input.prospectMunicipio ?? orcamento.prospectMunicipio,

@@ -17,6 +17,8 @@ interface Proposta {
   dataValidade: string | null;
   observacao: string | null;
   vlrTotal: number;
+  /** Acréscimo financeiro da condição de pagamento, já em reais. */
+  vlrAcrescimo: number;
   situacao: Situacao;
   clienteDecisao: string | null;
   clienteDecididoEm: string | null;
@@ -24,7 +26,11 @@ interface Proposta {
   empresa: { nomeFantasia: string; razaoSocial: string; logoUrl: string | null };
   cliente: { razaoSocial: string; nomeFantasia: string | null };
   vendedor: { nome: string };
-  condicaoPagamento: { descricao: string } | null;
+  condicaoPagamento: {
+    descricao: string;
+    acrescimoFinanceiro: number | null;
+    valorMinimo: number | null;
+  } | null;
   itens: {
     id: string;
     quantidade: number;
@@ -145,7 +151,16 @@ export default function PropostaPublicaPage() {
             </li>
           ))}
         </ul>
-        <p className="text-right text-lg font-semibold">Total {moeda(proposta.vlrTotal)}</p>
+        {proposta.vlrAcrescimo > 0 && (
+          <p className="text-right text-sm text-muted-foreground">
+            Subtotal {moeda(proposta.vlrTotal)} · Acréscimo financeiro (
+            {proposta.condicaoPagamento?.acrescimoFinanceiro?.toLocaleString("pt-BR", { maximumFractionDigits: 4 })}
+            %) {moeda(proposta.vlrAcrescimo)}
+          </p>
+        )}
+        <p className="text-right text-lg font-semibold">
+          Total {moeda(proposta.vlrTotal + proposta.vlrAcrescimo)}
+        </p>
       </section>
 
       {proposta.observacao && (

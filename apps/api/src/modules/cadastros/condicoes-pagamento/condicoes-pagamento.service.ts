@@ -16,6 +16,8 @@ const SORT_FIELDS = new Set([
   'forma',
   'ativo',
   'usadoOrcamento',
+  'acrescimoFinanceiro',
+  'valorMinimo',
   'createdAt',
 ]);
 

@@ -115,7 +115,7 @@ INSERT @tabs VALUES
     ('SZ0', 'Z0_DESCAUT:n,Z0_COMISS:n'),
     ('SZ1', ''),
     ('SBM', 'BM_MSBLQL:c,BM_YTIPO:c'),
-    ('SE4', 'E4_FORMA:c,E4_MSBLQL:c'),
+    ('SE4', 'E4_FORMA:c,E4_MSBLQL:c,E4_ACRSFIN:n,E4_INFER:n'),
     ('NNR', 'NNR_MSBLQL:c'),
     ('SA3', 'A3_COMIS:n,A3_SUPER:c,A3_GEREN:c,A3_CEL:c,A3_MSBLQL:c'),
     ('SA2', 'A2_CEL:c,A2_INSCRM:c,A2_MSBLQL:c'),
@@ -550,7 +550,9 @@ BEGIN
                 LTRIM(RTRIM(SE4.E4_CODIGO))           AS codigoErp,
                 LTRIM(RTRIM(SE4.E4_DESCRI))           AS descricao,
                 CAST(CASE WHEN LTRIM(RTRIM(ISNULL(SE4.E4_MSBLQL, ''))) = '1' THEN 0 ELSE 1 END AS bit) AS ativo,
-                NULLIF(LTRIM(RTRIM(SE4.E4_FORMA)), '') AS forma
+                NULLIF(LTRIM(RTRIM(SE4.E4_FORMA)), '') AS forma,
+                CAST(SE4.E4_ACRSFIN AS decimal(10, 4)) AS acrescimoFinanceiro,
+                CAST(SE4.E4_INFER   AS decimal(14, 2)) AS valorMinimo
                 FOR JSON PATH, WITHOUT_ARRAY_WRAPPER, INCLUDE_NULL_VALUES) r(j)
          WHERE SE4.D_E_L_E_T_ = ' ' AND SE4.E4_FILIAL = @fSE4
            AND (@corte IS NULL OR SE4.S_T_A_M_P_ >= @corte)

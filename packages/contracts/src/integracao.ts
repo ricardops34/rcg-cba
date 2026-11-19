@@ -150,6 +150,16 @@ export const integracaoCondicaoPagamentoCreateSchema = z.object({
     .optional()
     .describe("Código da forma de pagamento"),
   ativo: z.boolean().default(true),
+  acrescimoFinanceiro: z
+    .number()
+    .nullable()
+    .optional()
+    .describe("% Acres.Fin. do ERP (E4_ACRSFIN)"),
+  valorMinimo: z
+    .number()
+    .nullable()
+    .optional()
+    .describe("Lim.Inferior do ERP (E4_INFER): valor mínimo de venda para a condição"),
 });
 export type IntegracaoCondicaoPagamentoCreate = z.infer<
   typeof integracaoCondicaoPagamentoCreateSchema
@@ -185,6 +195,8 @@ export const INTEGRACAO_CONDICAO_PAGAMENTO_CREATE_EXAMPLE: IntegracaoCondicaoPag
     descricao: "BOLETO 28 DIAS",
     forma: "BOL",
     ativo: true,
+    acrescimoFinanceiro: 0,
+    valorMinimo: null,
   };
 
 export const INTEGRACAO_CONDICAO_PAGAMENTO_EXAMPLE: IntegracaoCondicaoPagamento =

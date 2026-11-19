@@ -954,15 +954,40 @@ export function OrcamentoFormContent({
   // desabilitada depois — o campo não pode aparecer vazio ao editar.
   const condicaoDoCliente = clienteSelecionadoQuery.data?.condicaoPagamento;
   const condicaoGravada = orcamento?.condicaoPagamento;
+  type OpcaoCondicao = {
+    id: string;
+    codigoErp?: string | null;
+    descricao: string;
+    acrescimoFinanceiro?: number | null;
+    valorMinimo?: number | null;
+  };
   const opcoesCondicaoComCliente = [condicaoGravada, condicaoDoCliente].reduce<
-    Array<{ id: string; descricao: string }>
+    OpcaoCondicao[]
   >(
     (lista, extra) =>
       extra && !lista.some((c) => c.id === extra.id)
-        ? [{ id: extra.id, descricao: extra.descricao }, ...lista]
+        ? [
+            {
+              id: extra.id,
+              codigoErp: extra.codigoErp,
+              descricao: extra.descricao,
+              acrescimoFinanceiro: extra.acrescimoFinanceiro,
+              valorMinimo: extra.valorMinimo,
+            },
+            ...lista,
+          ]
         : lista,
     opcoesCondicao,
   );
+  // "código - descrição (acréscimo, mínimo)" — decisão do usuário, 2026-11-19.
+  const rotuloCondicao = (c: OpcaoCondicao) => {
+    const extras = [
+      c.acrescimoFinanceiro ? `+${percentual(c.acrescimoFinanceiro)}` : null,
+      c.valorMinimo ? `mín. ${moeda(c.valorMinimo)}` : null,
+    ].filter(Boolean);
+    const base = c.codigoErp ? `${c.codigoErp} - ${c.descricao}` : c.descricao;
+    return extras.length ? `${base} (${extras.join(", ")})` : base;
+  };
 
   // Tabela de preços: começa a do cadastro do cliente; só dá para trocar se o
   // parâmetro ORCAMENTO_ALTERA_TABELA_PRECO permitir (o servidor também barra).
@@ -1050,6 +1075,23 @@ export function OrcamentoFormContent({
   const totalCalculado = itensAtuais.reduce(
     (acc, it) => acc + (it.quantidade || 0) * (it.vlrUnitario || 0),
     0,
+  );
+
+  // Acréscimo financeiro da condição de pagamento soma sobre o total dos
+  // itens; valor mínimo só vira aviso, não bloqueia salvar (decisão do
+  // usuário, 2026-11-19).
+  const condicaoSelecionadaId = form.watch("condicaoPagamentoId");
+  const condicaoSelecionada = opcoesCondicaoComCliente.find(
+    (c) => c.id === condicaoSelecionadaId,
+  );
+  const percAcrescimoCondicao = condicaoSelecionada?.acrescimoFinanceiro || 0;
+  const vlrAcrescimoCondicao = percAcrescimoCondicao
+    ? Math.round(totalCalculado * (percAcrescimoCondicao / 100) * 100) / 100
+    : 0;
+  const totalComAcrescimo = totalCalculado + vlrAcrescimoCondicao;
+  const abaixoDoMinimo = Boolean(
+    condicaoSelecionada?.valorMinimo &&
+      totalComAcrescimo < condicaoSelecionada.valorMinimo,
   );
 
   /**
@@ -2023,7 +2065,7 @@ export function OrcamentoFormContent({
                     <SelectItem value="none">Sem condição</SelectItem>
                     {opcoesCondicaoComCliente.map((c) => (
                       <SelectItem key={c.id} value={c.id}>
-                        {c.descricao}
+                        {rotuloCondicao(c)}
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -2146,7 +2188,23 @@ export function OrcamentoFormContent({
 
             <Field>
               <FieldLabel>Total</FieldLabel>
-              <div className="text-lg font-semibold">{moeda(totalCalculado)}</div>
+              {vlrAcrescimoCondicao ? (
+                <div className="space-y-0.5">
+                  <div className="text-xs text-muted-foreground">
+                    Subtotal: {moeda(totalCalculado)} · Acréscimo financeiro (
+                    {percentual(percAcrescimoCondicao)}): {moeda(vlrAcrescimoCondicao)}
+                  </div>
+                  <div className="text-lg font-semibold">{moeda(totalComAcrescimo)}</div>
+                </div>
+              ) : (
+                <div className="text-lg font-semibold">{moeda(totalCalculado)}</div>
+              )}
+              {abaixoDoMinimo && (
+                <p className="mt-1 flex items-center gap-1.5 text-xs text-amber-600">
+                  <TriangleAlert className="size-3.5 shrink-0" />
+                  Total abaixo do valor mínimo da condição ({moeda(condicaoSelecionada?.valorMinimo)}).
+                </p>
+              )}
             </Field>
 
             </FieldGroup>
@@ -2473,7 +2531,7 @@ export function OrcamentoFormContent({
 
                   {linhas.fields.length > 0 && (
                     <div className="flex justify-end border-t border-border/70 pt-2 text-sm font-medium">
-                      Total: {moeda(totalCalculado)}
+                      Total: {moeda(totalComAcrescimo)}
                     </div>
                   )}
                 </fieldset>

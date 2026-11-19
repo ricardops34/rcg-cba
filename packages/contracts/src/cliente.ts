@@ -97,6 +97,13 @@ const vinculoSchema = z.object({
   descricao: z.string(),
 });
 
+// Condição de pagamento traz também acréscimo financeiro e valor mínimo do
+// ERP (decisão de 2026-11-19), além do vínculo padrão.
+const condicaoPagamentoVinculoSchema = vinculoSchema.extend({
+  acrescimoFinanceiro: z.number().nullable().optional(),
+  valorMinimo: z.number().nullable().optional(),
+});
+
 // Nome do vendedor do cadastro, para exibir sem depender de uma segunda
 // lista escopada por carteira (que pode não trazer o vendedor de um cliente
 // de outra hierarquia) — ver GET /clientes/:id (DETALHE_INCLUDE.vendedor).
@@ -116,7 +123,7 @@ export const clienteSchema = clienteCreateSchema.extend({
   empresaId: z.string().uuid(),
   vendedor: vendedorVinculoSchema.nullable().optional(),
   tabelaPreco: vinculoSchema.nullable().optional(),
-  condicaoPagamento: vinculoSchema.nullable().optional(),
+  condicaoPagamento: condicaoPagamentoVinculoSchema.nullable().optional(),
   // Chave de integração (FILIAL-COD), gravada pela carga do ERP. Só leitura:
   // com ela (ou com código ERP) o cliente é do ERP e não pode ser excluído.
   chave: z.string().nullable().optional(),

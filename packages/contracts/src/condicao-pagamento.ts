@@ -14,6 +14,10 @@ export const condicaoPagamentoSchema = z.object({
   ativo: z.boolean(),
   /** Aparece para escolha no orçamento. */
   usadoOrcamento: z.boolean(),
+  /** % Acres.Fin. do ERP (E4_ACRSFIN). */
+  acrescimoFinanceiro: z.coerce.number().nullable(),
+  /** Lim.Inferior do ERP (E4_INFER): valor mínimo de venda para a condição. */
+  valorMinimo: z.coerce.number().nullable(),
   ...auditFieldsSchema.shape,
 });
 export type CondicaoPagamento = z.infer<typeof condicaoPagamentoSchema>;
@@ -43,6 +47,8 @@ export const CONDICAO_PAGAMENTO_EXAMPLE: CondicaoPagamento = {
   forma: "BOL",
   ativo: true,
   usadoOrcamento: true,
+  acrescimoFinanceiro: 0,
+  valorMinimo: null,
   createdAt: "2026-07-24T12:00:00.000Z",
   updatedAt: "2026-07-24T12:00:00.000Z",
   createdBy: null,

@@ -35,6 +35,8 @@ export class IntegracaoCondicoesPagamentoService {
     descricao: string;
     forma: string | null;
     ativo: boolean;
+    acrescimoFinanceiro: number | null;
+    valorMinimo: number | null;
     createdAt: Date;
     updatedAt: Date;
     createdBy: string | null;
@@ -47,6 +49,8 @@ export class IntegracaoCondicoesPagamentoService {
       descricao: row.descricao,
       forma: row.forma,
       ativo: row.ativo,
+      acrescimoFinanceiro: row.acrescimoFinanceiro,
+      valorMinimo: row.valorMinimo,
       createdAt: row.createdAt.toISOString(),
       updatedAt: row.updatedAt.toISOString(),
       createdBy: row.createdBy,
@@ -137,6 +141,8 @@ export class IntegracaoCondicoesPagamentoService {
         descricao: input.descricao,
         forma: input.forma ?? null,
         ativo: input.ativo,
+        acrescimoFinanceiro: input.acrescimoFinanceiro ?? null,
+        valorMinimo: input.valorMinimo ?? null,
         updatedBy: autor,
       };
 
@@ -207,6 +213,12 @@ export class IntegracaoCondicoesPagamentoService {
             : {}),
           ...(input.forma !== undefined ? { forma: input.forma } : {}),
           ...(input.ativo !== undefined ? { ativo: input.ativo } : {}),
+          ...(input.acrescimoFinanceiro !== undefined
+            ? { acrescimoFinanceiro: input.acrescimoFinanceiro }
+            : {}),
+          ...(input.valorMinimo !== undefined
+            ? { valorMinimo: input.valorMinimo }
+            : {}),
           updatedBy: autor,
         },
       });

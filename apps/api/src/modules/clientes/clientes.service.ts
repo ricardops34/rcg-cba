@@ -155,7 +155,13 @@ const TABELA_PRECO_SELECT = {
 
 // Condição de pagamento vinculada, no mesmo formato.
 const CONDICAO_PAGAMENTO_SELECT = {
-  select: { id: true, codigoErp: true, descricao: true },
+  select: {
+    id: true,
+    codigoErp: true,
+    descricao: true,
+    acrescimoFinanceiro: true,
+    valorMinimo: true,
+  },
 };
 
 // O detalhe do cliente devolve os vínculos já resolvidos porque o formulário

@@ -80,6 +80,24 @@ export default function CondicoesPagamentoPage() {
     },
     { header: "Forma", sortKey: "forma", cell: (c) => <span className="text-xs">{c.forma || "—"}</span> },
     {
+      header: "Acréscimo",
+      sortKey: "acrescimoFinanceiro",
+      cell: (c) => (
+        <span className="text-xs">
+          {c.acrescimoFinanceiro ? `${c.acrescimoFinanceiro.toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%` : "—"}
+        </span>
+      ),
+    },
+    {
+      header: "Valor mínimo",
+      sortKey: "valorMinimo",
+      cell: (c) => (
+        <span className="text-xs">
+          {c.valorMinimo != null ? c.valorMinimo.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—"}
+        </span>
+      ),
+    },
+    {
       header: "Usar no orçamento",
       sortKey: "usadoOrcamento",
       cell: (c) =>

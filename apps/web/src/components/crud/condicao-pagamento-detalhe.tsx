@@ -13,6 +13,11 @@ function Info({ label, value }: { label: string; value: React.ReactNode }) {
   );
 }
 
+const moeda = (v: number | null | undefined) =>
+  v != null ? v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" }) : "—";
+const percentual = (v: number | null | undefined) =>
+  v != null ? `${v.toLocaleString("pt-BR", { maximumFractionDigits: 4 })}%` : "—";
+
 // Somente leitura: condições de pagamento entram pelo import (e no futuro
 // pela API externa de manutenção).
 export function CondicaoPagamentoDetalheContent({ condicao }: { condicao: CondicaoPagamento }) {
@@ -23,6 +28,9 @@ export function CondicaoPagamentoDetalheContent({ condicao }: { condicao: Condic
         <Info label="Integração" value={<span className="font-mono">{condicao.chave || "—"}</span>} />
         <Info label="Descrição" value={condicao.descricao} />
         <Info label="Forma" value={condicao.forma} />
+        {/* Direto do ERP (SE4), decisão de 2026-11-19. */}
+        <Info label="Acréscimo financeiro" value={percentual(condicao.acrescimoFinanceiro)} />
+        <Info label="Valor mínimo" value={moeda(condicao.valorMinimo)} />
         <Info label="Usar no orçamento" value={condicao.usadoOrcamento ? "Sim" : "Não"} />
         <Info label="Status" value={<StatusDot active={condicao.ativo} />} />
       </CardContent>

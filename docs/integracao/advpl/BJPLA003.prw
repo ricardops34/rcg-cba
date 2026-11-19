@@ -1203,20 +1203,32 @@ Condicoes de pagamento - SE4.
 /*/
 User Function BJMAPCND(cMarca, cChave, cMarcaFim, lEnvDel)
 
-	Local aRet   := {}
-	Local cCod   := ""
-	Local cAlias := ""
-	Local cQuery := ""
-	Local cVerbo := ""
-	Local oStmt  := Nil
-	Local oJson  := Nil
+	Local aRet    := {}
+	Local cCod    := ""
+	Local cAlias  := ""
+	Local cQuery  := ""
+	Local cVerbo  := ""
+	Local oStmt   := Nil
+	Local oJson   := Nil
+	Local lAcres  := .F.
+	Local lMinimo := .F.
 
 	Default cMarca    := ""
 	Default cChave    := ""
 	Default cMarcaFim := ""
 	Default lEnvDel   := .T.
 
-	cQuery := "SELECT E4_FILIAL, E4_CODIGO, E4_DESCRI, E4_FORMA, E4_MSBLQL, SE4.D_E_L_E_T_ AS DELETADO "
+	// % Acres.Fin. e Lim.Inferior (valor minimo de venda): decisao de
+	// 2026-11-19. So entram na query quando o dicionario tem o campo - mesmo
+	// criterio de BM_MSBLQL/A3_COMIS, que abrem a area antes de checar.
+	DbSelectArea("SE4")
+	lAcres  := SE4->(FieldPos("E4_ACRSFIN")) > 0
+	lMinimo := SE4->(FieldPos("E4_INFER"))   > 0
+
+	cQuery := "SELECT E4_FILIAL, E4_CODIGO, E4_DESCRI, E4_FORMA, E4_MSBLQL, "
+	cQuery += IIf(lAcres,  "E4_ACRSFIN, ", "NULL AS E4_ACRSFIN, ")
+	cQuery += IIf(lMinimo, "E4_INFER, ",   "NULL AS E4_INFER, ")
+	cQuery += "SE4.D_E_L_E_T_ AS DELETADO "
 	cQuery += "  FROM " + RetSQLName("SE4") + " SE4 "
 	cQuery += " WHERE ? = ' ' "
 	cQuery += "   AND SE4.E4_FILIAL = ? "
@@ -1272,6 +1284,18 @@ User Function BJMAPCND(cMarca, cChave, cMarcaFim, lEnvDel)
 			oJson["forma"] := Nil
 		Else
 			oJson["forma"] := AllTrim((cAlias)->E4_FORMA)
+		EndIf
+
+		If lAcres .And. (cAlias)->E4_ACRSFIN <> 0
+			oJson["acrescimoFinanceiro"] := (cAlias)->E4_ACRSFIN
+		Else
+			oJson["acrescimoFinanceiro"] := Nil
+		EndIf
+
+		If lMinimo .And. (cAlias)->E4_INFER <> 0
+			oJson["valorMinimo"] := (cAlias)->E4_INFER
+		Else
+			oJson["valorMinimo"] := Nil
 		EndIf
 
 		cVerbo := "POST"

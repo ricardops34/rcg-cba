@@ -193,7 +193,13 @@ export class OrcamentoLinkService {
             },
             cliente: { select: { razaoSocial: true, nomeFantasia: true } },
             vendedor: { select: { nome: true } },
-            condicaoPagamento: { select: { descricao: true } },
+            condicaoPagamento: {
+              select: {
+                descricao: true,
+                acrescimoFinanceiro: true,
+                valorMinimo: true,
+              },
+            },
             itens: {
               select: {
                 id: true,
@@ -210,7 +216,13 @@ export class OrcamentoLinkService {
         ...publico,
         descontoAutorizadoEm,
       });
-      return { ...publico, situacao };
+      // Acréscimo financeiro da condição de pagamento soma sobre o subtotal
+      // dos itens, igual na tela e no PDF (decisão do usuário, 2026-11-19).
+      const percAcrescimo = publico.condicaoPagamento?.acrescimoFinanceiro || 0;
+      const vlrAcrescimo = percAcrescimo
+        ? Math.round(publico.vlrTotal * (percAcrescimo / 100) * 100) / 100
+        : 0;
+      return { ...publico, vlrAcrescimo, situacao };
     });
   }
 

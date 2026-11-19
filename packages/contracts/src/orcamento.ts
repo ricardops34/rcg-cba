@@ -362,7 +362,10 @@ export const orcamentoSchema = z.object({
   condicaoPagamento: z
     .object({
       id: z.string().uuid(),
+      codigoErp: z.string().optional(),
       descricao: z.string(),
+      acrescimoFinanceiro: z.number().nullable().optional(),
+      valorMinimo: z.number().nullable().optional(),
     })
     .nullable(),
   itens: z.array(orcamentoItemSchema),

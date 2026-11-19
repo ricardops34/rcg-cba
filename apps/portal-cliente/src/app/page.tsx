@@ -16,6 +16,8 @@ type Orcamento = {
   status: "enviado" | "aprovado" | "recusado" | "expirado";
   dataValidade: string | null;
   vlrTotal: number;
+  /** Acréscimo financeiro da condição de pagamento, já em reais. */
+  vlrAcrescimo: number;
   vendedor: { nome: string };
   itens: { id: string; quantidade: number; vlrTotal: number; produto: { codigoErp: string; descricao: string } }[];
 };
@@ -122,7 +124,7 @@ export default function PortalPage() {
           {orcamentos.map((orcamento) => (
             <article className="proposal" key={orcamento.id}>
               <div className="proposal-head"><div><small>ORÇAMENTO #{orcamento.numero}</small><h3>{orcamento.titulo}</h3><p>{orcamento.vendedor.nome} · {orcamento.itens.length} itens</p></div><span className={`status ${orcamento.status}`}>{orcamento.status}</span></div>
-              <div className="proposal-value"><strong>{dinheiro.format(orcamento.vlrTotal)}</strong><span><Clock3 size={15} /> {orcamento.dataValidade ? `Válido até ${data.format(new Date(orcamento.dataValidade))}` : "Sem validade definida"}</span></div>
+              <div className="proposal-value"><strong>{dinheiro.format(orcamento.vlrTotal + orcamento.vlrAcrescimo)}</strong><span><Clock3 size={15} /> {orcamento.dataValidade ? `Válido até ${data.format(new Date(orcamento.dataValidade))}` : "Sem validade definida"}</span></div>
               {orcamento.status === "enviado" ? <div className="actions"><button className="decline" disabled={carregando} onClick={() => decidir(orcamento.id, "recusar")}><X size={17} /> Recusar</button><button disabled={carregando} onClick={() => decidir(orcamento.id, "aprovar")}><Check size={17} /> Aprovar e enviar</button></div> : null}
             </article>
           ))}

@@ -37,6 +37,19 @@ const moeda = (v: number | null | undefined) =>
     : '—';
 const numero = (v: number | null | undefined) =>
   v != null ? v.toLocaleString('pt-BR', { maximumFractionDigits: 2 }) : '—';
+// "código - descrição (acréscimo, mínimo)" — decisão do usuário, 2026-11-19.
+const rotuloCondicaoPagamento = (
+  c: NonNullable<OrcamentoPdfDados['condicaoPagamento']>,
+) => {
+  const extras = [
+    c.acrescimoFinanceiro
+      ? `+${c.acrescimoFinanceiro.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}%`
+      : null,
+    c.valorMinimo ? `mín. ${moeda(c.valorMinimo)}` : null,
+  ].filter(Boolean);
+  const base = c.codigoErp ? `${c.codigoErp} - ${c.descricao}` : c.descricao;
+  return extras.length ? `${base} (${extras.join(', ')})` : base;
+};
 const dataBr = (v: Date | string | null | undefined) => {
   if (!v) return '—';
   const d = new Date(v);
@@ -115,7 +128,12 @@ export interface OrcamentoPdfDados {
     telefone: string | null;
     email: string | null;
   };
-  condicaoPagamento: { descricao: string } | null;
+  condicaoPagamento: {
+    codigoErp?: string | null;
+    descricao: string;
+    acrescimoFinanceiro?: number | null;
+    valorMinimo?: number | null;
+  } | null;
   itens: {
     produto: {
       codigoErp: string;
@@ -298,7 +316,7 @@ export async function montarOrcamentoPdf(
       formatarTelefone(dados.vendedor.telefone),
       dados.vendedor.email,
     ]),
-    `Condição de pagamento: ${dados.condicaoPagamento?.descricao ?? '—'}`,
+    `Condição de pagamento: ${dados.condicaoPagamento ? rotuloCondicaoPagamento(dados.condicaoPagamento) : '—'}`,
     `Válido até: ${dataBr(dados.dataValidade)}    Data de retorno: ${dataBr(dados.dataRetorno)}`,
   ];
   doc.text(linhasCondicoes, MARGEM, y);
@@ -389,11 +407,41 @@ export async function montarOrcamentoPdf(
   };
 
   // --- Total
-  garantirEspaco(10);
+  // Acréscimo financeiro da condição de pagamento (E4_ACRSFIN do ERP) soma
+  // sobre o subtotal dos itens — decisão do usuário, 2026-11-19. Valor mínimo
+  // (E4_INFER) só vira aviso na tela do orçamento; aqui não altera nada.
+  const subtotal = dados.vlrTotal ?? 0;
+  const percAcrescimo = dados.condicaoPagamento?.acrescimoFinanceiro || 0;
+  const vlrAcrescimo =
+    percAcrescimo && dados.vlrTotal != null
+      ? Math.round(subtotal * (percAcrescimo / 100) * 100) / 100
+      : 0;
+  const totalComAcrescimo = subtotal + vlrAcrescimo;
+
+  if (vlrAcrescimo) {
+    garantirEspaco(16);
+    doc.setFont('helvetica', 'normal').setFontSize(10);
+    doc.text(`Subtotal: ${moeda(subtotal)}`, larguraPagina - MARGEM, y, {
+      align: 'right',
+    });
+    y += 5;
+    doc.text(
+      `Acréscimo financeiro (${percAcrescimo.toLocaleString('pt-BR', { maximumFractionDigits: 4 })}%): ${moeda(vlrAcrescimo)}`,
+      larguraPagina - MARGEM,
+      y,
+      { align: 'right' },
+    );
+    y += 6;
+  } else {
+    garantirEspaco(10);
+  }
   doc.setFont('helvetica', 'bold').setFontSize(11);
-  doc.text(`Total: ${moeda(dados.vlrTotal)}`, larguraPagina - MARGEM, y, {
-    align: 'right',
-  });
+  doc.text(
+    `Total: ${dados.vlrTotal != null ? moeda(totalComAcrescimo) : '—'}`,
+    larguraPagina - MARGEM,
+    y,
+    { align: 'right' },
+  );
   y += 10;
 
   // --- Observação (só quando preenchida)

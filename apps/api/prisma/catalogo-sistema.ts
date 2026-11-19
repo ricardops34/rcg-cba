@@ -825,6 +825,10 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   'notas-saida': ['visualizar'],
   produtos: ['visualizar'],
   'tabelas-preco': ['visualizar'],
+  // Seletor de condição de pagamento no orçamento (GET /condicoes-pagamento
+  // exige `visualizar`); faltava aqui e o seletor ficava vazio para
+  // Vendedor/Supervisor/Gerente (bug reportado pelo usuário, 19/11/2026).
+  'condicoes-pagamento': ['visualizar'],
   objetivos: ['visualizar'],
   'dashboard-comercial': ['visualizar'],
   // CRM: o vendedor administra o próprio funil/agenda, mas não exclui

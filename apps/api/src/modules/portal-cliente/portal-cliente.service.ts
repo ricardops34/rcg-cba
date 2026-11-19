@@ -1,4 +1,9 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import type { PortalClienteUser } from './portal-cliente-auth.types';
 
@@ -15,11 +20,19 @@ export class PortalClienteService {
   me(user: PortalClienteUser) {
     return this.prisma.withTenant(user.empresaId, async (tx) => {
       const contato = await tx.clienteContato.findFirst({
-        where: { id: user.contatoId, empresaId: user.empresaId, clienteId: user.clienteId, ativo: true },
+        where: {
+          id: user.contatoId,
+          empresaId: user.empresaId,
+          clienteId: user.clienteId,
+          ativo: true,
+        },
         include: { cliente: true, empresa: true },
       });
-      const config = await tx.portalClienteConfig.findUnique({ where: { empresaId: user.empresaId } });
-      if (!contato || !config) throw new NotFoundException('Acesso ao portal não encontrado');
+      const config = await tx.portalClienteConfig.findUnique({
+        where: { empresaId: user.empresaId },
+      });
+      if (!contato || !config)
+        throw new NotFoundException('Acesso ao portal não encontrado');
       return {
         contato: { id: contato.id, nome: contato.nome, email: contato.email },
         cliente: {
@@ -38,9 +51,9 @@ export class PortalClienteService {
     });
   }
 
-  listarOrcamentos(user: PortalClienteUser) {
+  async listarOrcamentos(user: PortalClienteUser) {
     this.exigir(user, 'orcamentos.visualizar');
-    return this.prisma.withTenant(user.empresaId, (tx) =>
+    const orcamentos = await this.prisma.withTenant(user.empresaId, (tx) =>
       tx.orcamento.findMany({
         where: {
           empresaId: user.empresaId,
@@ -63,7 +76,13 @@ export class PortalClienteService {
           clienteDecisao: true,
           clienteDecisaoObservacao: true,
           vendedor: { select: { nome: true } },
-          condicaoPagamento: { select: { descricao: true } },
+          condicaoPagamento: {
+            select: {
+              descricao: true,
+              acrescimoFinanceiro: true,
+              valorMinimo: true,
+            },
+          },
           itens: {
             select: {
               id: true,
@@ -78,21 +97,50 @@ export class PortalClienteService {
         orderBy: { createdAt: 'desc' },
       }),
     );
+    // Acréscimo financeiro da condição de pagamento soma sobre o subtotal dos
+    // itens, igual na tela interna, no PDF e no link público (decisão do
+    // usuário, 2026-11-19).
+    return orcamentos.map((o) => {
+      const percAcrescimo = o.condicaoPagamento?.acrescimoFinanceiro || 0;
+      const vlrAcrescimo = percAcrescimo
+        ? Math.round(o.vlrTotal * (percAcrescimo / 100) * 100) / 100
+        : 0;
+      return { ...o, vlrAcrescimo };
+    });
   }
 
-  decidirOrcamento(user: PortalClienteUser, id: string, decisao: 'aprovado' | 'recusado', observacao?: string) {
-    this.exigir(user, decisao === 'aprovado' ? 'orcamentos.aprovar' : 'orcamentos.recusar');
+  decidirOrcamento(
+    user: PortalClienteUser,
+    id: string,
+    decisao: 'aprovado' | 'recusado',
+    observacao?: string,
+  ) {
+    this.exigir(
+      user,
+      decisao === 'aprovado' ? 'orcamentos.aprovar' : 'orcamentos.recusar',
+    );
     return this.prisma.withTenant(user.empresaId, async (tx) => {
       const atual = await tx.orcamento.findFirst({
-        where: { id, empresaId: user.empresaId, clienteId: user.clienteId, ativo: true, deletedAt: null },
+        where: {
+          id,
+          empresaId: user.empresaId,
+          clienteId: user.clienteId,
+          ativo: true,
+          deletedAt: null,
+        },
       });
       if (!atual) throw new NotFoundException('Orçamento não encontrado');
       if (atual.status === decisao && atual.clienteDecididoEm) return atual;
       if (atual.status !== 'enviado') {
-        throw new ConflictException('Somente um orçamento enviado pode receber a decisão do cliente');
+        throw new ConflictException(
+          'Somente um orçamento enviado pode receber a decisão do cliente',
+        );
       }
       if (atual.dataValidade && atual.dataValidade < new Date()) {
-        await tx.orcamento.update({ where: { id: atual.id }, data: { status: 'expirado' } });
+        await tx.orcamento.update({
+          where: { id: atual.id },
+          data: { status: 'expirado' },
+        });
         throw new ConflictException('O orçamento está vencido');
       }
 
@@ -117,7 +165,9 @@ export class PortalClienteService {
           vendedorId: atual.vendedorId,
           tipo: 'tarefa',
           titulo: `Orçamento #${atual.numero} ${decisao} pelo cliente`,
-          descricao: observacao?.trim() || `Decisão registrada por ${user.nome} (${user.email}).`,
+          descricao:
+            observacao?.trim() ||
+            `Decisão registrada por ${user.nome} (${user.email}).`,
           concluida: true,
           dataConclusao: agora,
           createdBy: `portal-cliente:${user.contatoId}`,
