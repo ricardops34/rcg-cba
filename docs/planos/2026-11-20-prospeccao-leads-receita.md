@@ -1,7 +1,8 @@
 # Prospecção de leads pela base da Receita
 
-Pedido do usuário em 2026-11-20. Situação: **planejamento — aguardando decisões**
-(seção "Decisões em aberto"). Nada implementado.
+Pedido do usuário em 2026-11-20. Situação: **planejado, decisões tomadas** (seção
+"Decisões"); falta conferir o disco da VPS e o procedimento da stack para a base
+própria. Nada implementado.
 
 ## Objetivo
 
@@ -106,24 +107,30 @@ o mapa, a distribuição e os indicadores teriam de olhar duas tabelas.
 
 ## Fases
 
-1. Modelo (lead com origem/dados da empresa, coletas, distribuições, ligações) e a
+1. **Base própria da Receita** (decisão: já no começo): serviço Docker
+   `minha-receita` + PostgreSQL dedicado, carga do mês, e Administração > Base da
+   Receita (mês carregado, situação da carga, espaço, recarregar, URL em uso).
+   Pré-requisitos: **disco** (~180 GB, de preferência volume separado) e o
+   **procedimento de subir o serviço na stack** de dev e de produção — não deduzir
+   (CLAUDE.md): perguntar ao usuário e registrar no runbook.
+2. Modelo (lead com origem/dados da empresa, coletas, distribuições, ligações) e a
    tela de leads mostrando os novos campos.
-2. Coleta pela MinhaReceita pública com prévia e deduplicação.
-3. Distribuição por região, com histórico e aviso no sino.
-4. Histórico (atividades, orçamento e WhatsApp ligados ao lead) e conversão automática
+3. Coleta pela base própria (a pública fica como alternativa no parâmetro), com
+   prévia e deduplicação.
+4. Distribuição sugerida pela região, confirmada pelo supervisor, com histórico e
+   aviso no sino.
+5. Histórico (atividades, orçamento e WhatsApp ligados ao lead) e conversão automática
    por CNPJ.
-5. Indicadores.
-6. (Se a pública for instável) instância própria em Docker + Administração > Base da
-   Receita.
+6. Indicadores.
 
-## Decisões em aberto
+## Decisões (usuário, 2026-11-20)
 
-1. Lead da prospecção na **mesma tabela** dos leads do WhatsApp (proposta) ou cadastro
-   separado que vira lead ao distribuir.
-2. Distribuição **automática** pela região ou **sugerida** com confirmação do
-   supervisor (proposta: sugerida e confirmada em lote).
-3. Conversão **automática** quando surge cliente com o mesmo CNPJ (proposta) ou manual.
-4. Dados de sócios: a MinhaReceita já mascara CPF; guardar o quadro societário no
-   lead ou não (LGPD).
-5. Limite por coleta (ex.: 5.000 empresas) para não esgotar a busca pública.
-6. Instância própria: começar já ou só se a pública falhar (depende do disco da VPS).
+1. **Mesma tabela** de leads, com `origem` (whatsapp, receita, manual).
+2. Distribuição **sugerida pela região e confirmada** pelo supervisor (em lote); fora
+   de região ou em região livre fica na fila.
+3. Conversão **automática pelo CNPJ** quando surge o cliente (tela ou ERP).
+4. **Base própria já no começo** (fase 1).
+
+Adotadas sem pergunta (podem mudar): quadro societário fica só no retorno bruto
+(`dadosReceita`), já com o CPF mascarado pela fonte — sem campos próprios nem busca
+por sócio; limite de 5.000 empresas por coleta.
