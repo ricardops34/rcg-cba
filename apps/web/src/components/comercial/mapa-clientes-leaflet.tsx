@@ -257,7 +257,7 @@ export default function MapaClientesLeaflet({
   rota,
 }: {
   /** Montando rota: o clique inclui/tira o cliente em vez de abrir o balão. */
-  selecao?: { ids: Set<string>; onAlternar: (pin: PosicaoClienteMapaPin) => void } | null;
+  selecao?: { ids: Set<string>; onAlternar?: (pin: PosicaoClienteMapaPin) => void } | null;
   rota?: RotaNoMapa | null;
   itens: PinColorido[];
   leads: PosicaoClienteMapaLead[];
@@ -287,7 +287,7 @@ export default function MapaClientesLeaflet({
           itens={itens}
           agrupar={agrupar}
           selecionados={selecao?.ids ?? null}
-          onClique={selecao ? selecao.onAlternar : setSelecionado}
+          onClique={selecao?.onAlternar ?? setSelecionado}
         />
       )}
       {rota && <CamadaRota rota={rota} />}

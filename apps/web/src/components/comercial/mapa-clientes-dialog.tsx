@@ -86,7 +86,7 @@ export function MapaClientesPainel({
   /** As telas de mapa abrem só com ativos; a janela da Posição segue o filtro da tela. */
   situacaoInicial?: SituacaoFiltro;
   /** Montando rota (Gerencial > Mapa e Rotas): o clique inclui/tira o cliente. */
-  selecao?: { ids: Set<string>; onAlternar: (pin: PosicaoClienteMapaPin) => void } | null;
+  selecao?: { ids: Set<string>; onAlternar?: (pin: PosicaoClienteMapaPin) => void } | null;
   /** Rota calculada ou salva, desenhada por cima. */
   rota?: RotaNoMapa | null;
   filtros: PosicaoClienteMapaQuery;

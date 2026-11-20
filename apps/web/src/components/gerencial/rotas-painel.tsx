@@ -6,20 +6,25 @@ import { toast } from "sonner";
 import {
   ArrowDown,
   ArrowUp,
+  CheckSquare,
+  Repeat,
   ExternalLink,
   Loader2,
-  MousePointerClick,
   Route,
   Save,
   Trash2,
   X,
 } from "lucide-react";
-import type {
-  GeocodificacaoEmpresaLocal,
-  RotaVisitaCalculo,
-  RotaVisitaCreate,
-  RotaVisitaDetalhe,
-  RotaVisitaResumo,
+import {
+  ROTA_MAX_PARADAS,
+  type PosicaoClienteMapa,
+  type PosicaoClienteMapaPin,
+  type PosicaoClienteMapaQuery,
+  type GeocodificacaoEmpresaLocal,
+  type RotaVisitaCalculo,
+  type RotaVisitaCreate,
+  type RotaVisitaDetalhe,
+  type RotaVisitaResumo,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { decodificarPolilinha } from "@/lib/polilinha";
@@ -79,19 +84,42 @@ function linksGoogleMaps(pontos: Array<[number, number]>): string[] {
  * salvar — cada parada vira visita na Agenda do vendedor — e acompanhar.
  */
 export function RotasPainel({
-  montando,
-  onMontandoChange,
   escolhidas,
   onEscolhidasChange,
   onRota,
+  filtros,
 }: {
-  montando: boolean;
-  onMontandoChange: (v: boolean) => void;
   escolhidas: ParadaEscolhida[];
   onEscolhidasChange: (v: ParadaEscolhida[]) => void;
   onRota: (r: RotaNoMapa | null) => void;
+  /** Os filtros da tela: a lista de clientes para escolher é a mesma do mapa. */
+  filtros: PosicaoClienteMapaQuery;
 }) {
   const queryClient = useQueryClient();
+  // Mesma chave da consulta do mapa: vem do cache, sem consulta nova.
+  const { data: mapa } = useQuery({
+    queryKey: ["clientes", "posicao", "mapa", filtros],
+    queryFn: () => apiFetch<PosicaoClienteMapa>("/clientes/posicao/mapa", { query: filtros }),
+  });
+  const [busca, setBusca] = useState("");
+  const clientesDoFiltro = useMemo(() => {
+    const termo = busca
+      .trim()
+      .normalize("NFD")
+      .replace(/[̀-ͯ]/g, "")
+      .toLowerCase();
+    return [...(mapa?.pins ?? [])]
+      .filter(
+        (p) =>
+          !termo ||
+          `${p.razaoSocial} ${p.nomeFantasia ?? ""} ${p.codigoErp ?? ""} ${p.municipio ?? ""}`
+            .normalize("NFD")
+            .replace(/[̀-ͯ]/g, "")
+            .toLowerCase()
+            .includes(termo),
+      )
+      .sort((a, b) => a.razaoSocial.localeCompare(b.razaoSocial));
+  }, [mapa, busca]);
   const podeMontar = useAuthStore((s) => s.hasPermission("mapa-rotas", "cadastrar"));
   const podeExcluir = useAuthStore((s) => s.hasPermission("mapa-rotas", "editar"));
   const vendedores = useVendedoresEscopo();
@@ -134,10 +162,45 @@ export function RotasPainel({
   };
 
   const mudarEscolhidas = (v: ParadaEscolhida[]) => {
+    if (v.length > ROTA_MAX_PARADAS) {
+      toast.error(
+        `No máximo ${ROTA_MAX_PARADAS} paradas por rota (${v.length} selecionados). Filtre ou busque para reduzir a lista.`,
+      );
+      return;
+    }
     setCalculo(null);
     onRota(null);
     onEscolhidasChange(v);
   };
+
+  const idsEscolhidos = useMemo(() => new Set(escolhidas.map((e) => e.id)), [escolhidas]);
+  const paraParada = (p: PosicaoClienteMapaPin): ParadaEscolhida => ({
+    id: p.id,
+    razaoSocial: p.razaoSocial,
+    latitude: p.latitude,
+    longitude: p.longitude,
+  });
+  /** Liga/desliga um cliente da lista. */
+  const alternar = (p: PosicaoClienteMapaPin) =>
+    mudarEscolhidas(
+      idsEscolhidos.has(p.id) ? escolhidas.filter((e) => e.id !== p.id) : [...escolhidas, paraParada(p)],
+    );
+  /** Todos os que a busca mostra, somados aos já escolhidos. */
+  const selecionarTodos = () =>
+    mudarEscolhidas([
+      ...escolhidas,
+      ...clientesDoFiltro.filter((p) => !idsEscolhidos.has(p.id)).map(paraParada),
+    ]);
+  /** Inverte a marcação dos que a busca mostra; os de fora da busca ficam como estão. */
+  const inverter = () => {
+    const visiveis = new Set(clientesDoFiltro.map((p) => p.id));
+    mudarEscolhidas([
+      ...escolhidas.filter((e) => !visiveis.has(e.id)),
+      ...clientesDoFiltro.filter((p) => !idsEscolhidos.has(p.id)).map(paraParada),
+    ]);
+  };
+  const todosMarcados =
+    clientesDoFiltro.length > 0 && clientesDoFiltro.every((p) => idsEscolhidos.has(p.id));
 
   const usarMinhaPosicao = () => {
     navigator.geolocation?.getCurrentPosition(
@@ -197,7 +260,6 @@ export function RotasPainel({
       setNome("");
       onEscolhidasChange([]);
       onRota(null);
-      onMontandoChange(false);
     },
     onError: (e) => toast.error(erro(e, "Não foi possível salvar a rota")),
   });
@@ -231,20 +293,83 @@ export function RotasPainel({
           <p className="text-sm text-muted-foreground">Sem permissão para montar rotas.</p>
         ) : (
           <>
-            <Button
-              size="sm"
-              variant={montando ? "default" : "outline"}
-              onClick={() => onMontandoChange(!montando)}
-            >
-              <MousePointerClick className="size-4" />
-              {montando ? "Escolhendo no mapa — clique para parar" : "Escolher clientes no mapa"}
-            </Button>
-            {montando && (
-              <p className="text-xs text-muted-foreground">
-                Clique nos pins para incluir ou tirar da rota. Use os filtros acima (vendedor, Top,
-                dias sem compra) para achar os clientes.
-              </p>
-            )}
+            {/* Clientes do filtro da tela, com caixa de seleção (20/11/2026). */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2 text-sm">
+                <span className="font-medium">
+                  Clientes do filtro ({clientesDoFiltro.length})
+                </span>
+                <span className="text-xs text-muted-foreground">
+                  {escolhidas.length} selecionado(s)
+                </span>
+              </div>
+              <Input
+                value={busca}
+                placeholder="Buscar por nome, código ou cidade"
+                onChange={(e) => setBusca(e.target.value)}
+                className="h-8"
+              />
+              <div className="flex flex-wrap gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7"
+                  onClick={selecionarTodos}
+                  disabled={!clientesDoFiltro.length || todosMarcados}
+                >
+                  <CheckSquare className="size-3.5" />
+                  Selecionar todos
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7"
+                  onClick={inverter}
+                  disabled={!clientesDoFiltro.length}
+                >
+                  <Repeat className="size-3.5" />
+                  Inverter
+                </Button>
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7"
+                  onClick={() => mudarEscolhidas([])}
+                  disabled={!escolhidas.length}
+                >
+                  <X className="size-3.5" />
+                  Limpar
+                </Button>
+              </div>
+              <div className="max-h-64 overflow-y-auto rounded-md border">
+                {!mapa ? (
+                  <p className="p-2 text-xs text-muted-foreground">Carregando…</p>
+                ) : clientesDoFiltro.length === 0 ? (
+                  <p className="p-2 text-xs text-muted-foreground">
+                    Nenhum cliente com coordenada no filtro.
+                  </p>
+                ) : (
+                  clientesDoFiltro.map((p) => (
+                    <label
+                      key={p.id}
+                      className="flex cursor-pointer items-start gap-2 border-b px-2 py-1.5 text-xs last:border-b-0 hover:bg-muted"
+                    >
+                      <Checkbox
+                        className="mt-0.5"
+                        checked={idsEscolhidos.has(p.id)}
+                        onCheckedChange={() => alternar(p)}
+                      />
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">{p.razaoSocial}</span>
+                        <span className="block truncate text-muted-foreground">
+                          {[p.codigoErp, p.municipio, p.vendedorNome].filter(Boolean).join(" · ")}
+                        </span>
+                      </span>
+                    </label>
+                  ))
+                )}
+              </div>
+            </div>
 
             <div className="grid grid-cols-2 gap-2">
               <div className="col-span-2 space-y-1">
@@ -317,33 +442,22 @@ export function RotasPainel({
               </p>
             )}
 
+            {calculo && (
             <div className="space-y-1">
               <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">Paradas ({escolhidas.length})</span>
-                {escolhidas.length > 0 && (
-                  <Button size="sm" variant="ghost" onClick={() => mudarEscolhidas([])}>
-                    Limpar
-                  </Button>
-                )}
+                <span className="font-medium">Ordem da visita ({ordenadas.length})</span>
               </div>
-              {ordenadas.length === 0 ? (
-                <p className="text-xs text-muted-foreground">Nenhum cliente escolhido.</p>
-              ) : (
                 <ol className="space-y-1">
                   {ordenadas.map((e, i) => (
                     <li key={e.id} className="flex items-center gap-1 rounded border px-2 py-1 text-xs">
                       <span className="w-5 shrink-0 font-semibold tabular-nums">{i + 1}</span>
                       <span className="min-w-0 flex-1 truncate">{e.razaoSocial}</span>
-                      {calculo && (
-                        <>
-                          <button type="button" className="rounded p-0.5 hover:bg-muted" onClick={() => mover(i, -1)} aria-label="Subir">
-                            <ArrowUp className="size-3.5" />
-                          </button>
-                          <button type="button" className="rounded p-0.5 hover:bg-muted" onClick={() => mover(i, 1)} aria-label="Descer">
-                            <ArrowDown className="size-3.5" />
-                          </button>
-                        </>
-                      )}
+                      <button type="button" className="rounded p-0.5 hover:bg-muted" onClick={() => mover(i, -1)} aria-label="Subir">
+                        <ArrowUp className="size-3.5" />
+                      </button>
+                      <button type="button" className="rounded p-0.5 hover:bg-muted" onClick={() => mover(i, 1)} aria-label="Descer">
+                        <ArrowDown className="size-3.5" />
+                      </button>
                       <button
                         type="button"
                         className="rounded p-0.5 hover:bg-muted"
@@ -355,8 +469,8 @@ export function RotasPainel({
                     </li>
                   ))}
                 </ol>
-              )}
             </div>
+            )}
 
             {calculo && (
               <div className="space-y-1 rounded-lg border p-2 text-xs">

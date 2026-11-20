@@ -2,12 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { toast } from "sonner";
-import {
-  ROTA_MAX_PARADAS,
-  type PosicaoClienteMapaPin,
-  type PosicaoClienteMapaQuery,
-} from "@plataforma/contracts";
+import type { PosicaoClienteMapaQuery } from "@plataforma/contracts";
 import { Card, CardContent } from "@/components/ui/card";
 import { RotasPainel, type ParadaEscolhida } from "@/components/gerencial/rotas-painel";
 import type { RotaNoMapa } from "@/components/comercial/mapa-clientes-leaflet";
@@ -37,37 +32,13 @@ export function MapaClientesTela({
   /** Gerencial: painel de rotas de visita ao lado do mapa. */
   comRotas?: boolean;
 }) {
-  const [montando, setMontando] = useState(false);
+  // Seleção da rota pela lista do painel (o clique no mapa abre o balão); o
+  // mapa só destaca os escolhidos.
   const [escolhidas, setEscolhidas] = useState<ParadaEscolhida[]>([]);
   const [rotaNoMapa, setRotaNoMapa] = useState<RotaNoMapa | null>(null);
-  const idsEscolhidos = useMemo(() => new Set(escolhidas.map((e) => e.id)), [escolhidas]);
   const selecao = useMemo(
-    () =>
-      montando
-        ? {
-            ids: idsEscolhidos,
-            onAlternar: (pin: PosicaoClienteMapaPin) => {
-              setRotaNoMapa(null);
-              setEscolhidas((atual) => {
-                if (atual.some((e) => e.id === pin.id)) return atual.filter((e) => e.id !== pin.id);
-                if (atual.length >= ROTA_MAX_PARADAS) {
-                  toast.error(`No máximo ${ROTA_MAX_PARADAS} paradas por rota`);
-                  return atual;
-                }
-                return [
-                  ...atual,
-                  {
-                    id: pin.id,
-                    razaoSocial: pin.razaoSocial,
-                    latitude: pin.latitude,
-                    longitude: pin.longitude,
-                  },
-                ];
-              });
-            },
-          }
-        : null,
-    [montando, idsEscolhidos],
+    () => (escolhidas.length ? { ids: new Set(escolhidas.map((e) => e.id)) } : null),
+    [escolhidas],
   );
   // Situação vai ao servidor: só ativos por padrão, para não esbarrar no
   // limite de pins com a carteira inteira (inativos são a maioria da base).
@@ -217,11 +188,10 @@ export function MapaClientesTela({
           <Card className="flex min-h-0 flex-col md:w-96 md:shrink-0">
             <CardContent className="flex min-h-0 flex-1 flex-col">
               <RotasPainel
-                montando={montando}
-                onMontandoChange={setMontando}
                 escolhidas={escolhidas}
                 onEscolhidasChange={setEscolhidas}
                 onRota={setRotaNoMapa}
+                filtros={filtros}
               />
             </CardContent>
           </Card>
