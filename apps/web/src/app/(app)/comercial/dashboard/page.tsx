@@ -1,12 +1,14 @@
 "use client";
 
 import { useState } from "react";
+import { useAuthStore } from "@/stores/auth-store";
 import { useQuery } from "@tanstack/react-query";
 import type { ObjetivoDashboard, ObjetivoDashboardCategoria } from "@plataforma/contracts";
 import { DashboardCategoriaDetalhe } from "@/components/comercial/dashboard-categoria-detalhe";
 import { apiFetch } from "@/lib/api-client";
 import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores-escopo";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -41,6 +43,37 @@ const percentual = (v: number, total: number) =>
     : "—";
 const inteiro = (v: number) => v.toLocaleString("pt-BR");
 
+/** Variação sobre o mês anterior, com seta (ex.: "▲ 12,3%"). */
+function variacao(atual: number, anterior: number) {
+  if (!anterior) return atual ? "novo" : "—";
+  const v = ((atual - anterior) / Math.abs(anterior)) * 100;
+  const seta = v > 0 ? "▲" : v < 0 ? "▼" : "=";
+  return `${seta} ${Math.abs(v).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+}
+
+/**
+ * "Comparar com o mês anterior" (20/11/2026): lembrado no navegador, por
+ * usuário — como o tamanho das listagens.
+ */
+const chaveMesAnterior = (usuarioId?: string) =>
+  usuarioId ? `dashboard-comercial:mes-anterior:${usuarioId}` : null;
+function lerMesAnterior(chave: string | null) {
+  if (!chave) return false;
+  try {
+    return window.localStorage.getItem(chave) === "1";
+  } catch {
+    return false;
+  }
+}
+function gravarMesAnterior(chave: string | null, valor: boolean) {
+  if (!chave) return;
+  try {
+    window.localStorage.setItem(chave, valor ? "1" : "0");
+  } catch {
+    // navegador sem armazenamento: vale só nesta visita
+  }
+}
+
 interface Filtros {
   mes: number;
   ano: number;
@@ -53,12 +86,15 @@ function StatCard({
   label,
   value,
   suffix,
+  anterior,
   gradient,
 }: {
   icon: React.ElementType;
   label: string;
   value: string;
   suffix: React.ReactNode;
+  /** Linha do mês anterior (opção dos parâmetros). */
+  anterior?: React.ReactNode;
   gradient: string;
 }) {
   return (
@@ -77,6 +113,7 @@ function StatCard({
       </div>
       <p className="mt-1 min-w-0 break-words text-lg font-bold tracking-tight sm:text-xl xl:text-2xl">{value}</p>
       <p className="mt-0.5 text-xs opacity-80">{suffix}</p>
+      {anterior && <p className="mt-1 border-t border-white/20 pt-1 text-xs opacity-90">{anterior}</p>}
     </div>
   );
 }
@@ -94,6 +131,15 @@ export default function DashboardComercialPage() {
   const [rascunho, setRascunho] = useState<Filtros>(filtrosIniciais);
   const [cortinaAberta, setCortinaAberta] = useState(false);
   const [categoriaAberta, setCategoriaAberta] = useState<ObjetivoDashboardCategoria | null>(null);
+  const usuarioId = useAuthStore((s) => s.user?.id);
+  const chaveComparar = chaveMesAnterior(usuarioId);
+  const [compararLembrado, setCompararLembrado] = useState(() => ({
+    chave: chaveComparar,
+    valor: lerMesAnterior(chaveComparar),
+  }));
+  const comparar =
+    compararLembrado.chave === chaveComparar ? compararLembrado.valor : lerMesAnterior(chaveComparar);
+  const [compararRascunho, setCompararRascunho] = useState(comparar);
 
   const vendedoresEscopoQuery = useVendedoresEscopo();
   const opcoesVendedor = vendedoresEscopoQuery.data?.data ?? [];
@@ -128,11 +174,34 @@ export default function DashboardComercialPage() {
         },
       }),
   });
+  // Mês anterior, com os mesmos filtros (só com a opção ligada).
+  const mesAnterior = filtros.mes === 1 ? 12 : filtros.mes - 1;
+  const anoAnterior = filtros.mes === 1 ? filtros.ano - 1 : filtros.ano;
+  const { data: anterior } = useQuery({
+    queryKey: ["objetivos", "dashboard", mesAnterior, anoAnterior, vendedorIdQuery, municipioQuery],
+    queryFn: () =>
+      apiFetch<ObjetivoDashboard>("/objetivos/dashboard", {
+        query: {
+          mes: mesAnterior,
+          ano: anoAnterior,
+          ...(vendedorIdQuery ? { vendedorId: vendedorIdQuery } : {}),
+          ...(municipioQuery ? { municipio: municipioQuery } : {}),
+        },
+      }),
+    enabled: comparar,
+  });
+  const ant = comparar ? anterior : undefined;
+  const rotuloAnterior = `${MESES[mesAnterior - 1].slice(0, 3)}/${anoAnterior}`;
+  const anteriorPorCategoria = new Map((ant?.categorias ?? []).map((c) => [c.categoriaId, c.realizado]));
+
   // Base do "% do total" da tabela de categorias: a soma das linhas, a mesma do rodapé.
   const totalCategorias = (data?.categorias ?? []).reduce((acc, c) => acc + c.realizado, 0);
 
   const abrirCortina = (aberta: boolean) => {
-    if (aberta) setRascunho(filtros);
+    if (aberta) {
+      setRascunho(filtros);
+      setCompararRascunho(comparar);
+    }
     setCortinaAberta(aberta);
   };
 
@@ -141,6 +210,8 @@ export default function DashboardComercialPage() {
       ...rascunho,
       municipio: rascunhoMunicipioValido,
     });
+    setCompararLembrado({ chave: chaveComparar, valor: compararRascunho });
+    gravarMesAnterior(chaveComparar, compararRascunho);
     setCortinaAberta(false);
   };
 
@@ -263,6 +334,21 @@ export default function DashboardComercialPage() {
               </Select>
             </div>
 
+            <label className="flex items-start gap-2 rounded-lg border p-3 text-sm">
+              <Checkbox
+                className="mt-0.5"
+                checked={compararRascunho}
+                onCheckedChange={(v) => setCompararRascunho(v === true)}
+              />
+              <span>
+                Comparar com o mês anterior
+                <span className="block text-xs text-muted-foreground">
+                  Mostra o valor do mês anterior e a variação nos cartões e nas categorias. Fica
+                  lembrado neste navegador.
+                </span>
+              </span>
+            </label>
+
             <div className="flex gap-2 pt-2">
               <Button onClick={aplicarFiltros}>Aplicar</Button>
               <Button variant="ghost" onClick={() => setRascunho(filtrosIniciais)}>
@@ -288,6 +374,7 @@ export default function DashboardComercialPage() {
                 label="Sugestão de Venda"
                 value={moeda(data.realizadoValor)}
                 suffix={`${data.percRealizado}% de ${moeda(data.objetivoValor)}`}
+                anterior={ant && `${rotuloAnterior}: ${moeda(ant.realizadoValor)} · ${variacao(data.realizadoValor, ant.realizadoValor)}`}
                 gradient="from-blue-600 to-blue-700"
               />
               <StatCard
@@ -295,6 +382,7 @@ export default function DashboardComercialPage() {
                 label="Clientes"
                 value={inteiro(data.clientesPositivados)}
                 suffix={`${data.percClientes}% de ${inteiro(data.objetivoClientes)}`}
+                anterior={ant && `${rotuloAnterior}: ${inteiro(ant.clientesPositivados)} · ${variacao(data.clientesPositivados, ant.clientesPositivados)}`}
                 gradient="from-emerald-500 to-emerald-600"
               />
               <StatCard
@@ -302,6 +390,7 @@ export default function DashboardComercialPage() {
                 label="Devolução"
                 value={moeda(data.devolucaoTotal)}
                 suffix="Total"
+                anterior={ant && `${rotuloAnterior}: ${moeda(ant.devolucaoTotal)} · ${variacao(data.devolucaoTotal, ant.devolucaoTotal)}`}
                 gradient="from-violet-500 to-violet-600"
               />
               <StatCard
@@ -309,6 +398,7 @@ export default function DashboardComercialPage() {
                 label="Base"
                 value={inteiro(data.clientesPositivados)}
                 suffix={`${data.percBase}% de ${inteiro(data.baseTotal)}`}
+                anterior={ant && `${rotuloAnterior}: ${ant.percBase}% de ${inteiro(ant.baseTotal)}`}
                 gradient="from-amber-500 to-orange-600"
               />
             </div>
@@ -331,6 +421,12 @@ export default function DashboardComercialPage() {
                         <TableHead>Categoria</TableHead>
                         <TableHead className="text-right">Realizado</TableHead>
                         <TableHead className="w-28 text-right">% do total</TableHead>
+                        {ant && (
+                          <>
+                            <TableHead className="text-right">{rotuloAnterior}</TableHead>
+                            <TableHead className="w-24 text-right">Var.</TableHead>
+                          </>
+                        )}
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -360,6 +456,16 @@ export default function DashboardComercialPage() {
                           <TableCell className="text-right tabular-nums">
                             {percentual(c.realizado, totalCategorias)}
                           </TableCell>
+                          {ant && (
+                            <>
+                              <TableCell className="text-right text-muted-foreground tabular-nums">
+                                {moeda(anteriorPorCategoria.get(c.categoriaId) ?? 0)}
+                              </TableCell>
+                              <TableCell className="text-right tabular-nums">
+                                {variacao(c.realizado, anteriorPorCategoria.get(c.categoriaId) ?? 0)}
+                              </TableCell>
+                            </>
+                          )}
                         </TableRow>
                       ))}
                     </TableBody>
@@ -370,6 +476,19 @@ export default function DashboardComercialPage() {
                         <TableCell className="text-right tabular-nums">
                           {totalCategorias ? "100,0%" : "—"}
                         </TableCell>
+                        {ant && (
+                          <>
+                            <TableCell className="text-right tabular-nums">
+                              {moeda((ant.categorias ?? []).reduce((a, c) => a + c.realizado, 0))}
+                            </TableCell>
+                            <TableCell className="text-right tabular-nums">
+                              {variacao(
+                                totalCategorias,
+                                (ant.categorias ?? []).reduce((a, c) => a + c.realizado, 0),
+                              )}
+                            </TableCell>
+                          </>
+                        )}
                       </TableRow>
                     </TableFooter>
                   </Table>
