@@ -208,3 +208,11 @@
     overflow-x: clip;
   }
 }
+
+/* Mapas (Leaflet): os painéis e controles usam z-index 400–1000. O contêiner
+   do mapa vira um contexto de empilhamento próprio, para nenhum mapa passar por
+   cima de menu, submenu da barra lateral ou janela (20/11/2026). */
+.leaflet-container {
+  isolation: isolate;
+  z-index: 0;
+}
