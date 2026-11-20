@@ -121,6 +121,21 @@ Claro e Escuro (CARTO), Satélite e Satélite com nomes (Esri). **Pendente antes
 produção:** conferir licença de uso comercial do CARTO e da Esri; se não servir,
 trocar por MapTiler (com chave). Google como fundo: só se pedirem (Map Tiles API, pago).
 
+## Telas de mapa, calor e rotas — feito em 20/11 (aguarda conferência visual)
+
+- Comercial > **Mapa de Clientes** (`mapa-clientes`) e Gerencial > **Mapa e Rotas**
+  (`mapa-rotas`): filtros de UF, cidade, vendedor, dias sem compra, Top N e período;
+  calor (concentração ou faturamento); clientes, leads ou os dois. Menus no catálogo,
+  permissões na migration `20261120170000_perm_mapas`.
+- **Rotas de visita** (tabelas `rotas_visita`/`rotas_visita_paradas`, módulo
+  `rotas-visita`): escolher clientes no mapa, calcular (Google Routes com
+  `GEO_ROTAS_GOOGLE` ligado, até 25 paradas; senão vizinho mais próximo + 2-opt, até
+  60), reordenar à mão, salvar → atividades `visita` na Agenda do vendedor; rotas salvas
+  com andamento (feitas ÷ total) e links do Google Maps em trechos. Recusa do Google
+  volta a ordem por proximidade com o aviso do motivo.
+- **Para ligar o Google nas rotas:** ativar a Routes API no projeto e incluí-la nas
+  restrições da chave; ligar "Calcular rotas de visita pelo Google" na Geolocalização.
+
 ## Proposta em fases
 
 Cada fase é uma entrega com commit próprio.

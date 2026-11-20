@@ -28,19 +28,23 @@ const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", curr
  * Bloqueado leva um traço no lugar do ponto, para não depender só da cor.
  */
 const icones = new Map<string, L.DivIcon>();
-function iconeDoPin(cor: string, bloqueado: boolean) {
-  const chave = `${cor}|${bloqueado}`;
+function iconeDoPin(cor: string, bloqueado: boolean, selecionado = false) {
+  const chave = `${cor}|${bloqueado}|${selecionado}`;
   let icone = icones.get(chave);
   if (!icone) {
-    const miolo = bloqueado
-      ? '<rect x="7.5" y="10.5" width="9" height="3" rx="1" fill="#fff"/>'
-      : '<circle cx="12" cy="12" r="3.5" fill="#fff"/>';
+    const miolo = selecionado
+      ? '<path d="M7.5 12.2l3 3 6-6" stroke="#fff" stroke-width="2.4" fill="none" stroke-linecap="round" stroke-linejoin="round"/>'
+      : bloqueado
+        ? '<rect x="7.5" y="10.5" width="9" height="3" rx="1" fill="#fff"/>'
+        : '<circle cx="12" cy="12" r="3.5" fill="#fff"/>';
+    // Selecionado para a rota: maior e com contorno escuro.
+    const [w, h] = selecionado ? [30, 42] : [24, 34];
     icone = L.divIcon({
       className: "",
-      html: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="34" viewBox="0 0 24 34"><path d="M12 33s11-11.6 11-21A11 11 0 0 0 1 12c0 9.4 11 21 11 21z" fill="${cor}" stroke="#fff" stroke-width="1.5"/>${miolo}</svg>`,
-      iconSize: [24, 34],
-      iconAnchor: [12, 33],
-      popupAnchor: [0, -30],
+      html: `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 24 34"><path d="M12 33s11-11.6 11-21A11 11 0 0 0 1 12c0 9.4 11 21 11 21z" fill="${cor}" stroke="${selecionado ? "#0f172a" : "#fff"}" stroke-width="${selecionado ? 2.2 : 1.5}"/>${miolo}</svg>`,
+      iconSize: [w, h],
+      iconAnchor: [w / 2, h - 1],
+      popupAnchor: [0, -h + 4],
     });
     icones.set(chave, icone);
   }
@@ -90,10 +94,12 @@ function Enquadrar({ pontos }: { pontos: Array<[number, number]> }) {
 function CamadaClientes({
   itens,
   agrupar,
+  selecionados,
   onClique,
 }: {
   itens: PinColorido[];
   agrupar: boolean;
+  selecionados: Set<string> | null;
   onClique: (pin: PosicaoClienteMapaPin) => void;
 }) {
   const map = useMap();
@@ -114,7 +120,7 @@ function CamadaClientes({
       : L.layerGroup();
     const marcadores = itens.map(({ pin, cor }) => {
       const m = L.marker([pin.latitude, pin.longitude], {
-        icon: iconeDoPin(cor, pin.bloqueado),
+        icon: iconeDoPin(cor, pin.bloqueado, !!selecionados?.has(pin.id)),
         title: pin.razaoSocial,
       });
       m.on("click", () => cliqueRef.current(pin));
@@ -126,7 +132,68 @@ function CamadaClientes({
     return () => {
       map.removeLayer(camada);
     };
-  }, [map, itens, agrupar]);
+  }, [map, itens, agrupar, selecionados]);
+  return null;
+}
+
+/** A rota no mapa: caminho (ou retas), paradas numeradas e o ponto de partida. */
+export type RotaNoMapa = {
+  origem: [number, number];
+  retornar: boolean;
+  paradas: Array<{ latitude: number; longitude: number; rotulo: string; feita?: boolean }>;
+  /** Caminho pelas ruas; sem ele, retas entre as paradas. */
+  caminho: Array<[number, number]> | null;
+};
+
+function iconeNumero(n: number, feita: boolean) {
+  return L.divIcon({
+    className: "",
+    html: `<div style="width:24px;height:24px;border-radius:9999px;background:${feita ? "#16a34a" : "#0f172a"};color:#fff;font:600 12px/24px system-ui;text-align:center;border:2px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)">${n}</div>`,
+    iconSize: [24, 24],
+    iconAnchor: [12, 12],
+    tooltipAnchor: [0, -12],
+  });
+}
+
+const ICONE_ORIGEM = L.divIcon({
+  className: "",
+  html: '<div style="width:18px;height:18px;border-radius:4px;background:#2563eb;border:3px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>',
+  iconSize: [18, 18],
+  iconAnchor: [9, 9],
+});
+
+function CamadaRota({ rota }: { rota: RotaNoMapa }) {
+  const map = useMap();
+  useEffect(() => {
+    const grupo = L.featureGroup();
+    const pontos: Array<[number, number]> = [
+      rota.origem,
+      ...rota.paradas.map((p) => [p.latitude, p.longitude] as [number, number]),
+      ...(rota.retornar ? [rota.origem] : []),
+    ];
+    L.polyline(rota.caminho ?? pontos, {
+      color: "#2563eb",
+      weight: rota.caminho ? 5 : 3,
+      opacity: 0.8,
+      dashArray: rota.caminho ? undefined : "8 8",
+    }).addTo(grupo);
+    L.marker(rota.origem, { icon: ICONE_ORIGEM, zIndexOffset: 900 })
+      .bindTooltip("Partida")
+      .addTo(grupo);
+    rota.paradas.forEach((p, i) =>
+      L.marker([p.latitude, p.longitude], {
+        icon: iconeNumero(i + 1, !!p.feita),
+        zIndexOffset: 1000,
+      })
+        .bindTooltip(p.rotulo)
+        .addTo(grupo),
+    );
+    grupo.addTo(map);
+    map.fitBounds(grupo.getBounds(), { padding: [40, 40], maxZoom: 16 });
+    return () => {
+      grupo.remove();
+    };
+  }, [map, rota]);
   return null;
 }
 
@@ -186,7 +253,12 @@ export default function MapaClientesLeaflet({
   calor,
   empresa,
   onAbrirPosicao,
+  selecao,
+  rota,
 }: {
+  /** Montando rota: o clique inclui/tira o cliente em vez de abrir o balão. */
+  selecao?: { ids: Set<string>; onAlternar: (pin: PosicaoClienteMapaPin) => void } | null;
+  rota?: RotaNoMapa | null;
   itens: PinColorido[];
   leads: PosicaoClienteMapaLead[];
   pontos: Array<[number, number]>;
@@ -211,8 +283,14 @@ export default function MapaClientesLeaflet({
       {calor ? (
         <CamadaCalor itens={itens} por={calor} />
       ) : (
-        <CamadaClientes itens={itens} agrupar={agrupar} onClique={setSelecionado} />
+        <CamadaClientes
+          itens={itens}
+          agrupar={agrupar}
+          selecionados={selecao?.ids ?? null}
+          onClique={selecao ? selecao.onAlternar : setSelecionado}
+        />
       )}
+      {rota && <CamadaRota rota={rota} />}
 
       {empresa && (
         <Marker position={[empresa.latitude, empresa.longitude]} icon={ICONE_EMPRESA} zIndexOffset={1000}>

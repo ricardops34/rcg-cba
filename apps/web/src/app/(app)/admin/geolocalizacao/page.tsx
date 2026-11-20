@@ -103,6 +103,7 @@ function Configuracao({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
     url: cfg.url,
     chave: "",
     aoSalvar: cfg.aoSalvar,
+    rotasGoogle: cfg.rotasGoogle,
     loteLimite: String(cfg.loteLimite),
   }));
   const muda = <K extends keyof Form>(chave: K, valor: Form[K]) =>
@@ -233,6 +234,18 @@ function Configuracao({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
               </FieldDescription>
             </div>
             <Switch checked={form.aoSalvar} onCheckedChange={(v) => muda("aoSalvar", v)} />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-lg border p-3">
+            <div>
+              <FieldLabel>Calcular rotas de visita pelo Google</FieldLabel>
+              <FieldDescription>
+                Gerencial &gt; Mapa e Rotas: ordem otimizada e caminho pelas ruas (até 25 paradas),
+                pela Routes API com a chave do Google acima — ative a Routes API no projeto e na
+                chave. Desligado, a ordem é por proximidade, sem custo (GEO_ROTAS_GOOGLE).
+              </FieldDescription>
+            </div>
+            <Switch checked={form.rotasGoogle} onCheckedChange={(v) => muda("rotasGoogle", v)} />
           </div>
 
           <div className="space-y-1.5 sm:max-w-xs">

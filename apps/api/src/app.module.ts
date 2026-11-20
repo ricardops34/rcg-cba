@@ -31,6 +31,7 @@ import { DocumentosEmailModule } from './modules/documentos-email/documentos-ema
 import { SmsModule } from './modules/sms/sms.module';
 import { GeocodificacaoModule } from './modules/geocodificacao/geocodificacao.module';
 import { VendedorRegioesModule } from './modules/vendedor-regioes/vendedor-regioes.module';
+import { RotasVisitaModule } from './modules/rotas-visita/rotas-visita.module';
 import { EmailConfigModule } from './modules/email/email-config.module';
 import { ContasBancariasModule } from './modules/contas-bancarias/contas-bancarias.module';
 import { FeriadosModule } from './modules/feriados/feriados.module';
@@ -143,6 +144,7 @@ import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-econo
     SmsModule,
     GeocodificacaoModule,
     VendedorRegioesModule,
+    RotasVisitaModule,
     EmailConfigModule,
     ContasBancariasModule,
     FeriadosModule,

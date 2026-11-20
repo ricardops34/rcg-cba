@@ -132,6 +132,7 @@ model Empresa {
   produtoFotos               ProdutoFoto[]
   vendedores                 Vendedor[]
   vendedorRegioes            VendedorRegiao[]
+  rotasVisita                RotaVisita[]
   clientes                   Cliente[]
   categorias                 Categoria[]
   condicoesPagamento         CondicaoPagamento[]
@@ -1839,6 +1840,7 @@ model Vendedor {
   whatsappSessoes      WhatsappSessao[]
   whatsappSessaoPeriodos WhatsappSessaoPeriodo[]
   regioes              VendedorRegiao[]
+  rotasVisita          RotaVisita[]
 
   @@unique([empresaId, chave])
   @@index([empresaId, codigoErp])
@@ -1987,6 +1989,7 @@ model Cliente {
   titulosReceber    TituloReceber[]
   oportunidades     Oportunidade[]
   atividades        Atividade[]
+  rotasParadas      RotaVisitaParada[]
   comodatoBaixas    ComodatoBaixa[]
   orcamentos        Orcamento[]
   cnaes             ClienteCnae[]
@@ -2920,6 +2923,58 @@ model Estado {
 
   @@unique([sigla])
   @@map("estados")
+}
+
+// Rota de visita (Gerencial > Mapa e Rotas, 20/11/2026,
+// docs/planos/2026-11-20-mapas-clientes-rotas.md): clientes em ordem para um
+// vendedor numa data. Cada parada vira uma Atividade `visita` na Agenda dele;
+// visita feita = atividade concluída. O caminho vem da Google Routes API
+// (`calculadaPor = google`) ou da ordem por proximidade (`linha_reta`).
+model RotaVisita {
+  id              String   @id @default(uuid())
+  empresaId       String
+  vendedorId      String
+  data            DateTime @db.Date
+  nome            String
+  origemLatitude  Float
+  origemLongitude Float
+  /// Volta ao ponto de partida no fim.
+  retornar        Boolean  @default(true)
+  calculadaPor    String
+  distanciaMetros Int?
+  duracaoSegundos Int?
+  /// Caminho pelas ruas (encoded polyline do Google); nulo na linha reta.
+  polilinha       String?  @db.Text
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa  Empresa             @relation(fields: [empresaId], references: [id])
+  vendedor Vendedor            @relation(fields: [vendedorId], references: [id])
+  paradas  RotaVisitaParada[]
+
+  @@index([empresaId, vendedorId, data])
+  @@map("rotas_visita")
+}
+
+model RotaVisitaParada {
+  id          String  @id @default(uuid())
+  empresaId   String
+  rotaId      String
+  clienteId   String
+  ordem       Int
+  /// A visita na Agenda do vendedor.
+  atividadeId String?
+
+  rota    RotaVisita @relation(fields: [rotaId], references: [id], onDelete: Cascade)
+  cliente Cliente    @relation(fields: [clienteId], references: [id])
+
+  @@index([empresaId, rotaId])
+  @@map("rotas_visita_paradas")
 }
 
 // Região de atuação de vendedor (Gerencial > Vendedores > Regiões, 20/11/2026,

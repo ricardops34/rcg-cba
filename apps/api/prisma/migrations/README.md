@@ -207,7 +207,8 @@ Com RLS: `usuario_empresas`, `produtos`, `vendedores`, `clientes`,
 `produto_campos`, `produto_campo_valores`, `agente_ferramenta_auditoria`,
 `whatsapp_recados_internos`, `whatsapp_recados_destinatarios`, `whatsapp_vinculos_funcionario`,
 `empresa_horarios_atendimento`, `feriados`, `tour_execucoes`, `whatsapp_templates`,
-`vendedor_regioes` e `usuario_personificacao_logs`. As duas últimas
+`vendedor_regioes`, `rotas_visita`, `rotas_visita_paradas` e
+`usuario_personificacao_logs`. As duas últimas
 do portal cliente usam policies pré-tenant estreitas, configuradas por `withPortalCredential` e
 `withPortalAudit`, além da policy normal de tenant.
 

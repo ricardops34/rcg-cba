@@ -2,7 +2,15 @@
 
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import type { PosicaoClienteMapaQuery } from "@plataforma/contracts";
+import { toast } from "sonner";
+import {
+  ROTA_MAX_PARADAS,
+  type PosicaoClienteMapaPin,
+  type PosicaoClienteMapaQuery,
+} from "@plataforma/contracts";
+import { Card, CardContent } from "@/components/ui/card";
+import { RotasPainel, type ParadaEscolhida } from "@/components/gerencial/rotas-painel";
+import type { RotaNoMapa } from "@/components/comercial/mapa-clientes-leaflet";
 import { apiFetch } from "@/lib/api-client";
 import { useVendedoresEscopo } from "@/hooks/use-vendedores-escopo";
 import { PosicaoClienteSheet } from "@/components/comercial/posicao-cliente-sheet";
@@ -21,11 +29,46 @@ export function MapaClientesTela({
   titulo,
   descricao,
   mostrarInicial = "clientes",
+  comRotas = false,
 }: {
   titulo: string;
   descricao: string;
   mostrarInicial?: "ambos" | "clientes" | "leads";
+  /** Gerencial: painel de rotas de visita ao lado do mapa. */
+  comRotas?: boolean;
 }) {
+  const [montando, setMontando] = useState(false);
+  const [escolhidas, setEscolhidas] = useState<ParadaEscolhida[]>([]);
+  const [rotaNoMapa, setRotaNoMapa] = useState<RotaNoMapa | null>(null);
+  const idsEscolhidos = useMemo(() => new Set(escolhidas.map((e) => e.id)), [escolhidas]);
+  const selecao = useMemo(
+    () =>
+      montando
+        ? {
+            ids: idsEscolhidos,
+            onAlternar: (pin: PosicaoClienteMapaPin) => {
+              setRotaNoMapa(null);
+              setEscolhidas((atual) => {
+                if (atual.some((e) => e.id === pin.id)) return atual.filter((e) => e.id !== pin.id);
+                if (atual.length >= ROTA_MAX_PARADAS) {
+                  toast.error(`No máximo ${ROTA_MAX_PARADAS} paradas por rota`);
+                  return atual;
+                }
+                return [
+                  ...atual,
+                  {
+                    id: pin.id,
+                    razaoSocial: pin.razaoSocial,
+                    latitude: pin.latitude,
+                    longitude: pin.longitude,
+                  },
+                ];
+              });
+            },
+          }
+        : null,
+    [montando, idsEscolhidos],
+  );
   const [uf, setUf] = useState(TODOS);
   const [municipio, setMunicipio] = useState(TODOS);
   const [vendedorId, setVendedorId] = useState(TODOS);
@@ -151,11 +194,30 @@ export function MapaClientesTela({
         />
       </div>
 
-      <MapaClientesPainel
-        filtros={filtros}
-        onAbrirPosicao={setPosicaoId}
-        mostrarInicial={mostrarInicial}
-      />
+      <div className="flex min-h-0 flex-1 flex-col gap-3 md:flex-row">
+        {comRotas && (
+          <Card className="flex min-h-0 flex-col md:w-96 md:shrink-0">
+            <CardContent className="flex min-h-0 flex-1 flex-col">
+              <RotasPainel
+                montando={montando}
+                onMontandoChange={setMontando}
+                escolhidas={escolhidas}
+                onEscolhidasChange={setEscolhidas}
+                onRota={setRotaNoMapa}
+              />
+            </CardContent>
+          </Card>
+        )}
+        <div className="flex min-h-0 flex-1 flex-col">
+          <MapaClientesPainel
+            filtros={filtros}
+            onAbrirPosicao={setPosicaoId}
+            mostrarInicial={mostrarInicial}
+            selecao={selecao}
+            rota={rotaNoMapa}
+          />
+        </div>
+      </div>
 
       <PosicaoClienteSheet clienteId={posicaoId} onOpenChange={(a) => !a && setPosicaoId(null)} />
     </div>

@@ -74,6 +74,14 @@ export const GEO_PARAMETROS = {
     descricao:
       'Busca as coordenadas ao salvar o cliente quando o endereço muda ou elas estão vazias',
   },
+  rotasGoogle: {
+    parametro: 'GEO_ROTAS_GOOGLE',
+    tipo: 'booleano',
+    tamanho: null,
+    padrao: 'false',
+    descricao:
+      'Calcula as rotas de visita pela Google Routes API (pago, usa GEO_CHAVE); desligado, a ordem é por proximidade',
+  },
   loteLimite: {
     parametro: 'GEO_LOTE_LIMITE',
     tipo: 'numero',
@@ -91,6 +99,7 @@ export type GeoConfig = {
   url: string;
   chave: string | null;
   aoSalvar: boolean;
+  rotasGoogle: boolean;
   loteLimite: number;
 };
 
@@ -459,6 +468,11 @@ export class GeocodificacaoService {
         P.aoSalvar.parametro,
         true,
       ),
+      rotasGoogle: await this.parametros.obterBoolean(
+        empresaId,
+        P.rotasGoogle.parametro,
+        false,
+      ),
       loteLimite: await this.parametros.obterNumero(
         empresaId,
         P.loteLimite.parametro,
@@ -488,6 +502,7 @@ export class GeocodificacaoService {
       [P.nominatimUrl, dados.nominatimUrl.trim()],
       [P.url, dados.url.trim()],
       [P.aoSalvar, String(dados.aoSalvar)],
+      [P.rotasGoogle, String(dados.rotasGoogle)],
       [P.loteLimite, String(dados.loteLimite)],
     ];
     // Cifrada (PARAMETROS_CRYPTO_KEY); cifrar antes da transação faz uma

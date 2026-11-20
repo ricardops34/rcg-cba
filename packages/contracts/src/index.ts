@@ -13,6 +13,7 @@ export * from "./cliente-cnae";
 export * from "./cliente-alteracao";
 export * from "./geocodificacao";
 export * from "./vendedor-regiao";
+export * from "./rota-visita";
 export * from "./enriquecimento";
 export * from "./pais";
 export * from "./estado";

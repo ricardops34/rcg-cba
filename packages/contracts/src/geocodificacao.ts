@@ -45,6 +45,10 @@ export const geocodificacaoConfiguracaoUpdateSchema = z.object({
   aoSalvar: z
     .boolean()
     .describe("GEO_AO_SALVAR — busca ao salvar o cliente"),
+  rotasGoogle: z
+    .boolean()
+    .default(false)
+    .describe("GEO_ROTAS_GOOGLE — calcula as rotas de visita pela Google Routes API (pago, usa GEO_CHAVE)"),
   loteLimite: z.coerce
     .number()
     .int()

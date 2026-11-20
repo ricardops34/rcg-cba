@@ -8,6 +8,7 @@ import {
   LEAD_TEMPERATURA_LABEL,
   type GeocodificacaoEmpresaLocal,
   type PosicaoClienteMapa,
+  type PosicaoClienteMapaPin,
   type PosicaoClienteMapaQuery,
 } from "@plataforma/contracts";
 import { apiFetch } from "@/lib/api-client";
@@ -18,7 +19,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
 import { coordenadaVazia } from "@/components/mapa/mapa-local";
 import { COLORIR_POR, COR_LEAD, colorir, type ColorirPor } from "./mapa-clientes-cores";
-import type { PinColorido } from "./mapa-clientes-leaflet";
+import type { PinColorido, RotaNoMapa } from "./mapa-clientes-leaflet";
 
 // Leaflet mexe em `window` ao ser importado: só carrega no navegador.
 const MapaClientesLeaflet = dynamic(() => import("./mapa-clientes-leaflet"), {
@@ -78,7 +79,13 @@ export function MapaClientesPainel({
   ativo = true,
   onAbrirPosicao,
   mostrarInicial = "ambos",
+  selecao = null,
+  rota = null,
 }: {
+  /** Montando rota (Gerencial > Mapa e Rotas): o clique inclui/tira o cliente. */
+  selecao?: { ids: Set<string>; onAlternar: (pin: PosicaoClienteMapaPin) => void } | null;
+  /** Rota calculada ou salva, desenhada por cima. */
+  rota?: RotaNoMapa | null;
   filtros: PosicaoClienteMapaQuery;
   /** Só consulta quando visível (a janela fechada não consulta). */
   ativo?: boolean;
@@ -334,9 +341,11 @@ export function MapaClientesPainel({
             leads={leads}
             pontos={pontos}
             agrupar={preferencia.agrupar}
-            calor={mostrar === "leads" ? null : calor}
+            calor={mostrar === "leads" || selecao ? null : calor}
             empresa={pontoEmpresa}
             onAbrirPosicao={onAbrirPosicao}
+            selecao={selecao}
+            rota={rota}
           />
         )}
 

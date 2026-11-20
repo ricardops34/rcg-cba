@@ -11,8 +11,9 @@ export default function MapaGerencialPage() {
   return (
     <MapaClientesTela
       titulo="Mapa e Rotas"
-      descricao="Carteira da equipe no mapa. Use o filtro de vendedor, o Top e o período para planejar."
+      descricao="Carteira da equipe no mapa e rotas de visita: escolha os clientes, calcule e salve na Agenda do vendedor."
       mostrarInicial="clientes"
+      comRotas
     />
   );
 }
