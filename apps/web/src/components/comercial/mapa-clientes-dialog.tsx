@@ -333,7 +333,8 @@ export function MapaClientesPainel({
         )}
       </div>
 
-      <div className="relative min-h-[360px] flex-1 overflow-hidden rounded-lg border">
+      {/* isolate: os z-index do Leaflet (400–1000) não passam por cima do menu. */}
+      <div className="relative isolate min-h-[360px] flex-1 overflow-hidden rounded-lg border">
         {isLoading ? (
           <Skeleton className="size-full" />
         ) : error ? (

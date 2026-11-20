@@ -234,7 +234,8 @@ export function MapaLocal({
         )}
       </div>
 
-      <div className={`relative overflow-hidden rounded-lg border ${altura}`}>
+      {/* isolate: os z-index do Leaflet (400–1000) não passam por cima do menu. */}
+      <div className={`relative isolate overflow-hidden rounded-lg border ${altura}`}>
         <MapaLocalLeaflet
           alvo={alvo}
           rotuloAlvo={rotulo}

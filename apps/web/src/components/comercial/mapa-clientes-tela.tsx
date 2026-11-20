@@ -69,6 +69,9 @@ export function MapaClientesTela({
         : null,
     [montando, idsEscolhidos],
   );
+  // Situação vai ao servidor: só ativos por padrão, para não esbarrar no
+  // limite de pins com a carteira inteira (inativos são a maioria da base).
+  const [situacao, setSituacao] = useState<"ativos" | "inativos" | "todos">("ativos");
   const [uf, setUf] = useState(TODOS);
   const [municipio, setMunicipio] = useState(TODOS);
   const [vendedorId, setVendedorId] = useState(TODOS);
@@ -97,6 +100,7 @@ export function MapaClientesTela({
 
   const filtros = useMemo<PosicaoClienteMapaQuery>(
     () => ({
+      ...(situacao !== "todos" ? { ativo: situacao === "ativos" } : {}),
       ...(valor(uf) ? { uf } : {}),
       ...(valor(municipio) ? { municipio } : {}),
       ...(valor(vendedorId) ? { vendedorId } : {}),
@@ -104,7 +108,7 @@ export function MapaClientesTela({
       ...(valor(topN) ? { topN: Number(topN) } : {}),
       periodoMeses: Number(periodo),
     }),
-    [uf, municipio, vendedorId, dias, topN, periodo],
+    [situacao, uf, municipio, vendedorId, dias, topN, periodo],
   );
 
   return (
@@ -115,6 +119,17 @@ export function MapaClientesTela({
       </div>
 
       <div className="flex flex-wrap items-center gap-2 text-sm">
+        <Filtro
+          rotulo="Clientes"
+          valor={situacao}
+          onChange={(v) => setSituacao(v as typeof situacao)}
+          opcoes={[
+            { valor: "ativos", rotulo: "Ativos" },
+            { valor: "inativos", rotulo: "Inativos" },
+            { valor: "todos", rotulo: "Todos" },
+          ]}
+          largura="w-28"
+        />
         <Filtro
           rotulo="UF"
           valor={uf}
@@ -216,7 +231,6 @@ export function MapaClientesTela({
             filtros={filtros}
             onAbrirPosicao={setPosicaoId}
             mostrarInicial={mostrarInicial}
-            situacaoInicial="ativo"
             selecao={selecao}
             rota={rotaNoMapa}
           />

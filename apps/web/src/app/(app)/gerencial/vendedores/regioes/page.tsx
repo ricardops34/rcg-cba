@@ -432,7 +432,8 @@ export default function RegioesVendedoresPage() {
           </CardContent>
         </Card>
 
-        <div className="relative min-h-[420px] flex-1 overflow-hidden rounded-lg border">
+        {/* isolate: os z-index do Leaflet (400–1000) não passam por cima do menu. */}
+        <div className="relative isolate min-h-[420px] flex-1 overflow-hidden rounded-lg border">
           <RegioesMapaLeaflet
             regioes={regioes}
             invasoes={invasoes?.invasoes ?? []}
