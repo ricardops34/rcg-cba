@@ -1,6 +1,10 @@
 import { Prisma } from '@prisma/client';
 import { numeroOrcamento } from '@plataforma/contracts';
 import type { TenantTx } from '../../common/prisma/prisma.service';
+import {
+  colunasLocalizacao,
+  localizacaoDaRequisicao,
+} from '../../common/localizacao/contexto-localizacao';
 import { rotaLiberacaoDesconto } from '../notificacoes/rota-da-atividade';
 import {
   registrarNotificacao,
@@ -45,6 +49,21 @@ const TITULO: Record<EventoOrcamento, (numero: string) => string> = {
   autorizacao_concedida: (n) => `Desconto autorizado — orçamento nº ${n}`,
   autorizacao_recusada: (n) => `Desconto recusado — orçamento nº ${n}`,
 };
+
+/**
+ * Eventos que gravam onde o dispositivo de quem agiu estava (decisão de
+ * 20/11/2026): o orçamento feito/alterado, a decisão do cliente e o desconto.
+ * A localização vem do cabeçalho X-Localizacao (ver contexto-localizacao.ts).
+ */
+const EVENTOS_COM_LOCALIZACAO = new Set<EventoOrcamento>([
+  'criacao',
+  'alteracao',
+  'aprovacao_cliente',
+  'recusa_cliente',
+  'autorizacao_solicitada',
+  'autorizacao_concedida',
+  'autorizacao_recusada',
+]);
 
 export interface OrcamentoParaAtividade {
   id: string;
@@ -138,6 +157,9 @@ export async function registrarAtividadeOrcamento(
       dataVencimento: pendencia ? agora : null,
       concluida: !pendencia,
       dataConclusao: pendencia ? null : agora,
+      ...(EVENTOS_COM_LOCALIZACAO.has(evento)
+        ? colunasLocalizacao(localizacaoDaRequisicao())
+        : {}),
       createdBy: autor,
       updatedBy: autor,
     },
@@ -357,6 +379,10 @@ export async function historicoOrcamento(
       createdAt: true,
       createdBy: true,
       concluida: true,
+      latitude: true,
+      longitude: true,
+      localizacaoPrecisao: true,
+      localizacaoMotivo: true,
     },
     orderBy: { createdAt: 'desc' },
     take: 500,
@@ -369,6 +395,23 @@ export async function historicoOrcamento(
     em: a.createdAt,
     por: autorDoHistorico(a.createdBy, a.descricao, nomes),
     pendente: !a.concluida,
+    // Nulo nos eventos anteriores a 20/11/2026 e nos que não registram local.
+    localizacao:
+      a.latitude != null && a.longitude != null
+        ? {
+            latitude: a.latitude,
+            longitude: a.longitude,
+            precisao: a.localizacaoPrecisao,
+            motivo: null,
+          }
+        : a.localizacaoMotivo
+          ? {
+              latitude: null,
+              longitude: null,
+              precisao: null,
+              motivo: a.localizacaoMotivo,
+            }
+          : null,
   }));
 }
 

@@ -11,6 +11,10 @@ import { IntegracaoModule } from './modules/integracao/integracao.module';
 import { AllExceptionsFilter } from './common/filters/http-exception.filter';
 import { ErrosLogService } from './modules/erros/erros-log.service';
 import { executarComContexto } from './common/prisma/contexto-banco';
+import {
+  executarComLocalizacao,
+  lerCabecalhoLocalizacao,
+} from './common/localizacao/contexto-localizacao';
 import { linkValido, PREFIXO_ASSINADO, PREFIXO_BACKUPS } from './common/uploads/link-assinado';
 import { armazenamento, chaveDoEndereco } from './common/armazenamento/armazenamento';
 import { posix } from 'node:path';
@@ -38,6 +42,11 @@ async function bootstrap() {
   // ao validar o token, e o PrismaService o leva ao banco. Primeiro middleware,
   // para cobrir tudo o que vem depois.
   app.use((_req: unknown, _res: unknown, next: () => void) => executarComContexto({}, next));
+  // Localização do dispositivo nos eventos do orçamento (X-Localizacao).
+  app.use(
+    (req: { headers?: Record<string, unknown> }, _res: unknown, next: () => void) =>
+      executarComLocalizacao(lerCabecalhoLocalizacao(req.headers?.['x-localizacao']), next),
+  );
 
   // A API é consumida por outra origem (web) e serve assets embutidos via <img>
   // (logos em /uploads). O CORP padrão "same-origin" bloquearia esse embed

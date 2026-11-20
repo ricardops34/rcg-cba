@@ -4085,6 +4085,13 @@ model Atividade {
   concluida      Boolean       @default(false)
   dataConclusao  DateTime?
   ativo          Boolean       @default(true)
+  /// Onde o dispositivo de quem registrou estava (eventos do orçamento, 20/11/2026):
+  /// coordenada e precisão em metros, ou o motivo de não ter (negada,
+  /// indisponivel, tempo, sem_suporte, nao_informada). Nulos nos demais.
+  latitude            Float?
+  longitude           Float?
+  localizacaoPrecisao Float?
+  localizacaoMotivo   String?
 
   createdAt DateTime  @default(now())
   updatedAt DateTime  @updatedAt

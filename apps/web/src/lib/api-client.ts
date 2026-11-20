@@ -1,5 +1,6 @@
 import { useAuthStore } from "@/stores/auth-store";
 import { reportarErroCliente } from "./erro-report";
+import { cabecalhoLocalizacao, rotaPedeLocalizacao } from "./localizacao";
 
 export function resolveApiUrl(): string {
   if (typeof window !== "undefined") {
@@ -249,6 +250,11 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
     }
   }
 
+  // Eventos do orçamento levam a localização do dispositivo (lib/localizacao.ts).
+  const localizacao = rotaPedeLocalizacao(method, path.split("?")[0])
+    ? await cabecalhoLocalizacao()
+    : null;
+
   const doRequest = async (token: string | null) => {
     try {
       return await fetch(url.toString(), {
@@ -259,6 +265,7 @@ export async function apiFetch<T>(path: string, options: RequestOptions = {}): P
         headers: {
           "Content-Type": "application/json",
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
+          ...(localizacao ? { "X-Localizacao": localizacao } : {}),
         },
         body: body ? JSON.stringify(body) : undefined,
       });

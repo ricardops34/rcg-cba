@@ -83,7 +83,13 @@ Decisões (20/11): **não é obrigatória** — se o navegador negar ou falhar, 
 segue e o registro fica "localização não informada" com o motivo; a localização
 aparece **no detalhe do orçamento**, por evento (criado, enviado, aprovado pelo
 cliente/supervisor/gerente, desconto liberado), com a posição e um mapa.
-A levantar no código: cada ponto de aprovação.
+**Feito em 20/11:** o web manda o cabeçalho `X-Localizacao` (lib/localizacao.ts,
+chamado pelo `apiFetch` só nas rotas de evento: criar/alterar orçamento, desconto,
+aprovar/recusar pelo link); a API guarda no contexto da requisição
+(common/localizacao) e `registrarAtividadeOrcamento` grava na Atividade do evento
+(colunas novas em `atividades`). O histórico do orçamento mostra "Feito em … · ver no
+mapa" ou "Sem localização: motivo". **Fora:** Portal do Cliente (app separado, adiado)
+e o que nasce no WhatsApp/IA (fica "não informada").
 
 ## Regiões de atuação dos vendedores (pedido do usuário, 20/11 — depois dos mapas)
 

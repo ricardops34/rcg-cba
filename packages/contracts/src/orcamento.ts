@@ -418,7 +418,26 @@ export interface HistoricoOrcamentoEvento {
   por: string;
   /** Atividade ainda em aberto (pedido de liberação, retorno agendado). */
   pendente: boolean;
+  /**
+   * Onde o dispositivo de quem agiu estava (criação, alteração, decisão,
+   * desconto — desde 20/11/2026): coordenada e precisão em metros, ou o motivo
+   * de não ter. Nulo nos eventos que não registram local e nos anteriores.
+   */
+  localizacao: {
+    latitude: number | null;
+    longitude: number | null;
+    precisao: number | null;
+    motivo: string | null;
+  } | null;
 }
+
+export const LOCALIZACAO_MOTIVO_ROTULO: Record<string, string> = {
+  negada: "localização negada no navegador",
+  indisponivel: "localização indisponível no dispositivo",
+  tempo: "o dispositivo não respondeu a tempo",
+  sem_suporte: "navegador sem localização",
+  nao_informada: "não informada (feito fora da tela, por integração ou atendimento automático)",
+};
 
 /** GET /orcamentos/:id/historico-desconto — cada pedido/liberação/recusa, em ordem. */
 export interface HistoricoDescontoEvento {
