@@ -140,6 +140,35 @@ export type RespostaGeo =
 /** 6 casas ≈ 11 cm: mais que isso não cabe com folga no A1_XLAT texto. */
 const arredondar = (n: number) => Math.round(n * 1e6) / 1e6;
 
+/**
+ * O que fazer, em português, para as recusas mais comuns do Google. A frase
+ * original segue entre parênteses: é ela que o suporte do Google reconhece.
+ */
+export function explicarErroGoogle(status: string, mensagem?: string): string {
+  const original = mensagem ? `${status}: ${mensagem}` : status;
+  const m = (mensagem ?? '').toLowerCase();
+  let causa: string | null = null;
+  if (m.includes('billing')) {
+    causa =
+      'O projeto no Google Cloud está sem faturamento. Vincule uma conta de faturamento em Google Cloud > Faturamento e tente de novo.';
+  } else if (
+    m.includes('api key is invalid') ||
+    m.includes('api key not valid')
+  ) {
+    causa = 'A chave da API é inválida. Confira se foi copiada inteira.';
+  } else if (m.includes('ip address') || m.includes('referer')) {
+    causa =
+      'A restrição da chave recusou este servidor. Confira, nas restrições da chave, o IP público do servidor.';
+  } else if (m.includes('not authorized') || m.includes('not activated')) {
+    causa =
+      'A chave não pode usar a Geocoding API. Ative a API no projeto e inclua-a nas restrições da chave.';
+  } else if (status === 'OVER_DAILY_LIMIT' || status === 'OVER_QUERY_LIMIT') {
+    causa =
+      'O limite de consultas da conta do Google acabou. Confira as cotas e o faturamento do projeto.';
+  }
+  return causa ? `${causa} (${original})` : original;
+}
+
 /** Lê o corpo da Geocoding API. Função pura, para o teste. */
 export function interpretarResposta(corpo: unknown): RespostaGeo {
   const c = (corpo ?? {}) as {
@@ -161,7 +190,7 @@ export function interpretarResposta(corpo: unknown): RespostaGeo {
     return {
       tipo: 'erro',
       fatal: STATUS_FATAIS.has(status),
-      mensagem: c.error_message ? `${status}: ${c.error_message}` : status,
+      mensagem: explicarErroGoogle(status, c.error_message),
     };
   }
   const primeiro = c.results?.[0];

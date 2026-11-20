@@ -386,21 +386,32 @@ function Lote({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
         {lote && lote.iniciadoEm && (
           <div className="space-y-2 rounded-lg border p-3 text-sm">
             <div className="flex items-center justify-between">
-              <span className="font-medium">
-                {lote.rodando ? "Consultando…" : "Última execução"}
+              <span className={lote.erro ? "font-medium text-destructive" : "font-medium"}>
+                {lote.rodando ? "Consultando…" : lote.erro ? "Interrompido" : "Última execução"}
               </span>
               <span className="text-xs tabular-nums text-muted-foreground">
                 {numero(lote.processados)} de {numero(lote.total)}
               </span>
             </div>
             <div className="h-2 overflow-hidden rounded bg-muted">
-              <div className="h-full rounded bg-primary" style={{ width: `${progresso}%` }} />
+              <div
+                className={lote.erro ? "h-full rounded bg-destructive" : "h-full rounded bg-primary"}
+                style={{ width: `${progresso}%` }}
+              />
             </div>
             <p className="text-xs text-muted-foreground">
               Encontrados: {numero(lote.encontrados)} · Não encontrados:{" "}
               {numero(lote.naoEncontrados)} · Erros: {numero(lote.erros)}
             </p>
-            {lote.erro && <p className="text-xs text-destructive">Parou: {lote.erro}</p>}
+            {lote.erro && (
+              <div className="space-y-1 text-xs">
+                <p className="text-destructive">{lote.erro}</p>
+                <p className="text-muted-foreground">
+                  O lote parou aqui. Os que não foram consultados continuam pendentes e entram na
+                  próxima execução.
+                </p>
+              </div>
+            )}
           </div>
         )}
       </CardContent>

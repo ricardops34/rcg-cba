@@ -1,4 +1,9 @@
-import { ConflictException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadGatewayException,
+  ConflictException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import type {
   GeocodificacaoLoteBody,
   GeocodificacaoLoteSituacao,
@@ -10,6 +15,7 @@ import {
   FILTRO_COORDENADA_VAZIA,
   GeocodificacaoService,
   textoDoEndereco,
+  type RespostaGeo,
 } from './geocodificacao.service';
 
 /** Folga entre consultas: o Google aceita 50 por segundo, aqui ~10. */
@@ -116,6 +122,8 @@ const SELECT_ENDERECO = {
 export class GeocodificacaoLoteService {
   private readonly logger = new Logger(GeocodificacaoLoteService.name);
   private readonly situacoes = new Map<string, GeocodificacaoLoteSituacao>();
+  /** Entre o clique e o lote começar (a primeira consulta é feita antes). */
+  private readonly iniciando = new Set<string>();
 
   constructor(
     private readonly prisma: PrismaService,
@@ -151,9 +159,22 @@ export class GeocodificacaoLoteService {
     user: AuthenticatedUser,
     body: GeocodificacaoLoteBody,
   ): Promise<GeocodificacaoLoteSituacao> {
-    if (this.situacao(empresaId).rodando) {
+    if (this.situacao(empresaId).rodando || this.iniciando.has(empresaId)) {
       throw new ConflictException('O lote de coordenadas já está rodando');
     }
+    this.iniciando.add(empresaId);
+    try {
+      return await this.preparar(empresaId, user, body);
+    } finally {
+      this.iniciando.delete(empresaId);
+    }
+  }
+
+  private async preparar(
+    empresaId: string,
+    user: AuthenticatedUser,
+    body: GeocodificacaoLoteBody,
+  ): Promise<GeocodificacaoLoteSituacao> {
     const cfg = await this.geo.config(empresaId);
     if (!this.geo.habilitado(cfg)) {
       throw new ConflictException(
@@ -188,6 +209,24 @@ export class GeocodificacaoLoteService {
       ] satisfies ItemLote[];
     });
 
+    // A primeira consulta sai já, antes de responder: chave recusada, projeto
+    // sem faturamento ou restrição errada valem para todos, e é melhor o
+    // clique receber o motivo do que ver um lote que "começou" e parou no 1.
+    // A resposta é reaproveitada no lote — o primeiro não é cobrado de novo.
+    const primeiro = itens.find((i) => textoDoEndereco(i));
+    let primeiraResposta: RespostaGeo | null = null;
+    if (primeiro) {
+      primeiraResposta = await this.geo.consultar(
+        cfg,
+        textoDoEndereco(primeiro)!,
+      );
+      if (primeiraResposta.tipo === 'erro' && primeiraResposta.fatal) {
+        throw new BadGatewayException(
+          `O Google recusou a consulta: ${primeiraResposta.mensagem}`,
+        );
+      }
+    }
+
     const situacao: GeocodificacaoLoteSituacao = {
       ...SITUACAO_VAZIA,
       rodando: true,
@@ -197,7 +236,10 @@ export class GeocodificacaoLoteService {
     this.situacoes.set(empresaId, situacao);
 
     // Sem await: a requisição volta na hora e a tela acompanha.
-    void this.executar(empresaId, user.id, cfg, itens, situacao);
+    const prontas = new Map<string, RespostaGeo>();
+    if (primeiro && primeiraResposta)
+      prontas.set(primeiro.id, primeiraResposta);
+    void this.executar(empresaId, user.id, cfg, itens, situacao, prontas);
     return situacao;
   }
 
@@ -207,6 +249,7 @@ export class GeocodificacaoLoteService {
     cfg: Awaited<ReturnType<GeocodificacaoService['config']>>,
     itens: ItemLote[],
     s: GeocodificacaoLoteSituacao,
+    prontas: Map<string, RespostaGeo>,
   ) {
     let falhasSeguidas = 0;
     try {
@@ -216,7 +259,8 @@ export class GeocodificacaoLoteService {
           s.processados++;
           continue;
         }
-        const r = await this.geo.consultar(cfg, endereco);
+        const r =
+          prontas.get(item.id) ?? (await this.geo.consultar(cfg, endereco));
         if (r.tipo === 'erro') {
           s.erros++;
           s.processados++;

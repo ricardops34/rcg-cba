@@ -66,8 +66,21 @@ describe('interpretarResposta', () => {
     ).toEqual({
       tipo: 'erro',
       fatal: true,
-      mensagem: 'REQUEST_DENIED: The provided API key is invalid.',
+      mensagem:
+        'A chave da API é inválida. Confira se foi copiada inteira. (REQUEST_DENIED: The provided API key is invalid.)',
     });
+  });
+
+  it('projeto sem faturamento: diz o que fazer, em português', () => {
+    const r = interpretarResposta({
+      status: 'REQUEST_DENIED',
+      error_message:
+        'You must enable Billing on the Google Cloud Project at https://console.cloud.google.com/project/_/billing/enable',
+    });
+    expect(r).toMatchObject({ tipo: 'erro', fatal: true });
+    expect(r.tipo === 'erro' && r.mensagem).toMatch(
+      /^O projeto no Google Cloud está sem faturamento/,
+    );
   });
 
   it('erro passageiro não para o lote', () => {
