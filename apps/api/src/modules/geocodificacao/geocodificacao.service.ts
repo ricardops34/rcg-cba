@@ -1,5 +1,9 @@
 import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
-import type { GeocodificacaoTesteResultado } from '@plataforma/contracts';
+import {
+  GEO_NOMINATIM_URL_PADRAO,
+  type GeocodificacaoProvedor,
+  type GeocodificacaoTesteResultado,
+} from '@plataforma/contracts';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ParametrosService } from '../parametros/parametros.service';
 import { cifrarParametro } from '../parametros/parametros-cripto';
@@ -25,6 +29,21 @@ export const GEO_PARAMETROS = {
     padrao: 'false',
     descricao:
       'Habilita a busca das coordenadas do cliente pela Geocoding API do Google',
+  },
+  provedor: {
+    parametro: 'GEO_PROVEDOR',
+    tipo: 'texto',
+    tamanho: 20,
+    padrao: 'google',
+    descricao:
+      'Serviço das coordenadas: google (Geocoding API, pago, com chave) ou nominatim (OpenStreetMap, gratuito)',
+  },
+  nominatimUrl: {
+    parametro: 'GEO_NOMINATIM_URL',
+    tipo: 'texto',
+    tamanho: 300,
+    padrao: GEO_NOMINATIM_URL_PADRAO,
+    descricao: 'URL do serviço Nominatim (OpenStreetMap)',
   },
   url: {
     parametro: 'GEO_URL',
@@ -61,6 +80,8 @@ export const GEO_PARAMETROS = {
 
 export type GeoConfig = {
   ativo: boolean;
+  provedor: GeocodificacaoProvedor;
+  nominatimUrl: string;
   url: string;
   chave: string | null;
   aoSalvar: boolean;
@@ -216,6 +237,91 @@ export function interpretarResposta(corpo: unknown): RespostaGeo {
 }
 
 /**
+ * Lê o corpo do Nominatim (`format=jsonv2&addressdetails=1`). Função pura.
+ *
+ * O filtro de cidade do Nominatim não é rígido: "Rua Augusta, 500 / São
+ * Paulo" volta primeiro com uma rua parecida em Sumaré (conferido em
+ * 20/11/2026). Por isso, quando a cidade e a UF do cadastro são conhecidas,
+ * só vale o resultado que bate com as duas.
+ *
+ * `place_rank` vira o mesmo vocabulário do Google, para a regra de gravação
+ * ser uma só: 30 é o imóvel (ROOFTOP), 26–29 a rua (GEOMETRIC_CENTER), menos
+ * que isso bairro/cidade (APPROXIMATE, não gravado).
+ */
+export function interpretarRespostaNominatim(
+  corpo: unknown,
+  esperado?: { municipio?: string | null; uf?: string | null },
+): RespostaGeo {
+  if (!Array.isArray(corpo)) {
+    return {
+      tipo: 'erro',
+      fatal: false,
+      mensagem: 'Resposta inesperada do Nominatim',
+    };
+  }
+  type Item = {
+    lat?: string;
+    lon?: string;
+    place_rank?: number;
+    display_name?: string;
+    address?: Record<string, string>;
+  };
+  const municipio = comparavel(esperado?.municipio);
+  const uf = texto(esperado?.uf).toUpperCase();
+  const confere = (r: Item) => {
+    const a = r.address ?? {};
+    if (municipio) {
+      const cidades = [a.city, a.town, a.village, a.municipality, a.hamlet];
+      if (!cidades.some((c) => c && comparavel(c) === municipio)) return false;
+    }
+    const iso = a['ISO3166-2-lvl4'];
+    if (uf && iso && iso !== `BR-${uf}`) return false;
+    return true;
+  };
+  const r = (corpo as Item[]).find(confere);
+  if (!r) {
+    return { tipo: 'nao_encontrado', enderecoFormatado: null, precisao: null };
+  }
+  const rank = r.place_rank ?? 0;
+  const precisao =
+    rank >= 30 ? 'ROOFTOP' : rank >= 26 ? 'GEOMETRIC_CENTER' : 'APPROXIMATE';
+  const enderecoFormatado = r.display_name ?? null;
+  const lat = Number(r.lat);
+  const lng = Number(r.lon);
+  if (
+    !Number.isFinite(lat) ||
+    !Number.isFinite(lng) ||
+    !PRECISOES_ACEITAS.has(precisao)
+  ) {
+    return { tipo: 'nao_encontrado', enderecoFormatado, precisao };
+  }
+  return {
+    tipo: 'encontrado',
+    latitude: arredondar(lat),
+    longitude: arredondar(lng),
+    enderecoFormatado,
+    precisao,
+  };
+}
+
+/**
+ * O serviço público do Nominatim aceita no máximo 1 consulta por segundo,
+ * somando tudo o que sai deste servidor (lote, salvar cliente, teste de
+ * todas as empresas). Cada chamada reserva a sua vez antes de esperar.
+ */
+const NOMINATIM_INTERVALO_MS = 1_100;
+let proximaVezNominatim = 0;
+async function aguardarVezNominatim() {
+  const agora = Date.now();
+  const inicio = Math.max(agora, proximaVezNominatim);
+  proximaVezNominatim = inicio + NOMINATIM_INTERVALO_MS;
+  if (inicio > agora) await new Promise((r) => setTimeout(r, inicio - agora));
+}
+
+/** Identifica a aplicação, como pede a política de uso do Nominatim. */
+const NOMINATIM_USER_AGENT = 'plataforma-comercial/1.0 (geocodificacao)';
+
+/**
  * Coordenada que não aponta para lugar nenhum: faltando, ou 0/0. O Protheus
  * grava 0 nos campos numéricos vazios, e o cadastro chega com 0/0 — que é
  * um ponto no oceano, não um endereço (20/11/2026: 415 clientes assim).
@@ -256,6 +362,19 @@ export type ClienteParaGeo = EnderecoCliente & {
   coordenadasConsultadasEm?: Date | null;
 };
 
+/** O endereço como fica depois de salvar: o que veio na tela sobre o atual. */
+export function enderecoCombinado(
+  atual: ClienteParaGeo | null,
+  input: ClienteParaGeo,
+): EnderecoCliente {
+  const final: EnderecoCliente = {};
+  for (const campo of CAMPOS_ENDERECO) {
+    final[campo] =
+      input[campo] !== undefined ? input[campo] : (atual?.[campo] ?? null);
+  }
+  return final;
+}
+
 /**
  * O endereço a consultar ao salvar o cliente, ou null quando não é o caso.
  * `atual` é null na inclusão. Regras (16/11/2026):
@@ -271,12 +390,7 @@ export function enderecoParaConsultarAoSalvar(
   atual: ClienteParaGeo | null,
   input: ClienteParaGeo,
 ): string | null {
-  const final: EnderecoCliente = {};
-  for (const campo of CAMPOS_ENDERECO) {
-    final[campo] =
-      input[campo] !== undefined ? input[campo] : (atual?.[campo] ?? null);
-  }
-  const consulta = textoDoEndereco(final);
+  const consulta = textoDoEndereco(enderecoCombinado(atual, input));
   if (!consulta) return null;
 
   if (!atual) {
@@ -318,12 +432,20 @@ export class GeocodificacaoService {
     const url = (
       await this.parametros.obterTexto(empresaId, P.url.parametro)
     )?.trim();
+    const provedor = (
+      await this.parametros.obterTexto(empresaId, P.provedor.parametro)
+    )?.trim();
+    const nominatimUrl = (
+      await this.parametros.obterTexto(empresaId, P.nominatimUrl.parametro)
+    )?.trim();
     return {
       ativo: await this.parametros.obterBoolean(
         empresaId,
         P.ativo.parametro,
         false,
       ),
+      provedor: provedor === 'nominatim' ? 'nominatim' : 'google',
+      nominatimUrl: nominatimUrl || GEO_NOMINATIM_URL_PADRAO,
       url: url || GEO_URL_PADRAO,
       chave: chave || null,
       aoSalvar: await this.parametros.obterBoolean(
@@ -339,9 +461,9 @@ export class GeocodificacaoService {
     };
   }
 
-  /** Ativo e com chave. */
+  /** Ativo e pronto: o Google exige a chave; o Nominatim não tem chave. */
   habilitado(c: GeoConfig) {
-    return c.ativo && !!c.chave;
+    return c.ativo && (c.provedor === 'nominatim' || !!c.chave);
   }
 
   /**
@@ -356,6 +478,8 @@ export class GeocodificacaoService {
     const P = GEO_PARAMETROS;
     const valores: Array<[(typeof P)[keyof typeof P], string]> = [
       [P.ativo, String(dados.ativo)],
+      [P.provedor, dados.provedor],
+      [P.nominatimUrl, dados.nominatimUrl.trim()],
       [P.url, dados.url.trim()],
       [P.aoSalvar, String(dados.aoSalvar)],
       [P.loteLimite, String(dados.loteLimite)],
@@ -385,8 +509,100 @@ export class GeocodificacaoService {
     });
   }
 
-  /** Uma consulta ao Google. Não lança: falha vira `{ tipo: 'erro' }`. */
-  async consultar(cfg: GeoConfig, endereco: string): Promise<RespostaGeo> {
+  /**
+   * Uma consulta ao serviço configurado. Não lança: falha vira
+   * `{ tipo: 'erro' }`. Endereço em campos (cadastro) ou texto livre (o
+   * "Testar" da tela) — em campos, o Nominatim confere a cidade e a UF.
+   */
+  async consultar(
+    cfg: GeoConfig,
+    endereco: EnderecoCliente | string,
+  ): Promise<RespostaGeo> {
+    if (cfg.provedor === 'nominatim') {
+      return this.consultarNominatim(cfg, endereco);
+    }
+    const texto =
+      typeof endereco === 'string' ? endereco : textoDoEndereco(endereco);
+    if (!texto) {
+      return {
+        tipo: 'nao_encontrado',
+        enderecoFormatado: null,
+        precisao: null,
+      };
+    }
+    return this.consultarGoogle(cfg, texto);
+  }
+
+  private async consultarNominatim(
+    cfg: GeoConfig,
+    endereco: EnderecoCliente | string,
+  ): Promise<RespostaGeo> {
+    const url = new URL(cfg.nominatimUrl);
+    url.searchParams.set('format', 'jsonv2');
+    url.searchParams.set('addressdetails', '1');
+    url.searchParams.set('limit', '5');
+    url.searchParams.set('countrycodes', 'br');
+    url.searchParams.set('accept-language', 'pt-BR');
+    if (typeof endereco === 'string') {
+      url.searchParams.set('q', endereco);
+    } else {
+      const rua = (endereco.endereco ?? '').trim();
+      const municipio = (endereco.municipio ?? '').trim();
+      const uf = (endereco.uf ?? '').trim();
+      if (!rua || !municipio || !uf) {
+        return {
+          tipo: 'nao_encontrado',
+          enderecoFormatado: null,
+          precisao: null,
+        };
+      }
+      // Busca estruturada; o CEP fica de fora — a base do OpenStreetMap tem
+      // poucos CEPs, e um que não bate derruba o resultado.
+      url.searchParams.set('street', rua);
+      url.searchParams.set('city', municipio);
+      url.searchParams.set('state', uf);
+    }
+    await aguardarVezNominatim();
+    try {
+      const resposta = await fetch(url, {
+        headers: { 'User-Agent': NOMINATIM_USER_AGENT },
+        signal: AbortSignal.timeout(10_000),
+      });
+      if (resposta.status === 429 || resposta.status === 403) {
+        return {
+          tipo: 'erro',
+          fatal: true,
+          mensagem:
+            resposta.status === 429
+              ? 'O Nominatim recusou por excesso de consultas (limite de 1 por segundo). Tente mais tarde. (HTTP 429)'
+              : 'O Nominatim bloqueou as consultas deste servidor. Use o Google ou um servidor Nominatim próprio. (HTTP 403)',
+        };
+      }
+      const corpo: unknown = await resposta.json().catch(() => null);
+      if (!resposta.ok || corpo === null) {
+        return {
+          tipo: 'erro',
+          fatal: false,
+          mensagem: `Nominatim: HTTP ${resposta.status}`,
+        };
+      }
+      return interpretarRespostaNominatim(
+        corpo,
+        typeof endereco === 'string' ? undefined : endereco,
+      );
+    } catch (falha) {
+      return {
+        tipo: 'erro',
+        fatal: false,
+        mensagem: `Sem resposta do Nominatim: ${(falha as Error).message}`,
+      };
+    }
+  }
+
+  private async consultarGoogle(
+    cfg: GeoConfig,
+    endereco: string,
+  ): Promise<RespostaGeo> {
     if (!cfg.chave) {
       return {
         tipo: 'erro',
@@ -420,7 +636,7 @@ export class GeocodificacaoService {
     }
   }
 
-  /** O "Testar" da tela: lança 502 quando o Google recusa, para mostrar o motivo. */
+  /** O "Testar" da tela: lança 502 quando o serviço recusa, para mostrar o motivo. */
   async testar(
     empresaId: string,
     endereco: string,
@@ -428,9 +644,7 @@ export class GeocodificacaoService {
     const cfg = await this.config(empresaId);
     const r = await this.consultar(cfg, endereco);
     if (r.tipo === 'erro') {
-      throw new BadGatewayException(
-        `O Google recusou a consulta: ${r.mensagem}`,
-      );
+      throw new BadGatewayException(`A consulta foi recusada: ${r.mensagem}`);
     }
     return {
       encontrado: r.tipo === 'encontrado',
@@ -455,12 +669,11 @@ export class GeocodificacaoService {
     coordenadas: { latitude: number; longitude: number } | null;
   }> {
     const nada = { consultou: false, coordenadas: null };
-    const endereco = enderecoParaConsultarAoSalvar(atual, input);
-    if (!endereco) return nada;
+    if (!enderecoParaConsultarAoSalvar(atual, input)) return nada;
     const cfg = await this.config(empresaId);
     if (!this.habilitado(cfg) || !cfg.aoSalvar) return nada;
 
-    const r = await this.consultar(cfg, endereco);
+    const r = await this.consultar(cfg, enderecoCombinado(atual, input));
     if (r.tipo === 'erro') {
       this.logger.warn(
         `Coordenadas não consultadas ao salvar cliente (empresa ${empresaId}): ${r.mensagem}`,

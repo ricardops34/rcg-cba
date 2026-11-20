@@ -5,6 +5,9 @@ import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
 import {
   GEOCODIFICACAO_PRECISAO_ROTULO,
+  GEOCODIFICACAO_PROVEDORES,
+  GEOCODIFICACAO_PROVEDOR_ROTULO,
+  type GeocodificacaoProvedor,
   type GeocodificacaoConfiguracao,
   type GeocodificacaoConfiguracaoUpdate,
   type GeocodificacaoLoteSituacao,
@@ -17,6 +20,13 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, MapPin, Play, Search } from "lucide-react";
@@ -48,8 +58,8 @@ export default function GeolocalizacaoPage() {
       <div>
         <h1 className="text-xl font-semibold tracking-tight">Geolocalização</h1>
         <p className="text-sm text-muted-foreground">
-          Coordenadas dos clientes pela Geocoding API do Google. Elas entram no cadastro e vão
-          ao ERP como qualquer alteração.
+          Coordenadas dos clientes pelo Google ou pelo OpenStreetMap (Nominatim). Elas entram no
+          cadastro e vão ao ERP como qualquer alteração.
         </p>
       </div>
 
@@ -72,7 +82,7 @@ export default function GeolocalizacaoPage() {
             })}
             cfg={cfg}
           />
-          <Teste habilitado={cfg.chavePreenchida} />
+          <Teste habilitado={cfg.habilitado} />
           <Lote cfg={cfg} />
         </>
       )}
@@ -84,6 +94,8 @@ function Configuracao({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
   const queryClient = useQueryClient();
   const [form, setForm] = useState<Form>(() => ({
     ativo: cfg.ativo,
+    provedor: cfg.provedor,
+    nominatimUrl: cfg.nominatimUrl,
     url: cfg.url,
     chave: "",
     aoSalvar: cfg.aoSalvar,
@@ -113,7 +125,7 @@ function Configuracao({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
     <Card>
       <CardContent className="space-y-5">
         <div className="flex items-center gap-2">
-          <p className="font-medium">Geocoding API do Google</p>
+          <p className="font-medium">Serviço de coordenadas</p>
           <Badge variant={cfg.habilitado ? "default" : "secondary"}>
             {cfg.habilitado ? "Habilitado" : "Desabilitado"}
           </Badge>
@@ -130,15 +142,55 @@ function Configuracao({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
             <div>
               <FieldLabel>Habilitado</FieldLabel>
               <FieldDescription>
-                Liga a busca de coordenadas nesta empresa (GEO_ATIVO). Cada consulta é cobrada
-                pelo Google na conta da chave.
+                Liga a busca de coordenadas nesta empresa (GEO_ATIVO). Os mapas funcionam sem
+                isso: mostram quem já tem coordenada.
               </FieldDescription>
             </div>
             <Switch checked={form.ativo} onCheckedChange={(v) => muda("ativo", v)} />
           </div>
 
-          <div className="space-y-1.5">
-            <FieldLabel htmlFor="geo-url">URL da API (GEO_URL)</FieldLabel>
+          <div className="space-y-1.5 sm:max-w-sm">
+            <FieldLabel htmlFor="geo-provedor">Serviço (GEO_PROVEDOR)</FieldLabel>
+            <Select
+              value={form.provedor}
+              onValueChange={(v) => muda("provedor", v as GeocodificacaoProvedor)}
+            >
+              <SelectTrigger id="geo-provedor" className="w-full">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {GEOCODIFICACAO_PROVEDORES.map((p) => (
+                  <SelectItem key={p} value={p}>
+                    {GEOCODIFICACAO_PROVEDOR_ROTULO[p]}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <FieldDescription>
+              {form.provedor === "google"
+                ? "Mais preciso (acha o número do imóvel). Pago por consulta, na conta da chave."
+                : "Gratuito e sem chave, mas acha menos números de rua no Brasil e consulta no máximo 1 endereço por segundo (o lote anda mais devagar)."}
+            </FieldDescription>
+          </div>
+
+          {form.provedor === "nominatim" && (
+            <div className="space-y-1.5">
+              <FieldLabel htmlFor="geo-nominatim-url">URL do Nominatim (GEO_NOMINATIM_URL)</FieldLabel>
+              <Input
+                id="geo-nominatim-url"
+                value={form.nominatimUrl}
+                onChange={(e) => muda("nominatimUrl", e.target.value)}
+                className="font-mono text-xs"
+              />
+              <FieldDescription>
+                Normalmente https://nominatim.openstreetmap.org/search (serviço público). Troque
+                só se tiver um servidor Nominatim próprio.
+              </FieldDescription>
+            </div>
+          )}
+
+          <div className={form.provedor === "google" ? "space-y-1.5" : "hidden"}>
+            <FieldLabel htmlFor="geo-url">URL da API do Google (GEO_URL)</FieldLabel>
             <Input
               id="geo-url"
               value={form.url}
@@ -150,8 +202,8 @@ function Configuracao({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
             </FieldDescription>
           </div>
 
-          <div className="space-y-1.5">
-            <FieldLabel htmlFor="geo-chave">Chave da API (GEO_CHAVE)</FieldLabel>
+          <div className={form.provedor === "google" ? "space-y-1.5" : "hidden"}>
+            <FieldLabel htmlFor="geo-chave">Chave da API do Google (GEO_CHAVE)</FieldLabel>
             <Input
               id="geo-chave"
               type="password"
@@ -221,7 +273,7 @@ function Teste({ habilitado }: { habilitado: boolean }) {
         <div>
           <p className="font-medium">Testar um endereço</p>
           <p className="text-xs text-muted-foreground">
-            Usa a configuração salva e não grava nada. Serve para conferir a chave.
+            Usa a configuração salva e não grava nada. Serve para conferir o serviço e a chave.
           </p>
         </div>
         <form
@@ -246,7 +298,9 @@ function Teste({ habilitado }: { habilitado: boolean }) {
           </Button>
         </form>
         {!habilitado && (
-          <p className="text-xs text-muted-foreground">Salve a chave da API para testar.</p>
+          <p className="text-xs text-muted-foreground">
+            Habilite e salve a configuração para testar.
+          </p>
         )}
         {r && (
           <div className="space-y-1 rounded-lg border p-3 text-sm">
@@ -269,7 +323,7 @@ function Teste({ habilitado }: { habilitado: boolean }) {
               <p className="font-medium">Não encontrado com precisão suficiente</p>
             )}
             {r.enderecoFormatado && (
-              <p className="text-xs text-muted-foreground">Google entendeu: {r.enderecoFormatado}</p>
+              <p className="text-xs text-muted-foreground">O serviço entendeu: {r.enderecoFormatado}</p>
             )}
             {r.precisao && (
               <p className="text-xs text-muted-foreground">
@@ -330,7 +384,7 @@ function Lote({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
           <p className="font-medium">Clientes e leads sem coordenadas</p>
           <p className="text-xs text-muted-foreground">
             Clientes ativos com rua, cidade e UF e sem latitude/longitude. A coordenada achada entra
-            no cadastro (histórico com origem &quot;Coordenadas (Google)&quot;) e vai ao ERP. Depois
+            no cadastro (histórico com origem &quot;Coordenadas (busca automática)&quot;) e vai ao ERP. Depois
             dos clientes, o lote completa o limite com os leads abertos que têm endereço.
           </p>
         </div>
@@ -341,7 +395,7 @@ function Lote({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
             <p className="text-2xl font-semibold tabular-nums">{numero(cfg.pendentes)}</p>
           </div>
           <div className="rounded-lg border p-3">
-            <p className="text-xs text-muted-foreground">Google não achou</p>
+            <p className="text-xs text-muted-foreground">Não encontrados</p>
             <p className="text-2xl font-semibold tabular-nums">{numero(cfg.naoEncontrados)}</p>
           </div>
           <div className="rounded-lg border p-3">
@@ -349,7 +403,7 @@ function Lote({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
             <p className="text-2xl font-semibold tabular-nums">{numero(cfg.leadsPendentes)}</p>
           </div>
           <div className="rounded-lg border p-3">
-            <p className="text-xs text-muted-foreground">Leads que o Google não achou</p>
+            <p className="text-xs text-muted-foreground">Leads não encontrados</p>
             <p className="text-2xl font-semibold tabular-nums">
               {numero(cfg.leadsNaoEncontrados)}
             </p>
@@ -361,7 +415,8 @@ function Lote({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
             checked={incluirNaoEncontrados}
             onCheckedChange={(v) => setIncluirNaoEncontrados(v === true)}
           />
-          Consultar de novo os que o Google não achou (útil depois de corrigir endereços)
+          Consultar de novo os não encontrados (útil depois de corrigir endereços ou trocar de
+          serviço)
         </label>
 
         <div className="flex flex-wrap items-center gap-3">

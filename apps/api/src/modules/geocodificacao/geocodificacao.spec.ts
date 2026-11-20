@@ -2,6 +2,7 @@ import {
   coordenadaVazia,
   enderecoParaConsultarAoSalvar,
   interpretarResposta,
+  interpretarRespostaNominatim,
   textoDoEndereco,
 } from './geocodificacao.service';
 
@@ -165,6 +166,59 @@ describe('enderecoParaConsultarAoSalvar', () => {
     const zerado = { ...atual, latitude: 0, longitude: 0 };
     expect(enderecoParaConsultarAoSalvar(zerado, zerado)).not.toBeNull();
     expect(enderecoParaConsultarAoSalvar(null, zerado)).not.toBeNull();
+  });
+});
+
+describe('interpretarRespostaNominatim', () => {
+  // Formato real do Nominatim (consultado em 20/11/2026), reduzido.
+  const sumare = {
+    lat: '-22.8507013',
+    lon: '-47.1878140',
+    place_rank: 30,
+    display_name: '500, Rua Augusta Diogo Ayala, Sumaré',
+    address: { city: 'Sumaré', 'ISO3166-2-lvl4': 'BR-SP' },
+  };
+  const saoPauloRua = {
+    lat: '-23.5560000',
+    lon: '-46.6600000',
+    place_rank: 26,
+    display_name: 'Rua Augusta, São Paulo',
+    address: { city: 'São Paulo', 'ISO3166-2-lvl4': 'BR-SP' },
+  };
+  const esperado = { municipio: 'SAO PAULO', uf: 'SP' };
+
+  it('pula o resultado de outra cidade e fica com o que bate', () => {
+    expect(
+      interpretarRespostaNominatim([sumare, saoPauloRua], esperado),
+    ).toMatchObject({
+      tipo: 'encontrado',
+      latitude: -23.556,
+      precisao: 'GEOMETRIC_CENTER',
+    });
+  });
+
+  it('nenhum na cidade do cadastro: não encontrado', () => {
+    expect(interpretarRespostaNominatim([sumare], esperado).tipo).toBe(
+      'nao_encontrado',
+    );
+  });
+
+  it('imóvel exato vira ROOFTOP; bairro/cidade não é gravado', () => {
+    expect(
+      interpretarRespostaNominatim([sumare], { municipio: 'Sumaré', uf: 'SP' }),
+    ).toMatchObject({ tipo: 'encontrado', precisao: 'ROOFTOP' });
+    expect(
+      interpretarRespostaNominatim([{ ...sumare, place_rank: 16 }]).tipo,
+    ).toBe('nao_encontrado');
+  });
+
+  it('UF diferente não vale, mesmo com o nome da cidade igual', () => {
+    expect(
+      interpretarRespostaNominatim([saoPauloRua], {
+        municipio: 'SAO PAULO',
+        uf: 'MT',
+      }).tipo,
+    ).toBe('nao_encontrado');
   });
 });
 

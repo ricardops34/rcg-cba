@@ -54,12 +54,13 @@ export class GeocodificacaoController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<GeocodificacaoConfiguracao> {
     const empresaId = user.empresaAtivaId;
-    const { chave, ...config } = await this.geo.config(empresaId);
+    const completa = await this.geo.config(empresaId);
+    const { chave, ...config } = completa;
     const contagem = await this.lote.contagem(empresaId);
     return {
       ...config,
       chavePreenchida: !!chave,
-      habilitado: config.ativo && !!chave,
+      habilitado: this.geo.habilitado(completa),
       ...contagem,
     };
   }

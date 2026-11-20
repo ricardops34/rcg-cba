@@ -47,9 +47,10 @@ converte endereço em coordenada):
 - **Pin manual** no mapa (fase 2) e os campos Latitude/Longitude do cadastro (já existem).
 - **"Usar minha localização"**: o vendedor, no cliente, grava a posição do celular
   (localização do navegador). Gratuito e preciso; vale a mesma regra de aprovação do pin.
-- **Nominatim (OpenStreetMap)** como alternativa ao Google — *a decidir*: gratuito, mas
-  o serviço público aceita no máximo 1 consulta por segundo, não admite carga em massa
-  e acha menos números de rua no Brasil que o Google.
+- **Nominatim (OpenStreetMap)** como alternativa ao Google — **decidido (20/11): os
+  dois, usa o que estiver configurado** (parâmetro de provedor em Administração >
+  Geolocalização). O serviço público aceita no máximo 1 consulta por segundo e acha
+  menos números de rua no Brasil que o Google; com ele o lote anda a 1 por segundo.
 
 ## Proposta em fases
 

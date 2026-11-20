@@ -1,13 +1,35 @@
 import { z } from "zod";
 
 /**
- * Coordenadas do cliente pela Geocoding API do Google
- * (docs/planos/geocodificacao-clientes.md). A configuração são os parâmetros
+ * Coordenadas do cliente pela Geocoding API do Google ou pelo Nominatim
+ * (OpenStreetMap), o que estiver configurado em GEO_PROVEDOR
+ * (docs/planos/geocodificacao-clientes.md; Nominatim: decisão de 20/11/2026). A configuração são os parâmetros
  * GEO_* da empresa, editados juntos pela tela Administração > Geolocalização,
  * como os do SMS.
  */
+export const GEOCODIFICACAO_PROVEDORES = ["google", "nominatim"] as const;
+export type GeocodificacaoProvedor = (typeof GEOCODIFICACAO_PROVEDORES)[number];
+
+export const GEOCODIFICACAO_PROVEDOR_ROTULO: Record<GeocodificacaoProvedor, string> = {
+  google: "Google (Geocoding API)",
+  nominatim: "OpenStreetMap (Nominatim)",
+};
+
+export const GEO_NOMINATIM_URL_PADRAO = "https://nominatim.openstreetmap.org/search";
+
 export const geocodificacaoConfiguracaoUpdateSchema = z.object({
   ativo: z.boolean().describe("GEO_ATIVO — habilita a busca de coordenadas"),
+  provedor: z
+    .enum(GEOCODIFICACAO_PROVEDORES)
+    .default("google")
+    .describe("GEO_PROVEDOR — google (pago, precisa de chave) ou nominatim (gratuito)"),
+  nominatimUrl: z
+    .string()
+    .trim()
+    .url("Informe uma URL válida")
+    .max(300)
+    .default(GEO_NOMINATIM_URL_PADRAO)
+    .describe("GEO_NOMINATIM_URL — endereço do serviço Nominatim"),
   url: z
     .string()
     .trim()
@@ -36,7 +58,7 @@ export type GeocodificacaoConfiguracaoUpdate = z.infer<
 
 export type GeocodificacaoConfiguracao = Omit<GeocodificacaoConfiguracaoUpdate, "chave"> & {
   chavePreenchida: boolean;
-  /** Ativo e com chave. */
+  /** Ativo e pronto para consultar (Google exige a chave; Nominatim, não). */
   habilitado: boolean;
   /** Clientes ativos sem coordenadas e com endereço, ainda não consultados. */
   pendentes: number;

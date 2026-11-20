@@ -26,7 +26,7 @@ export const ORIGEM_ALTERACAO_CLIENTE_LABEL: Record<OrigemAlteracaoCliente, stri
   enriquecimento: "Consulta de CNPJ",
   integracao: "Integração ERP",
   agente: "Agente IA",
-  geocodificacao: "Coordenadas (Google)",
+  geocodificacao: "Coordenadas (busca automática)",
 };
 
 export const statusAlteracaoClienteSchema = z.enum(["pendente", "aprovada", "rejeitada"]);

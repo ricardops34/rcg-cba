@@ -178,7 +178,7 @@ export class GeocodificacaoLoteService {
     const cfg = await this.geo.config(empresaId);
     if (!this.geo.habilitado(cfg)) {
       throw new ConflictException(
-        'Geolocalização desabilitada ou sem chave. Configure e salve antes de rodar o lote.',
+        'Geolocalização desabilitada (ou o Google sem chave). Configure e salve antes de rodar o lote.',
       );
     }
 
@@ -216,13 +216,10 @@ export class GeocodificacaoLoteService {
     const primeiro = itens.find((i) => textoDoEndereco(i));
     let primeiraResposta: RespostaGeo | null = null;
     if (primeiro) {
-      primeiraResposta = await this.geo.consultar(
-        cfg,
-        textoDoEndereco(primeiro)!,
-      );
+      primeiraResposta = await this.geo.consultar(cfg, primeiro);
       if (primeiraResposta.tipo === 'erro' && primeiraResposta.fatal) {
         throw new BadGatewayException(
-          `O Google recusou a consulta: ${primeiraResposta.mensagem}`,
+          `A consulta foi recusada: ${primeiraResposta.mensagem}`,
         );
       }
     }
@@ -254,13 +251,11 @@ export class GeocodificacaoLoteService {
     let falhasSeguidas = 0;
     try {
       for (const item of itens) {
-        const endereco = textoDoEndereco(item);
-        if (!endereco) {
+        if (!textoDoEndereco(item)) {
           s.processados++;
           continue;
         }
-        const r =
-          prontas.get(item.id) ?? (await this.geo.consultar(cfg, endereco));
+        const r = prontas.get(item.id) ?? (await this.geo.consultar(cfg, item));
         if (r.tipo === 'erro') {
           s.erros++;
           s.processados++;
