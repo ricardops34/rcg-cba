@@ -102,6 +102,12 @@ faturamento; legenda clicável com contagem; (3) filtro de tipo de pessoa; (4) b
 com vendedor, faturamento 12 meses, dias sem compra; (6) lista dos sem coordenadas e a
 empresa como referência. Seleção por área fica com as rotas.
 
+**Feito em 20/11** (commit 4c440d2a + seletor de camadas): itens 1, 2, 3, 4 e 6.
+Seletor de fundo em todos os mapas (`components/mapa/camadas-base.tsx`): Ruas (OSM),
+Claro e Escuro (CARTO), Satélite e Satélite com nomes (Esri). **Pendente antes da
+produção:** conferir licença de uso comercial do CARTO e da Esri; se não servir,
+trocar por MapTiler (com chave). Google como fundo: só se pedirem (Map Tiles API, pago).
+
 ## Proposta em fases
 
 Cada fase é uma entrega com commit próprio.

@@ -6,7 +6,8 @@ import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import L from "@/components/mapa/leaflet-global";
 import "leaflet.markercluster";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { MapContainer, Marker, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
+import { MapContainer, Marker, Popup, Tooltip, useMap } from "react-leaflet";
+import { CamadasBase } from "@/components/mapa/camadas-base";
 import {
   LEAD_SITUACAO_LABEL,
   LEAD_TEMPERATURA_LABEL,
@@ -161,11 +162,7 @@ export default function MapaClientesLeaflet({
 
   return (
     <MapContainer center={[-15.78, -47.93]} zoom={4} className="size-full" scrollWheelZoom>
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        maxZoom={19}
-      />
+      <CamadasBase />
       <Enquadrar pontos={pontos} />
       <CamadaClientes itens={itens} agrupar={agrupar} onClique={setSelecionado} />
 

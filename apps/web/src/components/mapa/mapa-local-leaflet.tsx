@@ -3,7 +3,8 @@
 import "leaflet/dist/leaflet.css";
 import { useEffect, useMemo } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, TileLayer, Tooltip, useMap, useMapEvents } from "react-leaflet";
+import { MapContainer, Marker, Tooltip, useMap, useMapEvents } from "react-leaflet";
+import { CamadasBase } from "./camadas-base";
 
 export type PontoMapa = { latitude: number; longitude: number };
 
@@ -102,11 +103,7 @@ export default function MapaLocalLeaflet({
       className="size-full"
       scrollWheelZoom
     >
-      <TileLayer
-        attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-        maxZoom={19}
-      />
+      <CamadasBase />
       <Enquadrar pontos={pontos} chave={chaveEnquadramento} />
       {editavel && <CliqueNoMapa onClique={onMover} />}
       {referencias.map((r) => (
