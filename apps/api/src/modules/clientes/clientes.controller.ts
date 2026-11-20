@@ -246,9 +246,10 @@ export class ClientesController {
       'terminar). Campo vazio no cadastro — inclusive o CNAE de quem não tem nenhum — é ' +
       'preenchido direto; valor diferente vira solicitação na fila de aprovação, sem tarefa ' +
       'de agenda por cliente. 409 se já houver um lote em andamento na empresa. Requer ' +
-      'clientes.aprovar: grava no cadastro de muitos clientes sem revisão.',
+      'clientes.aprovar ou clientes.importar — este libera só o lote, sem a aprovação de ' +
+      'cadastro (Gerente e Supervisor, decisão do usuário em 2026-11-20).',
   })
-  @RequirePermission('clientes', 'aprovar')
+  @RequirePermission('clientes', 'aprovar', ['clientes', 'importar'])
   @HttpCode(202)
   @Post('receita/lote')
   atualizarPelaReceitaEmLote(

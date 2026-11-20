@@ -923,6 +923,10 @@ export const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
   // Mapa da equipe e rotas de visita (20/11/2026). Espelha a migration
   // 20261120170000_perm_mapas.
   'mapa-rotas': ['visualizar', 'cadastrar', 'editar'],
+  // `importar` = "Atualizar pela Receita" em lote, sem a aprovação de cadastro
+  // (decisão do usuário, 2026-11-20). Espelha a migration
+  // 20261120190000_perm_clientes_importar_supervisao.
+  clientes: ['visualizar', 'cadastrar', 'editar', 'importar'],
   // Distribuir, descartar e anotar o lead.
   leads: ['visualizar', 'editar'],
   // Cadastro de equipamentos de comodato (decisão do usuário, 2026-10-07):

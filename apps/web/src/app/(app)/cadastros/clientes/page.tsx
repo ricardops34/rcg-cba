@@ -95,7 +95,11 @@ export default function ClientesPage() {
   // Atualização em lote pela Receita: grava no cadastro de muitos clientes
   // sem revisão campo a campo, por isso pede a permissão de aprovar (a rota
   // confere de novo). O andamento aparece para todos que abrem a tela.
-  const podeAtualizarPelaReceita = useAuthStore((s) => s.hasPermission)("clientes", "aprovar");
+  // Aprovar (administração) ou Importar (Gerente/Supervisor, 20/11/2026): o
+  // lote da Receita, sem dar a aprovação de cadastro junto.
+  const temPermissao = useAuthStore((s) => s.hasPermission);
+  const podeAtualizarPelaReceita =
+    temPermissao("clientes", "aprovar") || temPermissao("clientes", "importar");
   const [receitaAberto, setReceitaAberto] = useState(false);
 
   const { data, isLoading, isFetching, refetch, error } = useResourceList<ClienteRow>("clientes", {
