@@ -684,6 +684,8 @@ export const evolucaoVendasQuerySchema = z
     /** CNAE principal do cliente. */
     cnaeId: z.string().uuid().optional(),
     vendedorIds: vendedorIdsSchema,
+    // Omitido = usa o parâmetro da empresa (como nas Consultas).
+    baseVendedor: baseVendedorSchema.optional(),
   })
   .superRefine(validarPeriodo);
 export type EvolucaoVendasQuery = z.infer<typeof evolucaoVendasQuerySchema>;
@@ -708,6 +710,7 @@ export interface EvolucaoVendasNo {
 
 export interface EvolucaoVendasResultado {
   visao: EvolucaoVendasVisao;
+  baseVendedor: BaseVendedor;
   periodo: {
     anoInicial: number;
     mesInicial: number;

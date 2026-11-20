@@ -247,9 +247,12 @@ function PontaDoPeriodo({
 export function CortinaParametros({
   estado,
   filtrosExtras = [],
+  conteudoExtra,
 }: {
   estado: FiltrosConsulta;
   filtrosExtras?: FiltroExtra[];
+  /** Campo próprio da tela que não é um select simples (ex.: busca de produto). */
+  conteudoExtra?: React.ReactNode;
 }) {
   const anos = useMemo(() => anosDisponiveis(), []);
   const {
@@ -359,6 +362,8 @@ export function CortinaParametros({
               )}
             </div>
           ))}
+
+          {conteudoExtra}
 
           <div className="space-y-1.5">
             <p className="text-xs text-muted-foreground">Vendedor considerado</p>

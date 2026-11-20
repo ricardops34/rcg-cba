@@ -1310,7 +1310,11 @@ export class ConsultasService {
   ): Promise<EvolucaoVendasResultado> {
     return this.prisma.withTenant(empresaId, async (tx) => {
       const escopo = await resolverEscopoVendedores(tx, empresaId, user);
-      const base = await this.baseVendedor(empresaId, tx);
+      const base = await this.baseVendedor(
+        empresaId,
+        tx,
+        query.baseVendedor,
+      );
       const colunaVendedor =
         base === 'cliente'
           ? Prisma.sql`c."vendedorId"`
@@ -1511,6 +1515,7 @@ export class ConsultasService {
 
       return {
         visao: query.visao,
+        baseVendedor: base,
         periodo: cabecalho.periodo,
         colunas,
         linhas: fechar(raiz),
