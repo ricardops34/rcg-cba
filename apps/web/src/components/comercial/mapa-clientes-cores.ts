@@ -59,7 +59,7 @@ export const COLORIR_POR = {
   dias: "Dias sem compra",
   tipoPessoa: "Tipo de pessoa",
   cnae: "Ramo (CNAE)",
-  curva: "Faturamento 12 meses (curva ABC)",
+  curva: "Faturamento no período (curva ABC)",
 } as const;
 export type ColorirPor = keyof typeof COLORIR_POR;
 
@@ -132,16 +132,16 @@ function porValor(
   return { grupoDe, grupos };
 }
 
-/** Curva ABC pelo faturamento de 12 meses: A = 80% do total, B = até 95%, C = o resto. */
+/** Curva ABC pelo faturamento do período: A = 80% do total, B = até 95%, C = o resto. */
 function curvaAbc(pins: PosicaoClienteMapaPin[]): Coloracao {
-  const comVenda = pins.filter((p) => p.venda12Meses > 0).sort((a, b) => b.venda12Meses - a.venda12Meses);
-  const soma = comVenda.reduce((s, p) => s + p.venda12Meses, 0);
+  const comVenda = pins.filter((p) => p.vendaPeriodo > 0).sort((a, b) => b.vendaPeriodo - a.vendaPeriodo);
+  const soma = comVenda.reduce((s, p) => s + p.vendaPeriodo, 0);
   const classe = new Map<string, string>();
   let acumulado = 0;
   for (const p of comVenda) {
     // Classe pelo acumulado *antes* do cliente: o que cruza os 80% ainda é A.
     classe.set(p.id, acumulado < soma * 0.8 ? "A" : acumulado < soma * 0.95 ? "B" : "C");
-    acumulado += p.venda12Meses;
+    acumulado += p.vendaPeriodo;
   }
   return fixos(
     pins,
@@ -149,7 +149,7 @@ function curvaAbc(pins: PosicaoClienteMapaPin[]): Coloracao {
       { chave: "A", rotulo: "A — 80% do faturamento", cor: "#16a34a" },
       { chave: "B", rotulo: "B — os 15% seguintes", cor: "#2563eb" },
       { chave: "C", rotulo: "C — os 5% finais", cor: "#d97706" },
-      { chave: "sem", rotulo: "Sem venda em 12 meses", cor: CINZA },
+      { chave: "sem", rotulo: "Sem venda no período", cor: CINZA },
     ],
     (p) => classe.get(p.id) ?? "sem",
   );

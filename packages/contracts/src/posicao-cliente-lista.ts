@@ -110,12 +110,19 @@ export const POSICAO_CLIENTE_LIST_ROW_EXAMPLE: PosicaoClienteListRow = {
  * Mapa da Posição de Cliente: os mesmos filtros da listagem, sem página nem
  * ordem — o mapa mostra todos os clientes filtrados que têm coordenadas.
  */
-export const posicaoClienteMapaQuerySchema = posicaoClienteListQuerySchema.omit({
-  page: true,
-  pageSize: true,
-  sortBy: true,
-  sortOrder: true,
-});
+export const posicaoClienteMapaQuerySchema = posicaoClienteListQuerySchema
+  .omit({
+    page: true,
+    pageSize: true,
+    sortBy: true,
+    sortOrder: true,
+  })
+  .extend({
+    /** Só os N clientes que mais compraram no período (telas de Mapa, 20/11/2026). */
+    topN: z.coerce.number().int().min(1).max(500).optional(),
+    /** Período do faturamento do pin e do Top N, em meses (padrão 12). */
+    periodoMeses: z.coerce.number().int().min(1).max(36).optional(),
+  });
 export type PosicaoClienteMapaQuery = z.infer<typeof posicaoClienteMapaQuerySchema>;
 
 /**
@@ -156,8 +163,8 @@ export type PosicaoClienteMapaPin = {
   tipoPessoa: "fisica" | "juridica";
   vendedorId: string | null;
   vendedorNome: string | null;
-  /** Total das notas de venda dos últimos 12 meses. */
-  venda12Meses: number;
+  /** Total das notas de venda no período (`periodoMeses`, padrão 12 meses). */
+  vendaPeriodo: number;
   /** CNAE principal do cliente, quando cadastrado. */
   cnaeCodigo: string | null;
   cnaeDescricao: string | null;

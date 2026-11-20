@@ -5,6 +5,7 @@ import "leaflet.markercluster/dist/MarkerCluster.css";
 import "leaflet.markercluster/dist/MarkerCluster.Default.css";
 import L from "@/components/mapa/leaflet-global";
 import "leaflet.markercluster";
+import "leaflet.heat";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { MapContainer, Marker, Popup, Tooltip, useMap } from "react-leaflet";
 import { CamadasBase } from "@/components/mapa/camadas-base";
@@ -129,6 +130,46 @@ function CamadaClientes({
   return null;
 }
 
+/**
+ * Mapa de calor (leaflet.heat): cada cliente pesa 1 (concentração) ou o
+ * faturamento do período em escala de raiz (faturamento) — sem a raiz, um
+ * cliente grande apagaria todos os outros.
+ */
+function CamadaCalor({
+  itens,
+  por,
+}: {
+  itens: PinColorido[];
+  por: "clientes" | "faturamento";
+}) {
+  const map = useMap();
+  useEffect(() => {
+    const maior = Math.max(1, ...itens.map((i) => i.pin.vendaPeriodo));
+    const pontos = itens
+      .filter((i) => por === "clientes" || i.pin.vendaPeriodo > 0)
+      .map(({ pin }) => [
+        pin.latitude,
+        pin.longitude,
+        por === "clientes" ? 1 : Math.sqrt(pin.vendaPeriodo / maior),
+      ]);
+    const heatLayer = (L as unknown as {
+      heatLayer: (p: number[][], o: Record<string, unknown>) => L.Layer;
+    }).heatLayer;
+    const camada = heatLayer(pontos, {
+      radius: 22,
+      blur: 18,
+      maxZoom: 15,
+      max: por === "clientes" ? 3 : 1,
+      minOpacity: 0.3,
+    });
+    camada.addTo(map);
+    return () => {
+      camada.remove();
+    };
+  }, [map, itens, por]);
+  return null;
+}
+
 function diasDesde(iso: string) {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
 }
@@ -142,6 +183,7 @@ export default function MapaClientesLeaflet({
   leads,
   pontos,
   agrupar,
+  calor,
   empresa,
   onAbrirPosicao,
 }: {
@@ -149,6 +191,8 @@ export default function MapaClientesLeaflet({
   leads: PosicaoClienteMapaLead[];
   pontos: Array<[number, number]>;
   agrupar: boolean;
+  /** Mapa de calor no lugar dos pins dos clientes; nulo = pins. */
+  calor: "clientes" | "faturamento" | null;
   empresa: { nome: string; latitude: number; longitude: number } | null;
   onAbrirPosicao: (clienteId: string) => void;
 }) {
@@ -164,7 +208,11 @@ export default function MapaClientesLeaflet({
     <MapContainer center={[-15.78, -47.93]} zoom={4} className="size-full" scrollWheelZoom>
       <CamadasBase />
       <Enquadrar pontos={pontos} />
-      <CamadaClientes itens={itens} agrupar={agrupar} onClique={setSelecionado} />
+      {calor ? (
+        <CamadaCalor itens={itens} por={calor} />
+      ) : (
+        <CamadaClientes itens={itens} agrupar={agrupar} onClique={setSelecionado} />
+      )}
 
       {empresa && (
         <Marker position={[empresa.latitude, empresa.longitude]} icon={ICONE_EMPRESA} zIndexOffset={1000}>
@@ -206,7 +254,7 @@ export default function MapaClientesLeaflet({
               )}
             </p>
             <p>
-              Venda 12 meses: <strong>{moeda(selecionado.venda12Meses)}</strong>
+              Venda no período: <strong>{moeda(selecionado.vendaPeriodo)}</strong>
             </p>
             {selecionado.cnaeDescricao && (
               <p className="text-muted-foreground">

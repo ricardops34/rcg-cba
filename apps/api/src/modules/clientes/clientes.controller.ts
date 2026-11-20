@@ -163,9 +163,16 @@ export class ClientesController {
     description:
       'Os clientes filtrados (mesmos filtros da listagem, sem paginação) que têm latitude e ' +
       'longitude, com a situação que dá a cor do pin: bloqueado, título vencido, título em ' +
-      'aberto, ativo ou inativo. Até 3.000 pins. Requer posicao-cliente.visualizar.',
+      'aberto, ativo ou inativo. Até 3.000 pins; topN/periodoMeses limitam aos que mais ' +
+      'compraram. Requer posicao-cliente.visualizar, mapa-clientes.visualizar ou ' +
+      'mapa-rotas.visualizar.',
   })
-  @RequirePermission('posicao-cliente', 'visualizar')
+  @RequirePermission(
+    'posicao-cliente',
+    'visualizar',
+    ['mapa-clientes', 'visualizar'],
+    ['mapa-rotas', 'visualizar'],
+  )
   @Get('posicao/mapa')
   mapaPosicao(
     @Query() query: PosicaoClienteMapaQueryDto,

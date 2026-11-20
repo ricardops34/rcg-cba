@@ -1637,6 +1637,8 @@ export class ClientesService {
         WHERE ${where}`;
       // 0/0 é campo vazio vindo do ERP (ver `coordenadaVazia`), não um lugar.
       const comCoordenadas = Prisma.sql`c."latitude" IS NOT NULL AND c."longitude" IS NOT NULL AND NOT (c."latitude" = 0 AND c."longitude" = 0)`;
+      // Faturamento do pin e base do Top N (telas de Mapa, 20/11/2026).
+      const periodoMeses = query.periodoMeses ?? 12;
       const [rows, contagem, semCoordenadas] = await Promise.all([
         tx.$queryRaw<
           Array<{
@@ -1656,7 +1658,7 @@ export class ClientesService {
             tipoPessoa: 'fisica' | 'juridica';
             vendedorId: string | null;
             vendedorNome: string | null;
-            venda12Meses: number | null;
+            vendaPeriodo: number | null;
             cnaeCodigo: string | null;
             cnaeDescricao: string | null;
           }>
@@ -1665,7 +1667,7 @@ export class ClientesService {
             c.id, c."codigoErp", c."razaoSocial", c."nomeFantasia",
             c."municipio", c."uf", c."latitude", c."longitude", c."ativo",
             c."tipoPessoa", c."vendedorId", vd."nome" AS "vendedorNome",
-            v12.total::float8 AS "venda12Meses",
+            v12.total::float8 AS "vendaPeriodo",
             cn."codigoErp" AS "cnaeCodigo", cn."descricao" AS "cnaeDescricao",
             COALESCE(u."ultimaData", c."ultimaCompra") AS "ultimaCompra",
             (c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio")) AS "bloqueado",
@@ -1691,7 +1693,7 @@ export class ClientesService {
             SELECT "clienteId", SUM("vlrBruto") AS total
             FROM notas_saida
             WHERE "empresaId" = ${empresaId} AND ${NOTA_DE_VENDA_SQL}
-              AND "dtEmissao" >= now() - interval '12 months'
+              AND "dtEmissao" >= now() - (${periodoMeses} * interval '1 month')
             GROUP BY "clienteId"
           ) v12 ON v12."clienteId" = c.id
           LEFT JOIN LATERAL (
@@ -1702,8 +1704,12 @@ export class ClientesService {
             LIMIT 1
           ) cn ON true
           WHERE ${where} AND ${comCoordenadas}
-          ORDER BY c."razaoSocial"
-          LIMIT ${LIMITE_PINS_MAPA + 1}
+            ${query.topN ? Prisma.sql`AND v12.total > 0` : Prisma.empty}
+          ${
+            query.topN
+              ? Prisma.sql`ORDER BY v12.total DESC LIMIT ${query.topN}`
+              : Prisma.sql`ORDER BY c."razaoSocial" LIMIT ${LIMITE_PINS_MAPA + 1}`
+          }
         `),
         tx.$queryRaw<{ total: number }[]>(
           Prisma.sql`SELECT COUNT(*)::int AS total ${desde}`,
@@ -1752,7 +1758,7 @@ export class ClientesService {
           tipoPessoa: r.tipoPessoa,
           vendedorId: r.vendedorId,
           vendedorNome: r.vendedorNome,
-          venda12Meses: Number(r.venda12Meses ?? 0),
+          vendaPeriodo: Number(r.vendaPeriodo ?? 0),
           cnaeCodigo: r.cnaeCodigo,
           cnaeDescricao: r.cnaeDescricao,
         })),

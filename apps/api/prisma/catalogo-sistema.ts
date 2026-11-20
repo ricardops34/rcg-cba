@@ -310,6 +310,16 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'posicao-cliente',
     moduloId: MODULO.comercial,
   },
+  // Mapa da carteira e dos leads, com calor e Top N (20/11/2026,
+  // docs/planos/2026-11-20-mapas-clientes-rotas.md). Escopo de carteira no servidor.
+  {
+    id: 'seed-menu-mapa-clientes',
+    nome: 'Mapa de Clientes',
+    rota: '/comercial/mapa',
+    icone: 'map',
+    codigo: 'mapa-clientes',
+    moduloId: MODULO.comercial,
+  },
   {
     id: 'seed-menu-estoque',
     nome: 'Estoque',
@@ -695,6 +705,15 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'acompanhamento-equipe',
     moduloId: MODULO.gerencial,
   },
+  // Mapa da equipe e, na fase 4 do plano, as rotas de visita (20/11/2026).
+  {
+    id: 'seed-menu-mapa-rotas',
+    nome: 'Mapa e Rotas',
+    rota: '/gerencial/mapa',
+    icone: 'route',
+    codigo: 'mapa-rotas',
+    moduloId: MODULO.gerencial,
+  },
   {
     id: 'seed-menu-consulta-evolucao',
     nome: 'Evolução Mensal',
@@ -870,6 +889,9 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   'consulta-vendas-produto': ['visualizar'],
   'consulta-vendas-categoria': ['visualizar'],
   'consulta-vendas-cnae': ['visualizar'],
+  // Mapa da própria carteira (20/11/2026). Espelha a migration
+  // 20261120170000_perm_mapas.
+  'mapa-clientes': ['visualizar'],
 };
 
 /**
@@ -898,6 +920,9 @@ export const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
   // Acompanhamento da equipe (Supervisor e Gerente; o Diretor recebe por não
   // ser Administração). Espelha a migration 20261027140000_acompanhamento_equipe.
   'acompanhamento-equipe': ['visualizar'],
+  // Mapa da equipe e rotas de visita (20/11/2026). Espelha a migration
+  // 20261120170000_perm_mapas.
+  'mapa-rotas': ['visualizar', 'cadastrar', 'editar'],
   // Distribuir, descartar e anotar o lead.
   leads: ['visualizar', 'editar'],
   // Cadastro de equipamentos de comodato (decisão do usuário, 2026-10-07):
