@@ -34,6 +34,11 @@ const ANOS = Array.from({ length: 6 }, (_, i) => ANO_ATUAL - 4 + i);
 const TODOS = "todos";
 
 const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
+/** Parte do total, com uma casa (ex.: 23,8%). */
+const percentual = (v: number, total: number) =>
+  total
+    ? `${((v / total) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+    : "—";
 const inteiro = (v: number) => v.toLocaleString("pt-BR");
 
 interface Filtros {
@@ -123,6 +128,8 @@ export default function DashboardComercialPage() {
         },
       }),
   });
+  // Base do "% do total" da tabela de categorias: a soma das linhas, a mesma do rodapé.
+  const totalCategorias = (data?.categorias ?? []).reduce((acc, c) => acc + c.realizado, 0);
 
   const abrirCortina = (aberta: boolean) => {
     if (aberta) setRascunho(filtros);
@@ -323,6 +330,7 @@ export default function DashboardComercialPage() {
                         <TableHead>Código</TableHead>
                         <TableHead>Categoria</TableHead>
                         <TableHead className="text-right">Realizado</TableHead>
+                        <TableHead className="w-28 text-right">% do total</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -348,14 +356,19 @@ export default function DashboardComercialPage() {
                             </span>
                           </TableCell>
                           <TableCell className="text-right">{moeda(c.realizado)}</TableCell>
+                          {/* Participação da categoria no total da tabela (20/11/2026). */}
+                          <TableCell className="text-right tabular-nums">
+                            {percentual(c.realizado, totalCategorias)}
+                          </TableCell>
                         </TableRow>
                       ))}
                     </TableBody>
                     <TableFooter>
                       <TableRow>
                         <TableCell colSpan={2}>Total</TableCell>
-                        <TableCell className="text-right">
-                          {moeda(data.categorias.reduce((acc, c) => acc + c.realizado, 0))}
+                        <TableCell className="text-right">{moeda(totalCategorias)}</TableCell>
+                        <TableCell className="text-right tabular-nums">
+                          {totalCategorias ? "100,0%" : "—"}
                         </TableCell>
                       </TableRow>
                     </TableFooter>
