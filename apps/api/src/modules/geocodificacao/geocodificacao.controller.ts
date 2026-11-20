@@ -11,6 +11,7 @@ import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type {
   GeocodificacaoConfiguracao,
   GeocodificacaoEmpresaLocal,
+  GeocodificacaoRota,
   GeocodificacaoLoteSituacao,
   GeocodificacaoTesteResultado,
 } from '@plataforma/contracts';
@@ -27,6 +28,7 @@ import {
   CoordenadasDto,
   GeocodificacaoBuscarDto,
   GeocodificacaoConfiguracaoUpdateDto,
+  GeocodificacaoRotaDto,
   GeocodificacaoLoteDto,
   GeocodificacaoTesteDto,
 } from './geocodificacao.dto';
@@ -115,6 +117,26 @@ export class GeocodificacaoController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<GeocodificacaoTesteResultado> {
     return this.geo.buscar(user.empresaAtivaId, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Rota de um ponto a outro',
+    description:
+      'Aba Mapa do cliente: da empresa (ou de onde o usuário está) até o cliente. Pelo Google ' +
+      'quando GEO_ROTAS_GOOGLE está ligado (caminho pelas ruas, distância e tempo); senão a ' +
+      'distância em linha reta. Requer clientes.visualizar ou posicao-cliente.visualizar.',
+  })
+  @RequirePermission('clientes', 'visualizar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
+  @HttpCode(200)
+  @Post('rota')
+  rota(
+    @Body() dto: GeocodificacaoRotaDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<GeocodificacaoRota> {
+    return this.geo.rota(user.empresaAtivaId, dto.origem, dto.destino);
   }
 
   @ApiOperation({

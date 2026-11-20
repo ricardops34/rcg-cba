@@ -128,6 +128,23 @@ export const coordenadasSchema = z.object({
 });
 export type Coordenadas = z.infer<typeof coordenadasSchema>;
 
+/** "Calcular rota" da aba Mapa do cliente: de um ponto (empresa ou eu) até o cliente. */
+export const geocodificacaoRotaSchema = z.object({
+  origem: coordenadasSchema,
+  destino: coordenadasSchema,
+});
+export type GeocodificacaoRotaPedido = z.infer<typeof geocodificacaoRotaSchema>;
+
+export type GeocodificacaoRota = {
+  calculadaPor: "google" | "linha_reta";
+  distanciaMetros: number;
+  duracaoSegundos: number | null;
+  /** Caminho pelas ruas (encoded polyline do Google); nulo na linha reta. */
+  polilinha: string | null;
+  /** Por que não foi pelo Google, quando ele está ligado e recusou. */
+  aviso: string | null;
+};
+
 /** A empresa ativa como ponto de referência nos mapas. */
 export type GeocodificacaoEmpresaLocal = {
   nome: string;

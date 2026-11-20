@@ -101,6 +101,7 @@ export function OrcamentoHistorico({ orcamentoId }: { orcamentoId: string }) {
               latitude={noMapa.localizacao.latitude}
               longitude={noMapa.localizacao.longitude}
               podeEditar={false}
+              permitirRota={false}
               onGravar={() => undefined}
             />
           )}

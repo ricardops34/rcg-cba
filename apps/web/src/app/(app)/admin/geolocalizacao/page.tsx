@@ -319,6 +319,7 @@ function LocalEmpresa() {
           podeEditar={podeEditar}
           onGravar={gravar}
           mostrarEmpresa={false}
+          permitirRota={false}
           altura="h-[320px]"
         />
       </CardContent>

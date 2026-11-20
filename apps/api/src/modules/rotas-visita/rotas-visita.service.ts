@@ -21,32 +21,8 @@ import {
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { resolverEscopoVendedores } from '../../common/escopo/escopo-vendedores';
 import { GeocodificacaoService } from '../geocodificacao/geocodificacao.service';
+import { calcularRotaGoogle } from '../geocodificacao/google-routes';
 import { comprimento, ordenarParadas, type Ponto } from './rotas-ordem';
-
-const ROUTES_URL = 'https://routes.googleapis.com/directions/v2:computeRoutes';
-const ROUTES_CAMPOS =
-  'routes.distanceMeters,routes.duration,routes.polyline.encodedPolyline,routes.optimizedIntermediateWaypointIndex';
-
-const latLng = (p: Ponto) => ({
-  location: { latLng: { latitude: p.latitude, longitude: p.longitude } },
-});
-
-/** O que fazer quando a Routes API recusa, em português. */
-function explicarErroRoutes(status: string, mensagem: string): string {
-  const m = mensagem.toLowerCase();
-  if (m.includes('billing')) {
-    return 'o projeto no Google Cloud está sem faturamento';
-  }
-  if (
-    status === 'PERMISSION_DENIED' ||
-    m.includes('not been used') ||
-    m.includes('disabled')
-  ) {
-    return 'a Routes API não está ativada no projeto ou não está liberada na chave';
-  }
-  if (m.includes('api key')) return 'a chave do Google foi recusada';
-  return `${status}: ${mensagem}`;
-}
 
 /**
  * Rotas de visita (Gerencial > Mapa e Rotas, 20/11/2026,
@@ -146,70 +122,33 @@ export class RotasVisitaService {
     // Google reordena as do meio.
     const destinoIdx = input.retornar ? null : ordem[ordem.length - 1];
     const meio = input.retornar ? ordem : ordem.slice(0, -1);
-    try {
-      const resposta = await fetch(ROUTES_URL, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': cfg.chave,
-          'X-Goog-FieldMask': ROUTES_CAMPOS,
-        },
-        body: JSON.stringify({
-          origin: latLng(input.origem),
-          destination: latLng(
-            destinoIdx === null ? input.origem : pontos[destinoIdx],
-          ),
-          intermediates: meio.map((i) => latLng(pontos[i])),
-          travelMode: 'DRIVE',
-          optimizeWaypointOrder: meio.length > 1,
-          languageCode: 'pt-BR',
-          units: 'METRIC',
-        }),
-        signal: AbortSignal.timeout(20_000),
-      });
-      const corpo = (await resposta.json().catch(() => null)) as {
-        error?: { status?: string; message?: string };
-        routes?: Array<{
-          distanceMeters?: number;
-          duration?: string;
-          polyline?: { encodedPolyline?: string };
-          optimizedIntermediateWaypointIndex?: number[];
-        }>;
-      } | null;
-      const rota = corpo?.routes?.[0];
-      if (!resposta.ok || !rota) {
-        const motivo = explicarErroRoutes(
-          corpo?.error?.status ?? `HTTP ${resposta.status}`,
-          corpo?.error?.message ?? 'sem rota',
-        );
-        this.logger.warn(
-          `Routes API recusou (empresa ${empresaId}): ${motivo}`,
-        );
-        return linhaReta(
-          `Google não calculou (${motivo}); a rota foi ordenada por proximidade.`,
-        );
-      }
-      const otimizada =
-        rota.optimizedIntermediateWaypointIndex?.length === meio.length
-          ? rota.optimizedIntermediateWaypointIndex.map((k) => meio[k])
-          : meio;
-      const final =
-        destinoIdx === null ? otimizada : [...otimizada, destinoIdx];
-      return {
-        calculadaPor: 'google',
-        clienteIds: final.map((i) => clientes[i].id),
-        distanciaMetros: rota.distanceMeters ?? null,
-        duracaoSegundos: rota.duration
-          ? Math.round(parseFloat(rota.duration))
-          : null,
-        polilinha: rota.polyline?.encodedPolyline ?? null,
-        aviso: null,
-      };
-    } catch (erro) {
+    const r = await calcularRotaGoogle(
+      cfg.chave,
+      input.origem,
+      destinoIdx === null ? input.origem : pontos[destinoIdx],
+      meio.map((i) => pontos[i]),
+      true,
+    );
+    if (!r.ok) {
+      this.logger.warn(
+        `Routes API recusou (empresa ${empresaId}): ${r.motivo}`,
+      );
       return linhaReta(
-        `Sem resposta do Google (${(erro as Error).message}); a rota foi ordenada por proximidade.`,
+        `Google não calculou (${r.motivo}); a rota foi ordenada por proximidade.`,
       );
     }
+    const otimizada = r.ordemIntermediarios
+      ? r.ordemIntermediarios.map((k) => meio[k])
+      : meio;
+    const final = destinoIdx === null ? otimizada : [...otimizada, destinoIdx];
+    return {
+      calculadaPor: 'google',
+      clienteIds: final.map((i) => clientes[i].id),
+      distanciaMetros: r.distanciaMetros,
+      duracaoSegundos: r.duracaoSegundos,
+      polilinha: r.polilinha,
+      aviso: null,
+    };
   }
 
   async criar(

@@ -4,17 +4,36 @@ import dynamic from "next/dynamic";
 import { useMemo, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Crosshair, Loader2, LocateFixed, MapPin, Search, Undo2 } from "lucide-react";
+import {
+  Building2,
+  Crosshair,
+  ExternalLink,
+  Loader2,
+  LocateFixed,
+  MapPin,
+  Route,
+  Search,
+  Undo2,
+  X,
+} from "lucide-react";
 import {
   GEOCODIFICACAO_PRECISAO_ROTULO,
   type GeocodificacaoBuscar,
   type GeocodificacaoEmpresaLocal,
+  type GeocodificacaoRota,
   type GeocodificacaoTesteResultado,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
+import { decodificarPolilinha } from "@/lib/polilinha";
 import { Button } from "@/components/ui/button";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 import { Skeleton } from "@/components/ui/skeleton";
-import type { PontoMapa, ReferenciaMapa } from "./mapa-local-leaflet";
+import type { PontoMapa, ReferenciaMapa, RotaLocal } from "./mapa-local-leaflet";
 
 // Leaflet mexe em `window` ao ser importado: só carrega no navegador.
 const MapaLocalLeaflet = dynamic(() => import("./mapa-local-leaflet"), {
@@ -49,7 +68,10 @@ export function MapaLocal({
   textoGravar = "Gravar posição",
   mostrarEmpresa = true,
   altura = "h-[420px]",
+  permitirRota = true,
 }: {
+  /** "Calcular rota" da empresa ou de onde o usuário está até o lugar. */
+  permitirRota?: boolean;
   rotulo: string;
   latitude: number | null | undefined;
   longitude: number | null | undefined;
@@ -100,8 +122,79 @@ export function MapaLocal({
     return r;
   }, [empresa, mostrarEmpresa, usuario]);
 
-  const mover = (p: PontoMapa) =>
+  const mover = (p: PontoMapa) => {
+    setRota(null);
     setPendente({ latitude: arredondar(p.latitude), longitude: arredondar(p.longitude) });
+  };
+
+  // "Calcular rota" (20/11/2026): da empresa ou de onde o usuário está até o
+  // alvo. Pelo Google quando as rotas dele estão ligadas; senão linha reta.
+  const [rota, setRota] = useState<{
+    desenho: RotaLocal;
+    resultado: GeocodificacaoRota;
+    origem: PontoMapa;
+    de: "empresa" | "eu";
+  } | null>(null);
+  const [calculandoRota, setCalculandoRota] = useState(false);
+  const pontoEmpresa =
+    empresa && !coordenadaVazia(empresa.latitude, empresa.longitude)
+      ? { latitude: empresa.latitude!, longitude: empresa.longitude! }
+      : null;
+
+  const calcularRota = async (de: "empresa" | "eu") => {
+    if (!alvo) return;
+    const obterOrigem = (): Promise<PontoMapa | null> =>
+      de === "empresa"
+        ? Promise.resolve(pontoEmpresa)
+        : new Promise((resolve) => {
+            if (!("geolocation" in navigator)) return resolve(null);
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                const p = { latitude: pos.coords.latitude, longitude: pos.coords.longitude };
+                setUsuario({ latitude: arredondar(p.latitude), longitude: arredondar(p.longitude) });
+                resolve(p);
+              },
+              () => resolve(null),
+              { enableHighAccuracy: true, timeout: 15_000, maximumAge: 60_000 },
+            );
+          });
+    setCalculandoRota(true);
+    try {
+      const origem = await obterOrigem();
+      if (!origem) {
+        toast.error(
+          de === "empresa"
+            ? "A empresa ainda não tem localização (Administração > Geolocalização)."
+            : "Não foi possível obter a sua localização. Libere o acesso no navegador.",
+        );
+        return;
+      }
+      const r = await apiFetch<GeocodificacaoRota>("/geocodificacao/rota", {
+        method: "POST",
+        body: { origem, destino: alvo },
+      });
+      setRota({
+        resultado: r,
+        origem,
+        de,
+        desenho: {
+          origem: [origem.latitude, origem.longitude],
+          caminho: r.polilinha
+            ? decodificarPolilinha(r.polilinha)
+            : [
+                [origem.latitude, origem.longitude],
+                [alvo.latitude, alvo.longitude],
+              ],
+          linhaReta: !r.polilinha,
+        },
+      });
+      if (r.aviso) toast.warning(r.aviso);
+    } catch (err) {
+      toast.error(err instanceof ApiError ? err.message : "Não foi possível calcular a rota");
+    } finally {
+      setCalculandoRota(false);
+    }
+  };
 
   const enderecoCompleto =
     !!endereco?.endereco?.trim() && !!endereco?.municipio?.trim() && endereco?.uf?.trim().length === 2;
@@ -220,6 +313,32 @@ export function MapaLocal({
             Usar minha localização
           </Button>
         )}
+        {permitirRota && alvo && !mudou && (
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button type="button" size="sm" variant="outline" disabled={calculandoRota}>
+                {calculandoRota ? <Loader2 className="size-4 animate-spin" /> : <Route className="size-4" />}
+                Calcular rota
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              <DropdownMenuItem disabled={!pontoEmpresa} onSelect={() => calcularRota("empresa")}>
+                <Building2 className="size-4" />
+                Da empresa até aqui
+              </DropdownMenuItem>
+              <DropdownMenuItem onSelect={() => calcularRota("eu")}>
+                <LocateFixed className="size-4" />
+                De onde estou até aqui
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        )}
+        {rota && (
+          <Button type="button" size="sm" variant="ghost" onClick={() => setRota(null)}>
+            <X className="size-4" />
+            Tirar rota
+          </Button>
+        )}
         {mudou && (
           <div className="ml-auto flex gap-2">
             <Button type="button" size="sm" variant="ghost" onClick={() => setPendente(null)}>
@@ -244,8 +363,41 @@ export function MapaLocal({
           editavel={podeEditar}
           onMover={mover}
           chaveEnquadramento={chaveEnquadramento}
+          rota={rota?.desenho ?? null}
         />
       </div>
+
+      {rota && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-lg border p-2 text-sm">
+          <Route className="size-4 text-primary" />
+          <span className="font-medium">
+            {(rota.resultado.distanciaMetros / 1000).toLocaleString("pt-BR", { maximumFractionDigits: 1 })} km
+          </span>
+          {rota.resultado.duracaoSegundos != null && (
+            <span>
+              {Math.round(rota.resultado.duracaoSegundos / 60) >= 60
+                ? `${Math.floor(rota.resultado.duracaoSegundos / 3600)} h ${Math.round((rota.resultado.duracaoSegundos % 3600) / 60)} min`
+                : `${Math.round(rota.resultado.duracaoSegundos / 60)} min`}{" "}
+              de carro
+            </span>
+          )}
+          <span className="text-xs text-muted-foreground">
+            {rota.de === "empresa" ? "da empresa" : "de onde você está"} ·{" "}
+            {rota.resultado.calculadaPor === "google" ? "pelas ruas (Google)" : "em linha reta"}
+          </span>
+          {alvo && (
+            <a
+              className="ml-auto flex items-center gap-1 text-xs text-primary hover:underline"
+              href={`https://www.google.com/maps/dir/?api=1&travelmode=driving&origin=${rota.origem.latitude},${rota.origem.longitude}&destination=${alvo.latitude},${alvo.longitude}`}
+              target="_blank"
+              rel="noreferrer"
+            >
+              <ExternalLink className="size-3" />
+              Navegar no Google Maps
+            </a>
+          )}
+        </div>
+      )}
 
       <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
         <span>

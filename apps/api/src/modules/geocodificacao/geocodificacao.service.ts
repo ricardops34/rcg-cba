@@ -7,12 +7,18 @@ import {
 import {
   GEO_NOMINATIM_URL_PADRAO,
   type GeocodificacaoEmpresaLocal,
+  type GeocodificacaoRota,
   type GeocodificacaoProvedor,
   type GeocodificacaoTesteResultado,
 } from '@plataforma/contracts';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ParametrosService } from '../parametros/parametros.service';
 import { cifrarParametro } from '../parametros/parametros-cripto';
+import {
+  calcularRotaGoogle,
+  distanciaLinhaReta,
+  type PontoRota,
+} from './google-routes';
 
 /**
  * Coordenadas do cliente pela Geocoding API do Google
@@ -672,6 +678,44 @@ export class GeocodificacaoService {
       );
     }
     return this.resultado(await this.consultar(cfg, endereco));
+  }
+
+  /**
+   * Rota de um ponto a outro (aba Mapa do cliente). Pelo Google quando as
+   * rotas pelo Google estão ligadas; senão, ou se ele recusar, a distância em
+   * linha reta — com o aviso do motivo no segundo caso.
+   */
+  async rota(
+    empresaId: string,
+    origem: PontoRota,
+    destino: PontoRota,
+  ): Promise<GeocodificacaoRota> {
+    const linhaReta = (aviso: string | null): GeocodificacaoRota => ({
+      calculadaPor: 'linha_reta',
+      distanciaMetros: Math.round(distanciaLinhaReta(origem, destino)),
+      duracaoSegundos: null,
+      polilinha: null,
+      aviso,
+    });
+    const cfg = await this.config(empresaId);
+    if (!cfg.rotasGoogle || !cfg.chave) return linhaReta(null);
+    const r = await calcularRotaGoogle(cfg.chave, origem, destino);
+    if (!r.ok) {
+      this.logger.warn(
+        `Routes API recusou (empresa ${empresaId}): ${r.motivo}`,
+      );
+      return linhaReta(
+        `O Google não calculou (${r.motivo}); distância em linha reta.`,
+      );
+    }
+    return {
+      calculadaPor: 'google',
+      distanciaMetros:
+        r.distanciaMetros ?? Math.round(distanciaLinhaReta(origem, destino)),
+      duracaoSegundos: r.duracaoSegundos,
+      polilinha: r.polilinha,
+      aviso: null,
+    };
   }
 
   /** A empresa ativa como referência nos mapas. RLS: o grupo do usuário. */

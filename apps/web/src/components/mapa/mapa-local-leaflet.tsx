@@ -60,6 +60,42 @@ function Enquadrar({ pontos, chave }: { pontos: PontoMapa[]; chave: string }) {
   return null;
 }
 
+/** A rota até o alvo: caminho pelas ruas, ou reta tracejada, e o ponto de partida. */
+export type RotaLocal = {
+  origem: [number, number];
+  caminho: Array<[number, number]>;
+  linhaReta: boolean;
+};
+
+const ICONE_PARTIDA = L.divIcon({
+  className: "",
+  html: '<div style="width:16px;height:16px;border-radius:4px;background:#2563eb;border:3px solid #fff;box-shadow:0 1px 3px rgba(0,0,0,.4)"></div>',
+  iconSize: [16, 16],
+  iconAnchor: [8, 8],
+  tooltipAnchor: [0, -8],
+});
+
+function CamadaRotaLocal({ rota }: { rota: RotaLocal }) {
+  const map = useMap();
+  useEffect(() => {
+    const grupo = L.featureGroup([
+      L.polyline(rota.caminho, {
+        color: "#2563eb",
+        weight: rota.linhaReta ? 3 : 5,
+        opacity: 0.85,
+        dashArray: rota.linhaReta ? "8 8" : undefined,
+      }),
+      L.marker(rota.origem, { icon: ICONE_PARTIDA }).bindTooltip("Partida"),
+    ]);
+    grupo.addTo(map);
+    map.fitBounds(grupo.getBounds(), { padding: [40, 40], maxZoom: 16 });
+    return () => {
+      grupo.remove();
+    };
+  }, [map, rota]);
+  return null;
+}
+
 function CliqueNoMapa({ onClique }: { onClique: (p: PontoMapa) => void }) {
   useMapEvents({
     click: (e) => onClique({ latitude: e.latlng.lat, longitude: e.latlng.lng }),
@@ -80,7 +116,9 @@ export default function MapaLocalLeaflet({
   editavel,
   onMover,
   chaveEnquadramento,
+  rota = null,
 }: {
+  rota?: RotaLocal | null;
   alvo: PontoMapa | null;
   rotuloAlvo: string;
   pendente: boolean;
@@ -106,6 +144,7 @@ export default function MapaLocalLeaflet({
       <CamadasBase />
       <Enquadrar pontos={pontos} chave={chaveEnquadramento} />
       {editavel && <CliqueNoMapa onClique={onMover} />}
+      {rota && <CamadaRotaLocal rota={rota} />}
       {referencias.map((r) => (
         <Marker
           key={r.tipo}
