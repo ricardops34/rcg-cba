@@ -97,8 +97,15 @@ Em Gerencial > Vendedores: desenhar regiões no mapa (polígonos) e atribuí-las
 vendedores; há regiões de um vendedor e regiões livres. Vendedor do interior pode ter
 um **município inteiro** como região (sem desenhar). Ferramentas para mostrar
 **invasão de região**: cliente atendido/vendido por vendedor que não é o dono da região
-onde ele está. A detalhar quando chegar a vez (o que conta como invasão: carteira do
-cliente, quem vendeu a nota, quem fez o orçamento).
+onde ele está. **Feito em 20/11** (aguarda conferência visual): tabela `vendedor_regioes` (RLS),
+módulo `vendedor-regioes` (CRUD, busca de município, apuração de invasão), tela
+`/gerencial/vendedores/regioes` (botão "Regiões de atuação" em Vendedores) com
+desenho/edição de área (Geoman), município inteiro (divisa do IBGE ao salvar) e aba
+Invasões com resumo por vendedor. Regra: a área desenhada vence o município (dá para
+recortar um bairro); cliente sem coordenada cai no município pelo nome do cadastro.
+
+**Invasão (decisão de 20/11):** cliente da **carteira** de um vendedor que está
+dentro da região de outro vendedor. Região livre não gera invasão.
 
 ## Mapa da Posição melhorado (20/11 — em andamento)
 

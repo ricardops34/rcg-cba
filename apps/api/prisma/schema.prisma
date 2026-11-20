@@ -131,6 +131,7 @@ model Empresa {
   produtos                   Produto[]
   produtoFotos               ProdutoFoto[]
   vendedores                 Vendedor[]
+  vendedorRegioes            VendedorRegiao[]
   clientes                   Cliente[]
   categorias                 Categoria[]
   condicoesPagamento         CondicaoPagamento[]
@@ -1837,6 +1838,7 @@ model Vendedor {
   orcamentos           Orcamento[]
   whatsappSessoes      WhatsappSessao[]
   whatsappSessaoPeriodos WhatsappSessaoPeriodo[]
+  regioes              VendedorRegiao[]
 
   @@unique([empresaId, chave])
   @@index([empresaId, codigoErp])
@@ -2920,6 +2922,38 @@ model Estado {
   @@map("estados")
 }
 
+// Região de atuação de vendedor (Gerencial > Vendedores > Regiões, 20/11/2026,
+// docs/planos/2026-11-20-mapas-clientes-rotas.md). `area` é um polígono
+// desenhado; `municipio` é o município inteiro, com a divisa do IBGE copiada em
+// `geometria` ao salvar. Sem dono (vendedorId nulo) é região livre. Invasão:
+// cliente da carteira de um vendedor dentro da região de outro.
+model VendedorRegiao {
+  id          String  @id @default(uuid())
+  empresaId   String
+  nome        String
+  vendedorId  String?
+  /// `area` ou `municipio`.
+  tipo        String
+  municipioId String?
+  /// GeoJSON (Polygon ou MultiPolygon), coordenadas [longitude, latitude].
+  geometria   Json?
+  ativo       Boolean @default(true)
+
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
+  deletedAt DateTime?
+  createdBy String?
+  updatedBy String?
+  deletedBy String?
+
+  empresa   Empresa    @relation(fields: [empresaId], references: [id])
+  vendedor  Vendedor?  @relation(fields: [vendedorId], references: [id])
+  municipio Municipio? @relation(fields: [municipioId], references: [id])
+
+  @@index([empresaId, vendedorId])
+  @@map("vendedor_regioes")
+}
+
 model Municipio {
   id         String  @id @default(uuid())
   estadoId   String?
@@ -2935,8 +2969,9 @@ model Municipio {
   updatedBy String?
   deletedBy String?
 
-  estado Estado? @relation(fields: [estadoId], references: [id])
-  ceps   Cep[]
+  estado          Estado?          @relation(fields: [estadoId], references: [id])
+  ceps            Cep[]
+  vendedorRegioes VendedorRegiao[]
 
   @@unique([codigoErp])
   // Chave natural do sync do IBGE e do casamento com o município que a

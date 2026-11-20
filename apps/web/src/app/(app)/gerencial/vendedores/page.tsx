@@ -42,6 +42,7 @@ import {
 import {
   KeyRound,
   Lock,
+  Map as MapIcon,
   MoreHorizontal,
   Pencil,
   Trash2,
@@ -357,6 +358,15 @@ export default function VendedoresPage() {
         onCreate={() => router.push("/gerencial/vendedores/novo")}
         createLabel="Novo vendedor"
         actions={
+          <>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => router.push("/gerencial/vendedores/regioes")}
+          >
+            <MapIcon className="size-4" />
+            Regiões de atuação
+          </Button>
           <FiltersPopover active={filtrosAtivos} onClear={limparFiltros}>
             <div className="space-y-2">
               <FieldLabel>Vínculo</FieldLabel>
@@ -446,6 +456,7 @@ export default function VendedoresPage() {
               </Select>
             </div>
           </FiltersPopover>
+          </>
         }
       />
 
