@@ -312,6 +312,16 @@ export const MENUS: DefinicaoMenu[] = [
   },
   // Mapa da carteira e dos leads, com calor e Top N (20/11/2026,
   // docs/planos/2026-11-20-mapas-clientes-rotas.md). Escopo de carteira no servidor.
+  // Evolução de venda por categoria, cliente e CNAE, com produto e cliente no
+  // detalhe e gráficos (20/11/2026, docs/planos/2026-11-20-evolucao-vendas-comercial.md).
+  {
+    id: 'seed-menu-evolucao-vendas',
+    nome: 'Evolução de Vendas',
+    rota: '/comercial/evolucao-vendas',
+    icone: 'chart-line',
+    codigo: 'evolucao-vendas',
+    moduloId: MODULO.comercial,
+  },
   {
     id: 'seed-menu-mapa-clientes',
     nome: 'Mapa de Clientes',
@@ -892,6 +902,9 @@ export const VENDEDOR_PERMISSOES: Record<string, Acao[]> = {
   // Mapa da própria carteira (20/11/2026). Espelha a migration
   // 20261120170000_perm_mapas.
   'mapa-clientes': ['visualizar'],
+  // Evolução de Vendas (20/11/2026), na carteira de cada um. Espelha a
+  // migration 20261120200000_evolucao_vendas.
+  'evolucao-vendas': ['visualizar'],
 };
 
 /**

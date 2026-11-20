@@ -28,6 +28,10 @@ import type {
   ConsultaVendasProdutoQuery,
   ConsultaVendasResultado,
   ConsultaVendasVendedorQuery,
+  EvolucaoVendasNo,
+  EvolucaoVendasOpcoes,
+  EvolucaoVendasQuery,
+  EvolucaoVendasResultado,
   FormatoEvolucao,
 } from '@plataforma/contracts';
 import {
@@ -1213,5 +1217,234 @@ export class ConsultasService {
       GROUP BY ${this.agrupamentoVendedor},
         EXTRACT(YEAR FROM c."dataBloqueio"), EXTRACT(MONTH FROM c."dataBloqueio")
     `);
+  }
+
+  // -------------------------------------------------------------------------
+  // Comercial > Evolução de Vendas (2026-11-20,
+  // docs/planos/2026-11-20-evolucao-vendas-comercial.md)
+  // -------------------------------------------------------------------------
+
+  /** Categorias raiz ativas, para o filtro da Evolução de Vendas. */
+  async evolucaoVendasOpcoes(empresaId: string): Promise<EvolucaoVendasOpcoes> {
+    return this.prisma.withTenant(empresaId, async (tx) => ({
+      categorias: (
+        await tx.categoria.findMany({
+          where: {
+            empresaId,
+            deletedAt: null,
+            ativo: true,
+            categoriaPaiId: null,
+          },
+          select: { id: true, codigoErp: true, descricao: true },
+          orderBy: { codigoErp: 'asc' },
+        })
+      ).map((c) => ({ id: c.id, codigo: c.codigoErp, descricao: c.descricao })),
+    }));
+  }
+
+  /**
+   * Venda do período em árvore, por categoria, cliente ou CNAE, com produto e
+   * cliente abaixo. Mesma base das Consultas (corte de venda, soma de
+   * `vlrTotal` dos itens, vendedor pela base da empresa) e o escopo de carteira
+   * de quem pergunta. O CNAE é o **principal** do cliente (sem principal, o
+   * primeiro): somar em todos os CNAEs contaria a mesma venda várias vezes e o
+   * % do total passaria de 100.
+   */
+  async evolucaoVendas(
+    empresaId: string,
+    user: AuthenticatedUser,
+    query: EvolucaoVendasQuery,
+  ): Promise<EvolucaoVendasResultado> {
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const escopo = await resolverEscopoVendedores(tx, empresaId, user);
+      const base = await this.baseVendedor(empresaId, tx);
+      const colunaVendedor =
+        base === 'cliente'
+          ? Prisma.sql`c."vendedorId"`
+          : Prisma.sql`i."vendedorId"`;
+
+      const condicoes: Prisma.Sql[] = [
+        Prisma.sql`i."empresaId" = ${empresaId}`,
+        ...this.condicaoPeriodo(Prisma.sql`i`, query),
+        ...(await this.condicoesDeVenda(tx, empresaId)),
+        ...this.condicaoEscopoClientes(escopo),
+        ...this.condicaoFiltroVendedor(
+          colunaVendedor,
+          escopo,
+          query.vendedorIds,
+        ),
+      ];
+      if (query.uf) condicoes.push(Prisma.sql`c."uf" = ${query.uf}`);
+      if (query.municipio) {
+        condicoes.push(Prisma.sql`c."municipio" = ${query.municipio}`);
+      }
+      if (query.produtoId) {
+        condicoes.push(Prisma.sql`p."id" = ${query.produtoId}`);
+      }
+      if (query.categoriaId) {
+        condicoes.push(Prisma.sql`p."categoriaId" = ${query.categoriaId}`);
+      }
+      if (query.cnaeId) condicoes.push(Prisma.sql`k."id" = ${query.cnaeId}`);
+
+      const grupoSql =
+        query.visao === 'categoria'
+          ? Prisma.sql`cat."id" AS "grupoId", cat."codigoErp" AS "grupoCodigo", cat."descricao" AS "grupoDescricao"`
+          : query.visao === 'cnae'
+            ? Prisma.sql`k."id" AS "grupoId", k."codigoErp" AS "grupoCodigo", k."descricao" AS "grupoDescricao"`
+            : Prisma.sql`c."id" AS "grupoId", c."codigoErp" AS "grupoCodigo", c."razaoSocial" AS "grupoDescricao"`;
+
+      const linhas = await tx.$queryRaw<
+        Array<{
+          grupoId: string | null;
+          grupoCodigo: string | null;
+          grupoDescricao: string | null;
+          produtoId: string;
+          produtoCodigo: string | null;
+          produtoDescricao: string;
+          unidade: string | null;
+          clienteId: string;
+          clienteCodigo: string | null;
+          clienteDescricao: string;
+          ano: number;
+          mes: number;
+          valor: number;
+          quantidade: number;
+        }>
+      >(Prisma.sql`
+        SELECT
+          ${grupoSql},
+          p."id"          AS "produtoId",
+          p."codigoErp"   AS "produtoCodigo",
+          p."descricao"   AS "produtoDescricao",
+          p."unidade"     AS "unidade",
+          c."id"          AS "clienteId",
+          c."codigoErp"   AS "clienteCodigo",
+          c."razaoSocial" AS "clienteDescricao",
+          i."ano"         AS "ano",
+          i."mes"         AS "mes",
+          SUM(i."vlrTotal")::float8   AS "valor",
+          SUM(i."quantidade")::float8 AS "quantidade"
+        FROM "notas_saida_itens" i
+        JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
+        JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
+        JOIN "produtos" p ON p."id" = i."produtoId" AND p."deletedAt" IS NULL
+        LEFT JOIN "categorias" cat ON cat."id" = p."categoriaId"
+        LEFT JOIN LATERAL (
+          SELECT k1."id", k1."codigoErp", k1."descricao"
+          FROM "cliente_cnaes" cc
+          JOIN "cnaes" k1 ON k1."id" = cc."cnaeId" AND k1."deletedAt" IS NULL
+          WHERE cc."clienteId" = c."id" AND cc."deletedAt" IS NULL
+          ORDER BY cc."principal" DESC, cc."createdAt"
+          LIMIT 1
+        ) k ON true
+        WHERE ${Prisma.join(condicoes, ' AND ')}
+        GROUP BY 1, 2, 3, p."id", p."codigoErp", p."descricao", p."unidade",
+          c."id", c."codigoErp", c."razaoSocial", i."ano", i."mes"
+      `);
+
+      const cabecalho = this.cabecalho(query, base);
+      const colunas = cabecalho.colunas;
+      const indicePorMes = new Map(
+        colunas.map((c, k) => [emMeses(c.ano, c.mes), k]),
+      );
+      type No = Omit<EvolucaoVendasNo, 'filhos'> & {
+        filhos: Map<string, No>;
+      };
+      const novoNo = (
+        id: string,
+        tipo: EvolucaoVendasNo['tipo'],
+        codigo: string | null,
+        descricao: string,
+        unidade: string | null = null,
+      ): No => ({
+        id,
+        tipo,
+        codigo,
+        descricao,
+        unidade,
+        valores: Array<number>(colunas.length).fill(0),
+        total: 0,
+        quantidade: 0,
+        filhos: new Map(),
+      });
+      const filho = (pai: Map<string, No>, chave: string, criar: () => No) => {
+        let n = pai.get(chave);
+        if (!n) {
+          n = criar();
+          pai.set(chave, n);
+        }
+        return n;
+      };
+      const somar = (n: No, k: number, valor: number, qtd: number) => {
+        n.valores[k] += valor;
+        n.total += valor;
+        n.quantidade += qtd;
+      };
+
+      const raiz = new Map<string, No>();
+      const totais = Array<number>(colunas.length).fill(0);
+      let quantidadeTotal = 0;
+      const semGrupo =
+        query.visao === 'categoria'
+          ? { id: SEM_CATEGORIA_ID, descricao: SEM_CATEGORIA_LABEL }
+          : { id: SEM_CNAE_ID, descricao: SEM_CNAE_LABEL };
+
+      for (const l of linhas) {
+        const k = indicePorMes.get(emMeses(l.ano, l.mes));
+        if (k === undefined) continue;
+        const valor = Number(l.valor);
+        const qtd = Number(l.quantidade);
+        const grupoId = l.grupoId ?? semGrupo.id;
+        const grupo = filho(raiz, grupoId, () =>
+          novoNo(
+            grupoId,
+            query.visao,
+            l.grupoCodigo,
+            l.grupoDescricao ?? semGrupo.descricao,
+          ),
+        );
+        const produto = filho(grupo.filhos, l.produtoId, () =>
+          novoNo(
+            l.produtoId,
+            'produto',
+            l.produtoCodigo,
+            l.produtoDescricao,
+            l.unidade,
+          ),
+        );
+        somar(grupo, k, valor, qtd);
+        somar(produto, k, valor, qtd);
+        // Cliente abaixo do produto só onde o grupo não é o próprio cliente.
+        if (query.visao !== 'cliente') {
+          const cliente = filho(produto.filhos, l.clienteId, () =>
+            novoNo(l.clienteId, 'cliente', l.clienteCodigo, l.clienteDescricao),
+          );
+          somar(cliente, k, valor, qtd);
+        }
+        totais[k] += valor;
+        quantidadeTotal += qtd;
+      }
+
+      const arredondar = (v: number) => Math.round(v * 100) / 100;
+      const fechar = (mapa: Map<string, No>): EvolucaoVendasNo[] =>
+        [...mapa.values()]
+          .sort((a, b) => b.total - a.total)
+          .map((n) => ({
+            ...n,
+            valores: n.valores.map(arredondar),
+            total: arredondar(n.total),
+            filhos: fechar(n.filhos),
+          }));
+
+      return {
+        visao: query.visao,
+        periodo: cabecalho.periodo,
+        colunas,
+        linhas: fechar(raiz),
+        totais: totais.map(arredondar),
+        total: arredondar(totais.reduce((a, v) => a + v, 0)),
+        quantidade: quantidadeTotal,
+      };
+    });
   }
 }

@@ -643,3 +643,69 @@ export const CONSULTA_VENDAS_CATEGORIA_RESULTADO_EXAMPLE: ConsultaVendasCategori
       },
     ],
   };
+
+// ---------------------------------------------------------------------------
+// Comercial > Evolução de Vendas (2026-11-20, docs/planos/2026-11-20-evolucao-vendas-comercial.md)
+// ---------------------------------------------------------------------------
+
+export const EVOLUCAO_VENDAS_VISOES = ["categoria", "cliente", "cnae"] as const;
+export type EvolucaoVendasVisao = (typeof EVOLUCAO_VENDAS_VISOES)[number];
+
+export const EVOLUCAO_VENDAS_VISAO_ROTULO: Record<EvolucaoVendasVisao, string> = {
+  categoria: "Venda × Categoria",
+  cliente: "Venda × Cliente",
+  cnae: "Venda × CNAE",
+};
+
+export const evolucaoVendasQuerySchema = z
+  .object({
+    ...periodoFields,
+    visao: z.enum(EVOLUCAO_VENDAS_VISOES).default("categoria"),
+    uf: z.string().trim().length(2).optional(),
+    municipio: z.string().trim().max(100).optional(),
+    produtoId: z.string().uuid().optional(),
+    /** Categoria raiz do produto. */
+    categoriaId: z.string().uuid().optional(),
+    /** CNAE principal do cliente. */
+    cnaeId: z.string().uuid().optional(),
+    vendedorIds: vendedorIdsSchema,
+  })
+  .superRefine(validarPeriodo);
+export type EvolucaoVendasQuery = z.infer<typeof evolucaoVendasQuerySchema>;
+
+export type EvolucaoVendasTipoNo = "categoria" | "cliente" | "cnae" | "produto";
+
+/** Nó da árvore: um grupo, um produto ou um cliente, com o valor de cada mês. */
+export interface EvolucaoVendasNo {
+  id: string;
+  tipo: EvolucaoVendasTipoNo;
+  codigo: string | null;
+  descricao: string;
+  /** Unidade do produto (nó produto). */
+  unidade: string | null;
+  valores: number[];
+  total: number;
+  quantidade: number;
+  filhos: EvolucaoVendasNo[];
+}
+
+export interface EvolucaoVendasResultado {
+  visao: EvolucaoVendasVisao;
+  periodo: {
+    anoInicial: number;
+    mesInicial: number;
+    anoFinal: number;
+    mesFinal: number;
+    label: string;
+  };
+  colunas: ConsultaVendasColuna[];
+  linhas: EvolucaoVendasNo[];
+  totais: number[];
+  total: number;
+  quantidade: number;
+}
+
+/** Categorias (raiz) para o filtro — a rotina não exige o cadastro de categorias. */
+export interface EvolucaoVendasOpcoes {
+  categorias: { id: string; codigo: string | null; descricao: string }[];
+}

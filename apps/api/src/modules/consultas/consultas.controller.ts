@@ -21,6 +21,7 @@ import {
   ConsultaVendasCnaeQueryDto,
   ConsultaVendasProdutoQueryDto,
   ConsultaVendasVendedorQueryDto,
+  EvolucaoVendasQueryDto,
 } from './dto/consulta.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
 import { PermissionsGuard } from '../../common/guards/permissions.guard';
@@ -208,5 +209,36 @@ export class ConsultasController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.evolucao(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary:
+      'Evolução de Vendas (Comercial): árvore por categoria, cliente ou CNAE',
+    description:
+      'Venda do período em árvore — Categoria → produto → cliente, Cliente → produto ou ' +
+      'CNAE (principal do cliente) → produto → cliente —, com o valor de cada mês, total e ' +
+      'quantidade. Filtros de UF, município, produto, categoria, CNAE e vendedor. Mesma base de ' +
+      'venda das Consultas e o escopo de carteira de quem pergunta. Requer ' +
+      'evolucao-vendas.visualizar.',
+  })
+  @RequirePermission('evolucao-vendas', 'visualizar')
+  @Get('evolucao-vendas')
+  evolucaoVendas(
+    @Query() query: EvolucaoVendasQueryDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.evolucaoVendas(user.empresaAtivaId, user, query);
+  }
+
+  @ApiOperation({
+    summary: 'Opções dos filtros da Evolução de Vendas',
+    description:
+      'Categorias raiz ativas (o filtro não exige o cadastro de categorias). Requer ' +
+      'evolucao-vendas.visualizar.',
+  })
+  @RequirePermission('evolucao-vendas', 'visualizar')
+  @Get('evolucao-vendas/opcoes')
+  evolucaoVendasOpcoes(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.evolucaoVendasOpcoes(user.empresaAtivaId);
   }
 }
