@@ -57,6 +57,12 @@ const TITULO = "Vendas por Categoria";
 
 type OrdenarPor = "descricao" | "total" | "media";
 
+/** Parte do total geral do período, com uma casa (ex.: 23,8%). */
+const percentualDoTotal = (v: number, total: number) =>
+  total
+    ? `${((v / total) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
+    : "—";
+
 /** Um nó qualquer da árvore, visto só pelo que todos têm em comum. */
 type No = ConsultaVendasLinha & { filhos?: No[] };
 
@@ -470,7 +476,7 @@ export function ConsultaVendasCategoriaView() {
               <Table
                 className="w-full table-fixed"
                 style={{
-                  minWidth: Math.max(760, 260 + data.colunas.length * 88),
+                  minWidth: Math.max(830, 330 + data.colunas.length * 88),
                 }}
               >
                 <TableHeader className="sticky top-0 z-10 bg-card">
@@ -497,6 +503,10 @@ export function ConsultaVendasCategoriaView() {
                       order={sortOrder}
                       onClick={() => alternarOrdem("total")}
                     />
+                    {/* Participação no total geral do período (20/11/2026). */}
+                    <TableHead className="w-[70px] px-1.5 text-right text-xs whitespace-nowrap">
+                      % do total
+                    </TableHead>
                     <SortableTableHead
                       label="Média"
                       className="px-1.5 text-right"
@@ -573,6 +583,9 @@ export function ConsultaVendasCategoriaView() {
                         <TableCell className="px-1.5 text-right align-top text-[11px] font-medium tabular-nums">
                           {moeda(no.total)}
                         </TableCell>
+                        <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums text-muted-foreground">
+                          {percentualDoTotal(no.total, data.total)}
+                        </TableCell>
                         <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums">
                           {celula(no.media)}
                         </TableCell>
@@ -593,6 +606,9 @@ export function ConsultaVendasCategoriaView() {
                     ))}
                     <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                       {moeda(data.total)}
+                    </TableCell>
+                    <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
+                      {data.total ? "100,0%" : "—"}
                     </TableCell>
                     <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                       {celula(data.media)}
