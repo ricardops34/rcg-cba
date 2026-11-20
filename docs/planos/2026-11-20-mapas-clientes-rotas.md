@@ -34,6 +34,23 @@ no mapa para criar ou corrigir a coordenada.
 - **Não existe**: top 10, mapa de calor, rota de visita (o "roteiro" atual,
   `WhatsappRoteiro`, é de atendimento por WhatsApp).
 
+## Sem chave do Google (pedido do usuário, 2026-11-20)
+
+Os mapas e o pin manual **não dependem** da chave nem de `GEO_ATIVO`: o mapa é
+Leaflet + OpenStreetMap, e mostra todo cliente/lead que tem coordenada. A chave só é
+exigida para o que é serviço do Google: busca automática de coordenada (Geocoding) e
+cálculo de rota (Routes). Sem a chave, a tela de rota ainda deixa escolher e ordenar as
+paradas e abrir no Google Maps/Waze; só não desenha o caminho pelas ruas.
+
+Formas de obter a coordenada sem Google (o Leaflet sozinho só desenha o mapa, não
+converte endereço em coordenada):
+- **Pin manual** no mapa (fase 2) e os campos Latitude/Longitude do cadastro (já existem).
+- **"Usar minha localização"**: o vendedor, no cliente, grava a posição do celular
+  (localização do navegador). Gratuito e preciso; vale a mesma regra de aprovação do pin.
+- **Nominatim (OpenStreetMap)** como alternativa ao Google — *a decidir*: gratuito, mas
+  o serviço público aceita no máximo 1 consulta por segundo, não admite carga em massa
+  e acha menos números de rua no Brasil que o Google.
+
 ## Proposta em fases
 
 Cada fase é uma entrega com commit próprio.
