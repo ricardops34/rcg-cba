@@ -79,9 +79,12 @@ export function MapaClientesPainel({
   ativo = true,
   onAbrirPosicao,
   mostrarInicial = "ambos",
+  situacaoInicial = "todos",
   selecao = null,
   rota = null,
 }: {
+  /** As telas de mapa abrem só com ativos; a janela da Posição segue o filtro da tela. */
+  situacaoInicial?: SituacaoFiltro;
   /** Montando rota (Gerencial > Mapa e Rotas): o clique inclui/tira o cliente. */
   selecao?: { ids: Set<string>; onAlternar: (pin: PosicaoClienteMapaPin) => void } | null;
   /** Rota calculada ou salva, desenhada por cima. */
@@ -113,7 +116,7 @@ export function MapaClientesPainel({
   };
   const [ocultos, setOcultos] = useState<Set<string>>(new Set());
   const [mostrar, setMostrar] = useState<Mostrar>(mostrarInicial);
-  const [situacao, setSituacao] = useState<SituacaoFiltro>("todos");
+  const [situacao, setSituacao] = useState<SituacaoFiltro>(situacaoInicial);
   const [tipoPessoa, setTipoPessoa] = useState<TipoPessoaFiltro>("todos");
   const [vendedor, setVendedor] = useState("todos");
   const [temperatura, setTemperatura] = useState("todas");
@@ -137,9 +140,13 @@ export function MapaClientesPainel({
     [data],
   );
 
+  // Só vendedores com cliente ativo no mapa: desligado que só tem cliente
+  // inativo não entra na lista (pedido do usuário, 20/11/2026).
   const vendedores = useMemo(() => {
     const m = new Map<string, string>();
-    for (const p of data?.pins ?? []) if (p.vendedorId) m.set(p.vendedorId, p.vendedorNome ?? "—");
+    for (const p of data?.pins ?? []) {
+      if (p.vendedorId && p.ativo) m.set(p.vendedorId, p.vendedorNome ?? "—");
+    }
     return [...m.entries()].sort((a, b) => a[1].localeCompare(b[1]));
   }, [data]);
 

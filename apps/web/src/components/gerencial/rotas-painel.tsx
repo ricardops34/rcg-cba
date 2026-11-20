@@ -255,7 +255,7 @@ export function RotasPainel({
                   </SelectTrigger>
                   <SelectContent>
                     {(vendedores.data?.data ?? [])
-                      .filter((v) => v.ativo)
+                      .filter((v) => v.ativo && v.totalClientes > 0)
                       .map((v) => (
                         <SelectItem key={v.id} value={v.id}>
                           {v.nome}

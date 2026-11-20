@@ -148,7 +148,10 @@ export function MapaClientesTela({
             onChange={setVendedorId}
             opcoes={[
               { valor: TODOS, rotulo: "Todos" },
-              ...(vendedores.data?.data ?? []).map((v) => ({ valor: v.id, rotulo: v.nome })),
+              // Só quem tem cliente ativo na carteira (o escopo já vem do servidor).
+              ...(vendedores.data?.data ?? [])
+                .filter((v) => v.totalClientes > 0)
+                .map((v) => ({ valor: v.id, rotulo: `${v.nome} (${v.totalClientes})` })),
             ]}
             largura="w-56"
           />
@@ -213,6 +216,7 @@ export function MapaClientesTela({
             filtros={filtros}
             onAbrirPosicao={setPosicaoId}
             mostrarInicial={mostrarInicial}
+            situacaoInicial="ativo"
             selecao={selecao}
             rota={rotaNoMapa}
           />
