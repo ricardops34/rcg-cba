@@ -537,7 +537,7 @@ export class SugestaoCompraService {
           deletedAt: null,
           ...(escopo ? { vendedorId: { in: escopo } } : {}),
         },
-        select: { id: true, razaoSocial: true },
+        select: { id: true, razaoSocial: true, cnpjCpf: true },
       });
       if (!cliente) throw new NotFoundException('Cliente não encontrado');
 
@@ -587,6 +587,16 @@ export class SugestaoCompraService {
           geradaEm: it.geradaEm.toISOString(),
           precoTabelaCliente: precos.get(it.produtoId) ?? null,
         })),
+        // Lista vazia: o motivo de verdade, em vez de "use Calcular" — a
+        // maioria vê a aba sem poder calcular (20/11/2026).
+        aviso: itens.length
+          ? null
+          : ((await this.motivoInelegivel(
+              tx,
+              empresaId,
+              clienteId,
+              cliente.cnpjCpf,
+            )) ?? 'Ainda não calculada para este cliente.'),
       };
     });
   }

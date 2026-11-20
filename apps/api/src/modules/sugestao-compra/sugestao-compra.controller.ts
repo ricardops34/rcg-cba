@@ -102,10 +102,14 @@ export class SugestaoCompraController {
       'que atende outras carteiras vê a sugestão de qualquer cliente.',
   })
   @ApiResponse({ status: 200, schema: { example: SUGESTAO_COMPRA_CALCULADA_EXAMPLE } })
-  @RequirePermission('sugestao-compra', 'visualizar', [
-    'orcamentos',
+  @RequirePermission(
+    'sugestao-compra',
     'visualizar',
-  ])
+    ['orcamentos', 'visualizar'],
+    // A aba Sugestão da Posição de Cliente é para todos que acessam a rotina
+    // (pedido do usuário, 20/11/2026).
+    ['posicao-cliente', 'visualizar'],
+  )
   @Get('cliente/:clienteId/calculada')
   calculadaDoCliente(
     @Param('clienteId') clienteId: string,
@@ -128,9 +132,14 @@ export class SugestaoCompraController {
       'recebe sugestão: a anterior é apagada e `aviso` diz o motivo. Recusa cliente inativo ou ' +
       'bloqueado (`dataBloqueio` sem ' +
       'reativação posterior). O cliente precisa estar no escopo do usuário. Requer ' +
-      'sugestao-compra.cadastrar.',
+      'sugestao-compra.cadastrar ou posicao-cliente.visualizar — o "Calcular agora" da aba ' +
+      'Sugestão da Posição é de todos que acessam a rotina; vale só para um cliente da ' +
+      'própria carteira, e o lote continua exigindo sugestao-compra.cadastrar.',
   })
-  @RequirePermission('sugestao-compra', 'cadastrar')
+  @RequirePermission('sugestao-compra', 'cadastrar', [
+    'posicao-cliente',
+    'visualizar',
+  ])
   @Post('cliente/:clienteId/gerar')
   gerarParaCliente(
     @Param('clienteId') clienteId: string,

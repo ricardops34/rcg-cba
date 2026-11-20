@@ -2,9 +2,10 @@
 
 import { useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
-import { useQuery } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type { PosicaoCliente, SugestaoCompraCalculada } from "@plataforma/contracts";
-import { apiFetch, assetUrl } from "@/lib/api-client";
+import { ApiError, apiFetch, assetUrl } from "@/lib/api-client";
 import { dataCivilBr } from "@/lib/data";
 import { SugestaoCompraCalculadaTabela } from "@/components/crud/sugestao-compra-calculada";
 import { Button } from "@/components/ui/button";
@@ -638,6 +639,24 @@ export function PosicaoClienteConteudo({
   } = useQuery({
     queryKey: ["sugestao-compra", "calculada", id],
     queryFn: () => apiFetch<SugestaoCompraCalculada>(`/sugestao-compra/cliente/${id}/calculada`),
+  });
+  // "Calcular agora" na aba (20/11/2026): todo mundo que acessa a Posição pode
+  // calcular a sugestão de um cliente da própria carteira.
+  const queryClientSugestao = useQueryClient();
+  const calcularSugestao = useMutation({
+    mutationFn: () =>
+      apiFetch<{ sugestoesGravadas: number; aviso?: string | null }>(
+        `/sugestao-compra/cliente/${id}/gerar`,
+        { method: "POST", body: {} },
+      ),
+    onSuccess: (r) => {
+      void queryClientSugestao.invalidateQueries({ queryKey: ["sugestao-compra", "calculada", id] });
+      if (r.aviso) toast.info(r.aviso);
+      else if (r.sugestoesGravadas === 0) toast.info("O cálculo não encontrou produto para sugerir.");
+      else toast.success(`${r.sugestoesGravadas} sugestão(ões) calculada(s)`);
+    },
+    onError: (e) =>
+      toast.error(e instanceof ApiError ? e.message : "Não foi possível calcular a sugestão"),
   });
 
   // Cobrança por e-mail: os vencidos do cliente, com boletos e DANFEs, para o
@@ -1466,6 +1485,8 @@ export function PosicaoClienteConteudo({
                 data={sugestaoCalculada}
                 isLoading={sugestaoLoading}
                 isError={sugestaoError}
+                onCalcular={() => calcularSugestao.mutate()}
+                calculando={calcularSugestao.isPending}
               />
             </CardContent>
           </Card>

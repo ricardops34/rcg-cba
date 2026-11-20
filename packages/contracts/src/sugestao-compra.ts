@@ -267,6 +267,11 @@ export const sugestaoCompraCalculadaSchema = z.object({
   razaoSocial: z.string(),
   ultimoCalculo: z.string().datetime().nullable(),
   itens: z.array(sugestaoCompraCalculadaItemSchema),
+  /**
+   * Sem itens: por que (CPF, sem CNAE, ainda não calculada). A tela mostra no
+   * lugar da lista vazia (20/11/2026).
+   */
+  aviso: z.string().nullable(),
 });
 export type SugestaoCompraCalculada = z.infer<typeof sugestaoCompraCalculadaSchema>;
 
@@ -287,6 +292,7 @@ export const SUGESTAO_COMPRA_CALCULADA_EXAMPLE: SugestaoCompraCalculada = {
       precoTabelaCliente: 168.9,
     },
   ],
+  aviso: null,
 };
 
 /** Corpo de `POST /sugestao-compra/cliente/:id/gerar` — recálculo de um único cliente. */

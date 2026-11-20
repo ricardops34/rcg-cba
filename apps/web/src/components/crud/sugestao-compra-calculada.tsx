@@ -18,7 +18,8 @@ import {
 } from "@/components/ui/table";
 import { SortableTableHead } from "@/components/crud/sortable-table-head";
 import { useLargurasColunas } from "@/components/crud/larguras-colunas";
-import { Lightbulb } from "lucide-react";
+import { Lightbulb, Loader2, RefreshCw } from "lucide-react";
+import { Button } from "@/components/ui/button";
 
 type CampoSugestao = "codigoErp" | "descricao" | "motivo";
 
@@ -38,10 +39,15 @@ export function SugestaoCompraCalculadaTabela({
   data,
   isLoading,
   isError,
+  onCalcular,
+  calculando = false,
 }: {
   data: SugestaoCompraCalculada | undefined;
   isLoading: boolean;
   isError: boolean;
+  /** "Calcular agora" quando a lista está vazia (aba da Posição de Cliente). */
+  onCalcular?: () => void;
+  calculando?: boolean;
 }) {
   // Busca, ordenação e larguras arrastáveis (16/11/2026), como no Mix.
   const [busca, setBusca] = useState("");
@@ -70,11 +76,19 @@ export function SugestaoCompraCalculadaTabela({
     );
   }
   if (!data || data.itens.length === 0) {
+    // O motivo de verdade (sem CNAE, CPF, ainda não calculada) vem da API.
     return (
-      <p className="text-sm text-muted-foreground">
-        Nenhuma sugestão calculada para este cliente ainda. Use a ação
-        &quot;Calcular&quot; para gerar.
-      </p>
+      <div className="space-y-2">
+        <p className="text-sm text-muted-foreground">
+          {data?.aviso ?? "Nenhuma sugestão calculada para este cliente ainda."}
+        </p>
+        {onCalcular && (
+          <Button type="button" size="sm" variant="outline" onClick={onCalcular} disabled={calculando}>
+            {calculando ? <Loader2 className="size-4 animate-spin" /> : <RefreshCw className="size-4" />}
+            Calcular agora
+          </Button>
+        )}
+      </div>
     );
   }
 
