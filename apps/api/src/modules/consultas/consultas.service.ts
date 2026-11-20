@@ -44,6 +44,7 @@ import {
   SEM_SUBCATEGORIA_ID,
   SEM_SUBCATEGORIA_LABEL,
   colunasDoPeriodo,
+  descontoMedioPonderado,
   emMeses,
   rotuloMes,
 } from '@plataforma/contracts';
@@ -58,6 +59,9 @@ interface LinhaAgregada {
   ano: number;
   mes: number;
   valor: number;
+  /** Detalhe (20/11/2026): só nas consultas com item de produto. */
+  quantidade?: number;
+  desconto?: number;
 }
 
 /**
@@ -78,6 +82,9 @@ interface LinhaArvore {
   ano: number;
   mes: number;
   valor: number;
+  /** Detalhe (20/11/2026): só nas consultas com item de produto. */
+  quantidade?: number;
+  desconto?: number;
 }
 
 /**
@@ -95,6 +102,9 @@ interface LinhaArvoreCnae {
   ano: number;
   mes: number;
   valor: number;
+  /** Detalhe (20/11/2026): só nas consultas com item de produto. */
+  quantidade?: number;
+  desconto?: number;
 }
 
 /**
@@ -109,6 +119,10 @@ interface NoEmMontagem {
   valores: number[];
   total: number;
   filhos: Map<string, NoEmMontagem>;
+  quantidade: number;
+  /** Soma do desconto e do vendido, para o desconto médio ponderado. */
+  desconto: number;
+  vendido: number;
 }
 
 interface Periodo {
@@ -251,6 +265,10 @@ export class ConsultasService {
       colunas.map((c, i) => [emMeses(c.ano, c.mes), i]),
     );
     const porEntidade = new Map<string, ConsultaVendasLinha>();
+    const descontoPorEntidade = new Map<
+      string,
+      { desconto: number; vendido: number }
+    >();
     const totais = Array<number>(colunas.length).fill(0);
 
     for (const linha of agregadas) {
@@ -273,11 +291,26 @@ export class ConsultasService {
       atual.valores[indice] += valor;
       atual.total += valor;
       totais[indice] += valor;
+      // Quantidade e desconto só onde a consulta os traz (por produto).
+      if (linha.quantidade !== undefined) {
+        atual.quantidade = (atual.quantidade ?? 0) + Number(linha.quantidade);
+        const d = descontoPorEntidade.get(linha.id) ?? {
+          desconto: 0,
+          vendido: 0,
+        };
+        d.desconto += Number(linha.desconto ?? 0);
+        d.vendido += valor;
+        descontoPorEntidade.set(linha.id, d);
+      }
     }
 
     const linhas = [...porEntidade.values()].sort((a, b) => b.total - a.total);
     for (const linha of linhas) {
       linha.media = this.mediaMesesComMovimento(linha.valores, linha.total);
+      const d = descontoPorEntidade.get(linha.id);
+      if (d) {
+        linha.descontoMedio = descontoMedioPonderado(d.desconto, d.vendido);
+      }
     }
     const total = totais.reduce((acc, v) => acc + v, 0);
     return {
@@ -488,7 +521,9 @@ export class ConsultasService {
           p."descricao" AS "descricao",
           i."ano"       AS "ano",
           i."mes"       AS "mes",
-          SUM(i."vlrTotal")::float8 AS "valor"
+          SUM(i."vlrTotal")::float8 AS "valor",
+          SUM(i."quantidade")::float8 AS "quantidade",
+          SUM(i."vlrDesconto")::float8 AS "desconto"
         FROM "notas_saida_itens" i
         JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
         JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
@@ -578,7 +613,9 @@ export class ConsultasService {
           p."descricao"   AS "produtoDescricao",
           i."ano"         AS "ano",
           i."mes"         AS "mes",
-          SUM(i."vlrTotal")::float8 AS "valor"
+          SUM(i."vlrTotal")::float8 AS "valor",
+          SUM(i."quantidade")::float8 AS "quantidade",
+          SUM(i."vlrDesconto")::float8 AS "desconto"
         FROM "notas_saida_itens" i
         JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
         JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
@@ -656,6 +693,9 @@ export class ConsultasService {
           descricao,
           valores: Array<number>(colunas.length).fill(0),
           total: 0,
+          quantidade: 0,
+          desconto: 0,
+          vendido: 0,
           filhos: new Map(),
         };
         onde.set(id, no);
@@ -690,6 +730,9 @@ export class ConsultasService {
       for (const no of [categoria, subcategoria, produto]) {
         no.valores[indice] += valor;
         no.total += valor;
+        no.quantidade += Number(linha.quantidade ?? 0);
+        no.desconto += Number(linha.desconto ?? 0);
+        no.vendido += valor;
       }
       totais[indice] += valor;
     }
@@ -729,6 +772,8 @@ export class ConsultasService {
       valores: no.valores,
       total: no.total,
       media: this.mediaMesesComMovimento(no.valores, no.total),
+      quantidade: no.quantidade,
+      descontoMedio: descontoMedioPonderado(no.desconto, no.vendido),
     };
   }
 
@@ -784,7 +829,9 @@ export class ConsultasService {
           p."descricao"   AS "produtoDescricao",
           i."ano"         AS "ano",
           i."mes"         AS "mes",
-          SUM(i."vlrTotal")::float8 AS "valor"
+          SUM(i."vlrTotal")::float8 AS "valor",
+          SUM(i."quantidade")::float8 AS "quantidade",
+          SUM(i."vlrDesconto")::float8 AS "desconto"
         FROM "notas_saida_itens" i
         JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
         JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
@@ -850,6 +897,9 @@ export class ConsultasService {
           descricao,
           valores: Array<number>(colunas.length).fill(0),
           total: 0,
+          quantidade: 0,
+          desconto: 0,
+          vendido: 0,
           filhos: new Map(),
         };
         onde.set(id, no);
@@ -878,6 +928,9 @@ export class ConsultasService {
       for (const no of [cnae, produto]) {
         no.valores[indice] += valor;
         no.total += valor;
+        no.quantidade += Number(linha.quantidade ?? 0);
+        no.desconto += Number(linha.desconto ?? 0);
+        no.vendido += valor;
       }
       totais[indice] += valor;
     }
@@ -1309,6 +1362,7 @@ export class ConsultasService {
           mes: number;
           valor: number;
           quantidade: number;
+          desconto: number;
         }>
       >(Prisma.sql`
         SELECT
@@ -1323,7 +1377,8 @@ export class ConsultasService {
           i."ano"         AS "ano",
           i."mes"         AS "mes",
           SUM(i."vlrTotal")::float8   AS "valor",
-          SUM(i."quantidade")::float8 AS "quantidade"
+          SUM(i."quantidade")::float8 AS "quantidade",
+          SUM(i."vlrDesconto")::float8 AS "desconto"
         FROM "notas_saida_itens" i
         JOIN "notas_saida" n ON n."id" = i."notaSaidaId"
         JOIN "clientes" c ON c."id" = n."clienteId" AND c."deletedAt" IS NULL
@@ -1365,6 +1420,7 @@ export class ConsultasService {
         valores: Array<number>(colunas.length).fill(0),
         total: 0,
         quantidade: 0,
+        descontoMedio: null,
         filhos: new Map(),
       });
       const filho = (pai: Map<string, No>, chave: string, criar: () => No) => {
@@ -1375,10 +1431,22 @@ export class ConsultasService {
         }
         return n;
       };
-      const somar = (n: No, k: number, valor: number, qtd: number) => {
+      // Desconto médio ponderado: desconto e vendido somados por nó.
+      const bases = new WeakMap<No, { desconto: number; vendido: number }>();
+      const somar = (
+        n: No,
+        k: number,
+        valor: number,
+        qtd: number,
+        desconto: number,
+      ) => {
         n.valores[k] += valor;
         n.total += valor;
         n.quantidade += qtd;
+        const b = bases.get(n) ?? { desconto: 0, vendido: 0 };
+        b.desconto += desconto;
+        b.vendido += valor;
+        bases.set(n, b);
       };
 
       const raiz = new Map<string, No>();
@@ -1394,6 +1462,7 @@ export class ConsultasService {
         if (k === undefined) continue;
         const valor = Number(l.valor);
         const qtd = Number(l.quantidade);
+        const desconto = Number(l.desconto ?? 0);
         const grupoId = l.grupoId ?? semGrupo.id;
         const grupo = filho(raiz, grupoId, () =>
           novoNo(
@@ -1412,14 +1481,14 @@ export class ConsultasService {
             l.unidade,
           ),
         );
-        somar(grupo, k, valor, qtd);
-        somar(produto, k, valor, qtd);
+        somar(grupo, k, valor, qtd, desconto);
+        somar(produto, k, valor, qtd, desconto);
         // Cliente abaixo do produto só onde o grupo não é o próprio cliente.
         if (query.visao !== 'cliente') {
           const cliente = filho(produto.filhos, l.clienteId, () =>
             novoNo(l.clienteId, 'cliente', l.clienteCodigo, l.clienteDescricao),
           );
-          somar(cliente, k, valor, qtd);
+          somar(cliente, k, valor, qtd, desconto);
         }
         totais[k] += valor;
         quantidadeTotal += qtd;
@@ -1433,6 +1502,10 @@ export class ConsultasService {
             ...n,
             valores: n.valores.map(arredondar),
             total: arredondar(n.total),
+            descontoMedio: descontoMedioPonderado(
+              bases.get(n)?.desconto ?? 0,
+              bases.get(n)?.vendido ?? 0,
+            ),
             filhos: fechar(n.filhos),
           }));
 

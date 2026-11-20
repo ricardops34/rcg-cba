@@ -40,6 +40,11 @@ import {
 import { Badge } from "@/components/ui/badge";
 import { FileSpreadsheet, FileText, Search, SlidersHorizontal } from "lucide-react";
 
+/** Detalhe (20/11/2026): quantidade e desconto médio. */
+const quantidadeFmt = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+const descontoFmt = (v: number | null | undefined) =>
+  v == null ? "—" : `${v.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+
 export type { FiltroExtra };
 
 /**
@@ -102,6 +107,8 @@ export function ConsultaVendasView({
     queryKey: ["consultas", rota, queryPadrao],
     queryFn: () => apiFetch<ConsultaVendasResultado>(rota, { query: queryPadrao }),
   });
+  // Quantidade e desconto médio só onde a API os traz (consulta por produto).
+  const comDetalhe = !!data?.linhas.some((l) => l.quantidade !== undefined);
 
   // Um nome cabe no resumo; vários viram contagem, senão a linha estoura.
   const nomeVendedorFiltrado =
@@ -288,7 +295,7 @@ export function ConsultaVendasView({
               <Table
                 className="w-full table-fixed"
                 style={{
-                  minWidth: Math.max(790, 290 + data.colunas.length * 88),
+                  minWidth: Math.max(790, 290 + data.colunas.length * 88) + (comDetalhe ? 150 : 0),
                 }}
               >
                 <TableHeader className="sticky top-0 z-10 bg-card">
@@ -319,6 +326,14 @@ export function ConsultaVendasView({
                     <TableHead className="w-[70px] px-1.5 text-right text-xs whitespace-nowrap">
                       % do total
                     </TableHead>
+                    {comDetalhe && (
+                      <>
+                        <TableHead className="w-[90px] px-1.5 text-right text-xs">Qtd.</TableHead>
+                        <TableHead className="w-[80px] px-1.5 text-right text-xs" title="Desconto médio sobre a tabela, ponderado pelo valor">
+                          Desc. médio
+                        </TableHead>
+                      </>
+                    )}
                     <SortableTableHead
                       label="Média"
                       className="px-1.5 text-right"
@@ -366,6 +381,17 @@ export function ConsultaVendasView({
                       <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums text-muted-foreground">
                         {percentualDoTotal(l.total, data.total)}
                       </TableCell>
+                      {comDetalhe && (
+                        <>
+                          {/* Detalhe (20/11/2026): quantidade só no produto; acima mistura unidades. */}
+                          <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums">
+                            {true && l.quantidade != null ? quantidadeFmt(l.quantidade) : ""}
+                          </TableCell>
+                          <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums">
+                            {descontoFmt(l.descontoMedio)}
+                          </TableCell>
+                        </>
+                      )}
                       <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums">
                         {celula(l.media)}
                       </TableCell>
@@ -389,6 +415,12 @@ export function ConsultaVendasView({
                     <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                       {data.total ? "100,0%" : "—"}
                     </TableCell>
+                    {comDetalhe && (
+                      <>
+                        <TableCell />
+                        <TableCell />
+                      </>
+                    )}
                     <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                       {celula(data.media)}
                     </TableCell>

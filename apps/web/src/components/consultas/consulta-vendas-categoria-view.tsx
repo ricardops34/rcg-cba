@@ -51,6 +51,11 @@ import {
   SlidersHorizontal,
 } from "lucide-react";
 
+/** Detalhe (20/11/2026): quantidade e desconto médio. */
+const quantidadeFmt = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+const descontoFmt = (v: number | null | undefined) =>
+  v == null ? "—" : `${v.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
+
 const ROTA = "/consultas/vendas-categoria";
 const ROTINA = "consulta-vendas-categoria";
 const TITULO = "Vendas por Categoria";
@@ -470,7 +475,7 @@ export function ConsultaVendasCategoriaView() {
               <Table
                 className="w-full table-fixed"
                 style={{
-                  minWidth: Math.max(830, 330 + data.colunas.length * 88),
+                  minWidth: Math.max(980, 480 + data.colunas.length * 88),
                 }}
               >
                 <TableHeader className="sticky top-0 z-10 bg-card">
@@ -501,6 +506,14 @@ export function ConsultaVendasCategoriaView() {
                     <TableHead className="w-[70px] px-1.5 text-right text-xs whitespace-nowrap">
                       % do total
                     </TableHead>
+                    {true && (
+                      <>
+                        <TableHead className="w-[90px] px-1.5 text-right text-xs">Qtd.</TableHead>
+                        <TableHead className="w-[80px] px-1.5 text-right text-xs" title="Desconto médio sobre a tabela, ponderado pelo valor">
+                          Desc. médio
+                        </TableHead>
+                      </>
+                    )}
                     <SortableTableHead
                       label="Média"
                       className="px-1.5 text-right"
@@ -586,6 +599,17 @@ export function ConsultaVendasCategoriaView() {
                         <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums text-muted-foreground">
                           {percentualDoTotal(no.total, data.total)}
                         </TableCell>
+                        {true && (
+                          <>
+                            {/* Detalhe (20/11/2026): quantidade só no produto; acima mistura unidades. */}
+                            <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums">
+                              {!no.filhos?.length && no.quantidade != null ? quantidadeFmt(no.quantidade) : ""}
+                            </TableCell>
+                            <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums">
+                              {descontoFmt(no.descontoMedio)}
+                            </TableCell>
+                          </>
+                        )}
                         <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums">
                           {celula(no.media)}
                         </TableCell>
@@ -610,6 +634,12 @@ export function ConsultaVendasCategoriaView() {
                     <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                       {data.total ? "100,0%" : "—"}
                     </TableCell>
+                    {true && (
+                      <>
+                        <TableCell />
+                        <TableCell />
+                      </>
+                    )}
                     <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                       {celula(data.media)}
                     </TableCell>

@@ -178,8 +178,23 @@ export const consultaVendasLinhaSchema = z.object({
         "quem comprou 2 vezes em 12 meses tem média do que compra quando compra, " +
         "não do período todo. Sem nenhum mês com movimento, 0.",
     ),
+  // Detalhe (2026-11-20): só onde a consulta tem item de produto por trás.
+  quantidade: z
+    .number()
+    .optional()
+    .describe("Soma da quantidade dos itens (faz sentido no produto; acima dele mistura unidades)"),
+  descontoMedio: z
+    .number()
+    .nullable()
+    .optional()
+    .describe("Desconto médio (%) sobre a tabela, ponderado pelo valor: desconto ÷ (vendido + desconto)"),
 });
 export type ConsultaVendasLinha = z.infer<typeof consultaVendasLinhaSchema>;
+
+/** Desconto médio ponderado pelo valor, com uma casa; nulo sem base. */
+export function descontoMedioPonderado(desconto: number, vendido: number): number | null {
+  return vendido + desconto > 0 ? Math.round((desconto / (vendido + desconto)) * 1000) / 10 : null;
+}
 
 export const consultaVendasResultadoSchema = z.object({
   periodo: z.object({
@@ -686,6 +701,8 @@ export interface EvolucaoVendasNo {
   valores: number[];
   total: number;
   quantidade: number;
+  /** Desconto médio (%) ponderado pelo valor; nulo sem base. */
+  descontoMedio: number | null;
   filhos: EvolucaoVendasNo[];
 }
 
