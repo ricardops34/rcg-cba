@@ -9,6 +9,7 @@ import {
   GEOCODIFICACAO_PROVEDOR_ROTULO,
   type GeocodificacaoProvedor,
   type GeocodificacaoConfiguracao,
+  type GeocodificacaoEmpresaLocal,
   type GeocodificacaoConfiguracaoUpdate,
   type GeocodificacaoLoteSituacao,
   type GeocodificacaoTesteResultado,
@@ -30,6 +31,8 @@ import {
 import { Skeleton } from "@/components/ui/skeleton";
 import { Switch } from "@/components/ui/switch";
 import { Loader2, MapPin, Play, Search } from "lucide-react";
+import { MapaLocal } from "@/components/mapa/mapa-local";
+import { useAuthStore } from "@/stores/auth-store";
 
 const numero = (v: number | null | undefined) => (v ?? 0).toLocaleString("pt-BR");
 
@@ -82,6 +85,7 @@ export default function GeolocalizacaoPage() {
             })}
             cfg={cfg}
           />
+          <LocalEmpresa />
           <Teste habilitado={cfg.habilitado} />
           <Lote cfg={cfg} />
         </>
@@ -250,6 +254,60 @@ function Configuracao({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
             </Button>
           </div>
         </form>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * O ponto da empresa ativa nos mapas (aba Mapa do cliente, rotas). Busca pelo
+ * endereço do cadastro da empresa ou pin manual.
+ */
+function LocalEmpresa() {
+  const queryClient = useQueryClient();
+  const podeEditar = useAuthStore((s) => s.hasPermission("geolocalizacao", "editar"));
+  const { data: empresa } = useQuery({
+    queryKey: ["geocodificacao", "empresa"],
+    queryFn: () => apiFetch<GeocodificacaoEmpresaLocal>("/geocodificacao/empresa"),
+  });
+  if (!empresa) return null;
+
+  const gravar = async (p: { latitude: number; longitude: number }) => {
+    const atualizada = await apiFetch<GeocodificacaoEmpresaLocal>("/geocodificacao/empresa", {
+      method: "PUT",
+      body: p,
+    });
+    queryClient.setQueryData(["geocodificacao", "empresa"], atualizada);
+    toast.success("Localização da empresa gravada");
+  };
+
+  return (
+    <Card>
+      <CardContent className="space-y-3">
+        <div>
+          <p className="font-medium">Localização da empresa</p>
+          <p className="text-xs text-muted-foreground">
+            {empresa.nome}
+            {empresa.municipio ? ` — ${empresa.municipio}${empresa.uf ? ` - ${empresa.uf}` : ""}` : ""}
+            . Aparece como referência nos mapas dos clientes.
+          </p>
+        </div>
+        <MapaLocal
+          rotulo={empresa.nome}
+          latitude={empresa.latitude}
+          longitude={empresa.longitude}
+          endereco={{
+            endereco: empresa.endereco ?? "",
+            bairro: empresa.bairro,
+            municipio: empresa.municipio ?? "",
+            uf: empresa.uf ?? "",
+            cep: empresa.cep,
+          }}
+          podeEditar={podeEditar}
+          onGravar={gravar}
+          mostrarEmpresa={false}
+          altura="h-[320px]"
+        />
       </CardContent>
     </Card>
   );

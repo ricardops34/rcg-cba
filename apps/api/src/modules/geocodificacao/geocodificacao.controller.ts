@@ -10,6 +10,7 @@ import {
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import type {
   GeocodificacaoConfiguracao,
+  GeocodificacaoEmpresaLocal,
   GeocodificacaoLoteSituacao,
   GeocodificacaoTesteResultado,
 } from '@plataforma/contracts';
@@ -23,6 +24,8 @@ import {
 import { GeocodificacaoService } from './geocodificacao.service';
 import { GeocodificacaoLoteService } from './geocodificacao-lote.service';
 import {
+  CoordenadasDto,
+  GeocodificacaoBuscarDto,
   GeocodificacaoConfiguracaoUpdateDto,
   GeocodificacaoLoteDto,
   GeocodificacaoTesteDto,
@@ -95,6 +98,49 @@ export class GeocodificacaoController {
     @CurrentUser() user: AuthenticatedUser,
   ): Promise<GeocodificacaoTesteResultado> {
     return this.geo.testar(user.empresaAtivaId, dto.endereco);
+  }
+
+  @ApiOperation({
+    summary: 'Buscar a coordenada de um endereço (sem gravar)',
+    description:
+      'Aba Mapa do cliente: consulta o serviço configurado e devolve o ponto para conferir no ' +
+      'mapa; quem grava é o cadastro. 409 com a busca desligada, 502 quando o serviço recusa. ' +
+      'Requer clientes.editar (a consulta do Google é cobrada).',
+  })
+  @RequirePermission('clientes', 'editar')
+  @HttpCode(200)
+  @Post('buscar')
+  buscar(
+    @Body() dto: GeocodificacaoBuscarDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<GeocodificacaoTesteResultado> {
+    return this.geo.buscar(user.empresaAtivaId, dto);
+  }
+
+  @ApiOperation({
+    summary: 'Local da empresa ativa',
+    description:
+      'Nome, endereço e coordenadas da empresa em que o usuário está — o ponto de referência ' +
+      'dos mapas. Só exige estar autenticado.',
+  })
+  @Get('empresa')
+  empresa(
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<GeocodificacaoEmpresaLocal> {
+    return this.geo.empresaLocal(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Gravar as coordenadas da empresa ativa',
+    description: 'Requer geolocalizacao.editar.',
+  })
+  @RequirePermission('geolocalizacao', 'editar')
+  @Put('empresa')
+  gravarEmpresa(
+    @Body() dto: CoordenadasDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ): Promise<GeocodificacaoEmpresaLocal> {
+    return this.geo.gravarEmpresaLocal(user.empresaAtivaId, user.id, dto);
   }
 
   @ApiOperation({

@@ -104,6 +104,38 @@ export type GeocodificacaoLoteSituacao = {
   erro: string | null;
 };
 
+/**
+ * Busca de coordenada por um endereço em campos (aba Mapa do cliente, local
+ * da empresa): consulta o serviço configurado e devolve sem gravar — quem
+ * pediu confere o pin e grava.
+ */
+export const geocodificacaoBuscarSchema = z.object({
+  endereco: z.string().trim().min(1, "Informe a rua").max(200),
+  bairro: z.string().trim().max(100).nullish(),
+  municipio: z.string().trim().min(1, "Informe a cidade").max(100),
+  uf: z.string().trim().length(2, "Informe a UF"),
+  cep: z.string().trim().max(10).nullish(),
+});
+export type GeocodificacaoBuscar = z.infer<typeof geocodificacaoBuscarSchema>;
+
+export const coordenadasSchema = z.object({
+  latitude: z.coerce.number().min(-90).max(90),
+  longitude: z.coerce.number().min(-180).max(180),
+});
+export type Coordenadas = z.infer<typeof coordenadasSchema>;
+
+/** A empresa ativa como ponto de referência nos mapas. */
+export type GeocodificacaoEmpresaLocal = {
+  nome: string;
+  endereco: string | null;
+  bairro: string | null;
+  municipio: string | null;
+  uf: string | null;
+  cep: string | null;
+  latitude: number | null;
+  longitude: number | null;
+};
+
 export const GEOCODIFICACAO_PRECISAO_ROTULO: Record<string, string> = {
   ROOFTOP: "Exata (número do imóvel)",
   RANGE_INTERPOLATED: "Aproximada no trecho da rua",

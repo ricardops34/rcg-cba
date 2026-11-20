@@ -1,5 +1,7 @@
 import { createZodDto } from 'nestjs-zod';
 import {
+  coordenadasSchema,
+  geocodificacaoBuscarSchema,
   geocodificacaoConfiguracaoUpdateSchema,
   geocodificacaoLoteSchema,
   geocodificacaoTesteSchema,
@@ -11,6 +13,10 @@ export class GeocodificacaoConfiguracaoUpdateDto extends createZodDto(
 export class GeocodificacaoTesteDto extends createZodDto(
   geocodificacaoTesteSchema,
 ) {}
+export class GeocodificacaoBuscarDto extends createZodDto(
+  geocodificacaoBuscarSchema,
+) {}
+export class CoordenadasDto extends createZodDto(coordenadasSchema) {}
 export class GeocodificacaoLoteDto extends createZodDto(
   geocodificacaoLoteSchema,
 ) {}

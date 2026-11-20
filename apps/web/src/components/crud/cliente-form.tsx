@@ -50,6 +50,7 @@ import { ClienteAlteracoesPendentes } from "@/components/crud/cliente-alteracoes
 import { useAuthStore } from "@/stores/auth-store";
 import { ArrowLeft, Search } from "lucide-react";
 import { ResultadoReceitaDialog, type ResultadoReceita } from "@/components/crud/cliente-receita-dialog";
+import { MapaLocal } from "@/components/mapa/mapa-local";
 
 const LIST_ROUTE = "/cadastros/clientes";
 
@@ -269,6 +270,7 @@ export function ClienteFormContent({
    */
   const [consultandoCnpj, setConsultandoCnpj] = useState(false);
   const podeEditarCliente = useAuthStore((s) => s.hasPermission("clientes", "editar"));
+  const queryClientMapa = useQueryClient();
   // CNAEs consultados antes de o cliente existir: ficam retidos aqui e são
   // vinculados assim que o cadastro é criado (ver onSubmit). Sem isso o usuário
   // teria de salvar e consultar o CNPJ de novo só para trazer o ramo.
@@ -632,6 +634,56 @@ export function ClienteFormContent({
     </FieldGroup>
   );
 
+  // Aba Mapa (20/11/2026). Editando, o pin vai para os campos Latitude/Longitude
+  // e grava com o "Salvar" do cadastro; visualizando, quem pode editar o
+  // cliente grava a posição na hora. A regra de aprovação é da API: preencher
+  // coordenada vazia (ou 0/0) entra direto; trocar uma existente vira solicitação.
+  const latitudeAtual = form.watch("latitude");
+  const longitudeAtual = form.watch("longitude");
+  const coordenadaTravada =
+    !!cliente &&
+    (campoClienteTravado(camposConfigQuery.data, "latitude", cliente.latitude) ||
+      campoClienteTravado(camposConfigQuery.data, "longitude", cliente.longitude));
+  const mapaEditavel = readOnly
+    ? !!cliente && podeEditarCliente && !coordenadaTravada
+    : !desabilitado("latitude") && !desabilitado("longitude");
+  const gravarPosicao = async (p: { latitude: number; longitude: number }) => {
+    if (!readOnly) {
+      form.setValue("latitude", p.latitude, { shouldDirty: true });
+      form.setValue("longitude", p.longitude, { shouldDirty: true });
+      toast.success("Posição definida. Ela é gravada ao salvar o cliente.");
+      return;
+    }
+    if (!cliente) return;
+    const resultado = await apiFetch<ClienteUpdateResultado>(`/clientes/${cliente.id}`, {
+      method: "PATCH",
+      body: p,
+    });
+    void queryClientMapa.invalidateQueries({ queryKey: ["clientes"] });
+    toast.success(
+      resultado?.aplicado === false
+        ? "Posição enviada para aprovação — o cadastro só muda depois de liberada."
+        : "Posição gravada",
+    );
+  };
+  const camposMapa = (
+    <MapaLocal
+      rotulo={form.watch("razaoSocial") || "Cliente"}
+      latitude={nanToNull(latitudeAtual)}
+      longitude={nanToNull(longitudeAtual)}
+      endereco={{
+        endereco: form.watch("endereco") ?? "",
+        bairro: form.watch("bairro") || null,
+        municipio: form.watch("municipio") ?? "",
+        uf: form.watch("uf") ?? "",
+        cep: form.watch("cep") || null,
+      }}
+      podeEditar={mapaEditavel}
+      onGravar={gravarPosicao}
+      textoGravar={readOnly ? "Gravar posição" : "Usar esta posição"}
+    />
+  );
+
   const camposComercial = (
     <FieldGroup>
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
@@ -930,6 +982,7 @@ export function ClienteFormContent({
               <TabsTrigger value="identificacao">Identificação</TabsTrigger>
               <TabsTrigger value="contato">Contatos</TabsTrigger>
               <TabsTrigger value="endereco">Endereço</TabsTrigger>
+              <TabsTrigger value="mapa">Mapa</TabsTrigger>
               <TabsTrigger value="comercial">Comercial</TabsTrigger>
               {cliente && <TabsTrigger value="cnae">CNAE</TabsTrigger>}
               {cliente && <TabsTrigger value="bloqueio">Bloqueio</TabsTrigger>}
@@ -951,6 +1004,7 @@ export function ClienteFormContent({
               </div>
             </TabsContent>
             <TabsContent value="endereco">{camposEndereco}</TabsContent>
+            <TabsContent value="mapa">{camposMapa}</TabsContent>
             <TabsContent value="comercial">{camposComercial}</TabsContent>
             {cliente && <TabsContent value="cnae">{camposCnae}</TabsContent>}
             {cliente && <TabsContent value="bloqueio">{camposBloqueio}</TabsContent>}

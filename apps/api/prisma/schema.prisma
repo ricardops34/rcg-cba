@@ -82,6 +82,10 @@ model Empresa {
   municipio          String?
   uf                 String?
   cep                String?
+  // Ponto de referência nos mapas (aba Mapa do cliente, rotas). Gravado em
+  // Administração > Geolocalização, pela busca do endereço ou pelo pin.
+  latitude           Float?
+  longitude          Float?
   telefone           String?
   email              String?
   site               String?

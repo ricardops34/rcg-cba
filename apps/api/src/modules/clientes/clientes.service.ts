@@ -873,18 +873,46 @@ export class ClientesService {
       // Nos dois casos vai ao ERP pela fila, e entra depois do filtro de
       // campos travados — não foi a pessoa que digitou.
       const vazia = coordenadaVazia(cliente.latitude, cliente.longitude);
+      const limpo = this.limpar(inputPermitido);
+      // Coordenada posta pela pessoa (pin no mapa, "usar minha localização",
+      // digitada) que preenche uma vazia ou 0/0 entra direto, mesmo para quem
+      // não aprova; trocar uma existente segue na solicitação (decisão de
+      // 20/11/2026, docs/planos/2026-11-20-mapas-clientes-rotas.md).
+      const lat = limpo.latitude as number | null | undefined;
+      const lng = limpo.longitude as number | null | undefined;
+      const coordenadaPreenchida =
+        vazia && !aplicarDireto && !coordenadaVazia(lat, lng)
+          ? { latitude: lat!, longitude: lng! }
+          : null;
+      if (coordenadaPreenchida) {
+        delete limpo.latitude;
+        delete limpo.longitude;
+      }
       const registro = await this.alteracoes.registrar(tx, {
         empresaId,
         clienteId: id,
         atual: cliente,
         input: {
-          ...this.limpar(inputPermitido),
+          ...limpo,
           ...(vazia ? {} : (geo.coordenadas ?? {})),
         },
         origem: 'manual',
         autorId: user.id,
         aplicarDireto,
       });
+      if (coordenadaPreenchida) {
+        await this.alteracoes.registrar(tx, {
+          empresaId,
+          clienteId: id,
+          atual: cliente,
+          input: coordenadaPreenchida,
+          origem: 'manual',
+          autorId: user.id,
+          aplicarDireto: true,
+          justificativa: 'Coordenada preenchida pelo usuário (estava vazia)',
+          registrarNaAgenda: false,
+        });
+      }
       if (geo.coordenadas && vazia) {
         await this.alteracoes.registrar(tx, {
           empresaId,

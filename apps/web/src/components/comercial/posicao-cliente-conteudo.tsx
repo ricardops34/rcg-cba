@@ -33,6 +33,7 @@ import {
   useSmsDisponivel,
 } from "@/components/comercial/segunda-via";
 import { HistoricoAtendimento } from "@/components/comercial/historico-atendimento";
+import { PosicaoClienteMapa } from "@/components/comercial/posicao-cliente-mapa";
 import { LiberacoesDesconto, useLiberacoesPendentes } from "@/components/comercial/posicao-cliente-liberacoes";
 import { useAuthStore } from "@/stores/auth-store";
 import { Paginacao } from "@/components/crud/paginacao";
@@ -990,6 +991,7 @@ export function PosicaoClienteConteudo({
             <TabsTrigger value="mix">Mix de produtos ({mix.length})</TabsTrigger>
             <TabsTrigger value="sugestao">Sugestão ({sugestaoCalculada?.itens.length ?? 0})</TabsTrigger>
             <TabsTrigger value="historico">Histórico de atendimento</TabsTrigger>
+            <TabsTrigger value="mapa">Mapa</TabsTrigger>
             {podeLiberarDesconto && (
               <TabsTrigger value="liberacoes">
                 Liberação de desconto ({liberacoesPendentes.data?.length ?? 0})
@@ -1266,6 +1268,10 @@ export function PosicaoClienteConteudo({
 
         <TabsContent value="historico" className={rolagemAba}>
           <HistoricoAtendimento clienteId={id} />
+        </TabsContent>
+
+        <TabsContent value="mapa" className={rolagemAba}>
+          <PosicaoClienteMapa cliente={cliente} />
         </TabsContent>
 
         {podeLiberarDesconto && (

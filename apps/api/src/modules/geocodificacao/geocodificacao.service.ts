@@ -1,6 +1,12 @@
-import { BadGatewayException, Injectable, Logger } from '@nestjs/common';
+import {
+  BadGatewayException,
+  ConflictException,
+  Injectable,
+  Logger,
+} from '@nestjs/common';
 import {
   GEO_NOMINATIM_URL_PADRAO,
+  type GeocodificacaoEmpresaLocal,
   type GeocodificacaoProvedor,
   type GeocodificacaoTesteResultado,
 } from '@plataforma/contracts';
@@ -636,13 +642,65 @@ export class GeocodificacaoService {
     }
   }
 
-  /** O "Testar" da tela: lança 502 quando o serviço recusa, para mostrar o motivo. */
-  async testar(
+  /**
+   * Busca de um endereço em campos, sem gravar (aba Mapa do cliente, local da
+   * empresa). 409 quando a busca está desligada; 502 quando o serviço recusa.
+   */
+  async buscar(
     empresaId: string,
-    endereco: string,
+    endereco: EnderecoCliente,
   ): Promise<GeocodificacaoTesteResultado> {
     const cfg = await this.config(empresaId);
-    const r = await this.consultar(cfg, endereco);
+    if (!this.habilitado(cfg)) {
+      throw new ConflictException(
+        'A busca automática de coordenadas está desligada nesta empresa (Administração > Geolocalização). Posicione o pin no mapa.',
+      );
+    }
+    return this.resultado(await this.consultar(cfg, endereco));
+  }
+
+  /** A empresa ativa como referência nos mapas. RLS: o grupo do usuário. */
+  async empresaLocal(empresaId: string): Promise<GeocodificacaoEmpresaLocal> {
+    const e = await this.prisma.empresa.findUniqueOrThrow({
+      where: { id: empresaId },
+      select: {
+        nomeFantasia: true,
+        razaoSocial: true,
+        endereco: true,
+        bairro: true,
+        municipio: true,
+        uf: true,
+        cep: true,
+        latitude: true,
+        longitude: true,
+      },
+    });
+    const vazia = coordenadaVazia(e.latitude, e.longitude);
+    return {
+      nome: e.nomeFantasia || e.razaoSocial,
+      endereco: e.endereco,
+      bairro: e.bairro,
+      municipio: e.municipio,
+      uf: e.uf,
+      cep: e.cep,
+      latitude: vazia ? null : e.latitude,
+      longitude: vazia ? null : e.longitude,
+    };
+  }
+
+  async gravarEmpresaLocal(
+    empresaId: string,
+    autor: string,
+    c: { latitude: number; longitude: number },
+  ): Promise<GeocodificacaoEmpresaLocal> {
+    await this.prisma.empresa.update({
+      where: { id: empresaId },
+      data: { latitude: c.latitude, longitude: c.longitude, updatedBy: autor },
+    });
+    return this.empresaLocal(empresaId);
+  }
+
+  private resultado(r: RespostaGeo): GeocodificacaoTesteResultado {
     if (r.tipo === 'erro') {
       throw new BadGatewayException(`A consulta foi recusada: ${r.mensagem}`);
     }
@@ -653,6 +711,15 @@ export class GeocodificacaoService {
       enderecoFormatado: r.enderecoFormatado,
       precisao: r.precisao,
     };
+  }
+
+  /** O "Testar" da tela: lança 502 quando o serviço recusa, para mostrar o motivo. */
+  async testar(
+    empresaId: string,
+    endereco: string,
+  ): Promise<GeocodificacaoTesteResultado> {
+    const cfg = await this.config(empresaId);
+    return this.resultado(await this.consultar(cfg, endereco));
   }
 
   /**

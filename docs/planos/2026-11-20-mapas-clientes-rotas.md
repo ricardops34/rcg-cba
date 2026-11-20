@@ -52,6 +52,36 @@ converte endereço em coordenada):
   Geolocalização). O serviço público aceita no máximo 1 consulta por segundo e acha
   menos números de rua no Brasil que o Google; com ele o lote anda a 1 por segundo.
 
+## Aba Mapa no cliente (pedido do usuário, 20/11 — feita antes da fase 1)
+
+No cadastro do cliente (editar e visualizar) e na Posição de Cliente, uma aba **Mapa**:
+- mostra o cliente, a **empresa ativa** e, se o usuário pedir, a **localização dele**
+  (navegador);
+- permite incluir ou mover o pin do cliente e gravar a coordenada (regra da decisão 5:
+  direto se estava vazia/0,0, solicitação se troca uma existente);
+- botão **"Buscar pelo endereço"** quando a coordenada está vazia ou 0/0: consulta o
+  serviço configurado (Google ou Nominatim) e coloca o pin para conferir antes de gravar;
+- **"Usar minha localização"** como coordenada do cliente (quem está no cliente).
+
+A empresa não tinha coordenadas: ganha `latitude`/`longitude` (migration), preenchidas
+em Administração > Geolocalização pela mesma busca ou pelo pin.
+
+**Feita em 20/11** (aguarda conferência visual): aba Mapa no cadastro do cliente
+(editar: o pin vai para os campos e grava no Salvar; visualizar: grava na hora) e na
+Posição de Cliente; card "Localização da empresa" em Geolocalização; rota
+`POST /geocodificacao/buscar` (sem gravar), `GET/PUT /geocodificacao/empresa`;
+regra de aprovação da coordenada manual na API (`ClientesService.update`).
+
+## Coordenadas de onde o orçamento foi feito (pedido do usuário, 20/11 — a fazer)
+
+Gravar a localização do dispositivo (navegador) em:
+- criação/envio do orçamento;
+- aprovações do orçamento: pelo cliente (link), pelo supervisor e pelo gerente;
+- liberações de desconto.
+
+A levantar: cada ponto de aprovação no código e se a coordenada é obrigatória (o
+navegador pode negar a localização).
+
 ## Proposta em fases
 
 Cada fase é uma entrega com commit próprio.
