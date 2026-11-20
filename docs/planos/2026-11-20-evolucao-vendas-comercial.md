@@ -27,4 +27,5 @@ hierarquia de quem acessa (escopo de carteira, `resolverEscopoVendedores`).
 - Árvore inteira numa ida só: 12 meses da RCG dão ~13 mil linhas (0,25 s).
 - Rotina `evolucao-vendas` no Comercial: Vendedor, Supervisor, Gerente, Diretor e
   administradores (migration `20261120200000_evolucao_vendas`).
-- Fora por ora: exportar PDF/Excel (as Consultas têm; dá para somar depois).
+- **Sem exportação** (decisão do usuário, 2026-11-20): no módulo Comercial só o
+  Orçamento exporta. Exportar fica nas Consultas.
