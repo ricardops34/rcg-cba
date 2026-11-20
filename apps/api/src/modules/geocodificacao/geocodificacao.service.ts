@@ -186,6 +186,29 @@ export function interpretarResposta(corpo: unknown): RespostaGeo {
   };
 }
 
+/**
+ * Coordenada que não aponta para lugar nenhum: faltando, ou 0/0. O Protheus
+ * grava 0 nos campos numéricos vazios, e o cadastro chega com 0/0 — que é
+ * um ponto no oceano, não um endereço (20/11/2026: 415 clientes assim).
+ */
+export function coordenadaVazia(
+  latitude: number | null | undefined,
+  longitude: number | null | undefined,
+): boolean {
+  return (
+    latitude == null ||
+    longitude == null ||
+    (Number(latitude) === 0 && Number(longitude) === 0)
+  );
+}
+
+/** O mesmo, para filtro do Prisma (cliente e lead). */
+export const FILTRO_COORDENADA_VAZIA = [
+  { latitude: null },
+  { longitude: null },
+  { latitude: 0, longitude: 0 },
+];
+
 const mesmoNumero = (a: unknown, b: unknown) =>
   (a == null && b == null) ||
   (a != null && b != null && Math.abs(Number(a) - Number(b)) < 1e-9);
@@ -228,7 +251,7 @@ export function enderecoParaConsultarAoSalvar(
   if (!consulta) return null;
 
   if (!atual) {
-    return input.latitude == null && input.longitude == null ? consulta : null;
+    return coordenadaVazia(input.latitude, input.longitude) ? consulta : null;
   }
 
   const digitou =
@@ -245,7 +268,7 @@ export function enderecoParaConsultarAoSalvar(
   );
   if (enderecoMudou) return consulta;
 
-  const semCoordenadas = atual.latitude == null || atual.longitude == null;
+  const semCoordenadas = coordenadaVazia(atual.latitude, atual.longitude);
   return semCoordenadas && !atual.coordenadasConsultadasEm ? consulta : null;
 }
 

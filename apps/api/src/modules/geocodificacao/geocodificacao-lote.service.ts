@@ -7,6 +7,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 import { ClienteAlteracoesService } from '../clientes/cliente-alteracoes.service';
 import {
+  FILTRO_COORDENADA_VAZIA,
   GeocodificacaoService,
   textoDoEndereco,
 } from './geocodificacao.service';
@@ -31,7 +32,7 @@ const SITUACAO_VAZIA: GeocodificacaoLoteSituacao = {
 };
 
 /**
- * Onde o lote procura: cliente ativo, sem coordenada e com rua, município e
+ * Onde o lote procura: cliente ativo, sem coordenada (vazia ou 0/0) e com rua, município e
  * UF. Sem `incluirNaoEncontrados`, só quem o Google ainda não consultou.
  */
 export function filtroPendentes(
@@ -42,7 +43,7 @@ export function filtroPendentes(
     empresaId,
     deletedAt: null,
     ativo: true,
-    OR: [{ latitude: null }, { longitude: null }],
+    OR: FILTRO_COORDENADA_VAZIA,
     AND: [
       { endereco: { not: null } },
       { endereco: { not: '' } },
@@ -63,7 +64,7 @@ export function filtroLeadsPendentes(
   return {
     empresaId,
     situacao: { in: ['novo' as const, 'em_atendimento' as const] },
-    OR: [{ latitude: null }, { longitude: null }],
+    OR: FILTRO_COORDENADA_VAZIA,
     AND: [
       { endereco: { not: null } },
       { endereco: { not: '' } },

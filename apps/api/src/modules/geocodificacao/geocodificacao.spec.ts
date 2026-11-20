@@ -1,4 +1,5 @@
 import {
+  coordenadaVazia,
   enderecoParaConsultarAoSalvar,
   interpretarResposta,
   textoDoEndereco,
@@ -145,5 +146,21 @@ describe('enderecoParaConsultarAoSalvar', () => {
       coordenadasConsultadasEm: new Date(),
     };
     expect(enderecoParaConsultarAoSalvar(consultado, consultado)).toBeNull();
+  });
+
+  it('0/0 vindo do ERP conta como sem coordenada', () => {
+    const zerado = { ...atual, latitude: 0, longitude: 0 };
+    expect(enderecoParaConsultarAoSalvar(zerado, zerado)).not.toBeNull();
+    expect(enderecoParaConsultarAoSalvar(null, zerado)).not.toBeNull();
+  });
+});
+
+describe('coordenadaVazia', () => {
+  it('nula ou 0/0 é vazia; só uma das duas em 0 não é', () => {
+    expect(coordenadaVazia(null, null)).toBe(true);
+    expect(coordenadaVazia(-15.6, null)).toBe(true);
+    expect(coordenadaVazia(0, 0)).toBe(true);
+    expect(coordenadaVazia(0, -56.1)).toBe(false);
+    expect(coordenadaVazia(-15.6, -56.1)).toBe(false);
   });
 });

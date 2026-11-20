@@ -46,7 +46,10 @@ import {
 } from './cliente-alteracoes.service';
 import { EnriquecimentoService } from './enriquecimento.service';
 import { ClientesReceitaLoteService } from './clientes-receita-lote.service';
-import { GeocodificacaoService } from '../geocodificacao/geocodificacao.service';
+import {
+  coordenadaVazia,
+  GeocodificacaoService,
+} from '../geocodificacao/geocodificacao.service';
 import { resolverTabelaPrecoCliente } from '../../common/precos/resolver-tabela-preco-cliente';
 import {
   condicaoBuscaTermosSql,
@@ -869,21 +872,20 @@ export class ClientesService {
       //   na mesma solicitação, e é aprovada ou recusada com ele.
       // Nos dois casos vai ao ERP pela fila, e entra depois do filtro de
       // campos travados — não foi a pessoa que digitou.
-      const coordenadaVazia =
-        cliente.latitude == null || cliente.longitude == null;
+      const vazia = coordenadaVazia(cliente.latitude, cliente.longitude);
       const registro = await this.alteracoes.registrar(tx, {
         empresaId,
         clienteId: id,
         atual: cliente,
         input: {
           ...this.limpar(inputPermitido),
-          ...(coordenadaVazia ? {} : (geo.coordenadas ?? {})),
+          ...(vazia ? {} : (geo.coordenadas ?? {})),
         },
         origem: 'manual',
         autorId: user.id,
         aplicarDireto,
       });
-      if (geo.coordenadas && coordenadaVazia) {
+      if (geo.coordenadas && vazia) {
         await this.alteracoes.registrar(tx, {
           empresaId,
           clienteId: id,
@@ -1553,7 +1555,8 @@ export class ClientesService {
           GROUP BY "clienteId"
         ) u ON u."clienteId" = c.id
         WHERE ${where}`;
-      const comCoordenadas = Prisma.sql`c."latitude" IS NOT NULL AND c."longitude" IS NOT NULL`;
+      // 0/0 é campo vazio vindo do ERP (ver `coordenadaVazia`), não um lugar.
+      const comCoordenadas = Prisma.sql`c."latitude" IS NOT NULL AND c."longitude" IS NOT NULL AND NOT (c."latitude" = 0 AND c."longitude" = 0)`;
       const [rows, contagem] = await Promise.all([
         tx.$queryRaw<
           Array<{
@@ -1652,6 +1655,7 @@ export class ClientesService {
         situacao: { in: ['novo', 'em_atendimento'] },
         latitude: { not: null },
         longitude: { not: null },
+        NOT: { latitude: 0, longitude: 0 },
         ...(vendedores ? { vendedorId: { in: vendedores } } : {}),
         ...(query.uf ? { uf: query.uf } : {}),
         ...(query.municipio

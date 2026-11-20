@@ -28,6 +28,7 @@ import { normalizarChaveOpcional } from '../common/normalizar-chave-opcional';
 import { resolverVendedor } from '../common/resolver-vendedor';
 import { sincronizarContatosErp } from '../../clientes/sincronizar-contatos-erp';
 import { ClienteAlteracoesService } from '../../clientes/cliente-alteracoes.service';
+import { coordenadaVazia } from '../../geocodificacao/geocodificacao.service';
 
 const INCLUDE = {
   vendedor: { select: { chave: true } },
@@ -202,6 +203,19 @@ export class IntegracaoClientesService {
         input.condicaoPagamentoChave,
       );
 
+      // 0/0 do ERP é campo vazio: não apaga a coordenada que o cadastro já tem
+      // (a do Google pode chegar aqui antes de voltar ao Protheus).
+      const coordenadas =
+        input.latitude === 0 && input.longitude === 0
+          ? existente &&
+            !coordenadaVazia(existente.latitude, existente.longitude)
+            ? { latitude: existente.latitude, longitude: existente.longitude }
+            : { latitude: null, longitude: null }
+          : {
+              latitude: input.latitude ?? null,
+              longitude: input.longitude ?? null,
+            };
+
       const dados = {
         chave: input.chave,
         codigoErp: input.codigoErp ?? null,
@@ -244,8 +258,7 @@ export class IntegracaoClientesService {
         municipio: input.municipio ?? null,
         uf: input.uf ?? null,
         cep: input.cep ?? null,
-        latitude: input.latitude ?? null,
-        longitude: input.longitude ?? null,
+        ...coordenadas,
         vendedorId,
         tabelaPrecoId,
         condicaoPagamentoId,
@@ -408,6 +421,11 @@ export class IntegracaoClientesService {
       const data: Record<string, unknown> = { updatedBy: autor };
       for (const campo of camposDiretos) {
         if (input[campo] !== undefined) data[campo] = input[campo];
+      }
+      // 0/0 do ERP é campo vazio: não vira solicitação de troca de coordenada.
+      if (data.latitude === 0 && data.longitude === 0) {
+        delete data.latitude;
+        delete data.longitude;
       }
       if (vendedorId !== undefined) data.vendedorId = vendedorId;
       if (tabelaPrecoId !== undefined) data.tabelaPrecoId = tabelaPrecoId;
