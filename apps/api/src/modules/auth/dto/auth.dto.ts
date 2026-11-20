@@ -10,6 +10,7 @@ import {
   updateOwnProfileSchema,
   updateRotinaInicialSchema,
   updateTamanhoPaginaSchema,
+  updateAtalhosInicioSchema,
   updateNotificacoesSilenciadasSchema,
   completeFirstAccessSchema,
 } from '@plataforma/contracts';
@@ -23,6 +24,9 @@ export class ChangePasswordDto extends createZodDto(changePasswordSchema) {}
 export class UpdateOwnProfileDto extends createZodDto(updateOwnProfileSchema) {}
 export class UpdateRotinaInicialDto extends createZodDto(updateRotinaInicialSchema) {}
 export class UpdateTamanhoPaginaDto extends createZodDto(updateTamanhoPaginaSchema) {}
+export class UpdateAtalhosInicioDto extends createZodDto(
+  updateAtalhosInicioSchema,
+) {}
 export class UpdateNotificacoesSilenciadasDto extends createZodDto(
   updateNotificacoesSilenciadasSchema,
 ) {}

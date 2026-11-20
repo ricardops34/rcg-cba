@@ -41,6 +41,7 @@ import {
   UpdateOwnProfileDto,
   UpdateRotinaInicialDto,
   UpdateTamanhoPaginaDto,
+  UpdateAtalhosInicioDto,
   UpdateNotificacoesSilenciadasDto,
 } from './dto/auth.dto';
 import { JwtAuthGuard } from '../../common/guards/jwt-auth.guard';
@@ -350,6 +351,32 @@ export class AuthController {
       user.id,
       user.empresaAtivaId,
       dto.tamanhoPagina,
+    );
+  }
+
+  @ApiOperation({
+    summary: 'Escolher os atalhos da própria tela inicial',
+    description:
+      'Grava, para o próprio usuário e em todas as empresas, as rotas dos atalhos da tela ' +
+      'inicial, em ordem (até 7, fora os fixos Posição de Cliente e Orçamentos). A tela só ' +
+      'mostra as rotas que o usuário enxerga no menu. atalhos null volta para a lista padrão.',
+  })
+  @ApiBodyExample({ atalhos: ['/crm/agenda', '/comercial/dashboard'] })
+  @ApiResponse({
+    status: 400,
+    description: 'Rota inválida, repetida ou mais de 7 atalhos',
+  })
+  @ApiBearerAuth()
+  @UseGuards(JwtAuthGuard)
+  @Patch('me/atalhos-inicio')
+  updateAtalhosInicio(
+    @Body() dto: UpdateAtalhosInicioDto,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.authService.updateAtalhosInicio(
+      user.id,
+      user.empresaAtivaId,
+      dto.atalhos,
     );
   }
 

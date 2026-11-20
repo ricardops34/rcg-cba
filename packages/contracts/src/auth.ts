@@ -143,6 +143,27 @@ export const updateTamanhoPaginaSchema = z.object({
 });
 export type UpdateTamanhoPaginaInput = z.infer<typeof updateTamanhoPaginaSchema>;
 
+/** Quantos atalhos o usuário escolhe, fora os fixos (Posição de Cliente e Orçamentos). */
+export const MAX_ATALHOS_INICIO = 7;
+
+export const atalhosInicioSchema = z
+  .array(
+    z
+      .string()
+      .max(200)
+      .regex(/^\/[a-z0-9/_-]*$/i, "Rota inválida")
+      .describe("Rota da tela, como aparece no menu (ex.: /crm/agenda)"),
+  )
+  .max(MAX_ATALHOS_INICIO, `Escolha até ${MAX_ATALHOS_INICIO} atalhos`)
+  .refine((rotas) => new Set(rotas).size === rotas.length, "Atalho repetido");
+
+export const updateAtalhosInicioSchema = z.object({
+  atalhos: atalhosInicioSchema
+    .nullable()
+    .describe("Atalhos da tela inicial, em ordem; null volta para a lista padrão"),
+});
+export type UpdateAtalhosInicioInput = z.infer<typeof updateAtalhosInicioSchema>;
+
 export const completeFirstAccessSchema = updateOwnProfileSchema.extend({
   telefoneInstitucional: z.string().trim().min(1, "Informe o telefone celular")
     .max(30).regex(/^\+?[\d\s().-]+$/, "Informe um telefone válido")
@@ -310,6 +331,11 @@ export const currentUserSchema = z.object({
     .array(notificacaoTipoSchema)
     .optional()
     .describe("Tipos que ficam no sino mas não viram notificação do navegador"),
+  atalhosInicio: z
+    .array(z.string())
+    .nullable()
+    .optional()
+    .describe("Atalhos da tela inicial escolhidos pelo usuário; null = a lista padrão"),
 });
 export type CurrentUser = z.infer<typeof currentUserSchema>;
 

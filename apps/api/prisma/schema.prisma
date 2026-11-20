@@ -274,6 +274,9 @@ model Usuario {
   // Ficam no sino, mas não viram notificação do navegador (push). Só faz
   // sentido para tipo ligado no sino: o push sai do registro do sino.
   navegadorSilenciadas    NotificacaoTipo[] @default([])
+  // Atalhos da tela inicial escolhidos pelo usuário: rotas em ordem, fora os
+  // fixos (Posição de Cliente e Orçamentos). Nulo = a lista padrão da tela.
+  atalhosInicio    Json?
   telefone       String?
   celular        String?
   dataNascimento DateTime?

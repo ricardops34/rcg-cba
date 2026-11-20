@@ -1,4 +1,4 @@
-import type { NotificacaoTipo } from '@prisma/client';
+import { Prisma, type NotificacaoTipo } from '@prisma/client';
 import { gravarWhatsappDoUsuario } from '../../common/usuarios/whatsapp-do-usuario';
 import {
   MOTIVO_DESCONECTADO,
@@ -1255,6 +1255,11 @@ export class AuthService {
       tamanhoPaginaPerfil: perfil.tamanhoPagina,
       notificacoesSilenciadas: usuario.notificacoesSilenciadas,
       navegadorSilenciadas: usuario.navegadorSilenciadas,
+      atalhosInicio: Array.isArray(usuario.atalhosInicio)
+        ? usuario.atalhosInicio.filter(
+            (r): r is string => typeof r === 'string',
+          )
+        : null,
     };
   }
 
@@ -1320,6 +1325,25 @@ export class AuthService {
    * do perfil. O valor já chega validado por `updateTamanhoPaginaSchema`, e o
    * CHECK da coluna repete a regra no banco.
    */
+  /**
+   * Atalhos da tela inicial escolhidos em "Personalizar" (rotas, em ordem).
+   * Não confere acesso aqui: a tela só desenha a rota que o menu do usuário
+   * mostra, e a própria rota segue protegida pela permissão dela.
+   */
+  async updateAtalhosInicio(
+    usuarioId: string,
+    empresaAtivaId: string,
+    atalhos: string[] | null,
+  ) {
+    await this.prisma.withUsuario(usuarioId, (tx) =>
+      tx.usuario.update({
+        where: { id: usuarioId },
+        data: { atalhosInicio: atalhos ?? Prisma.DbNull, updatedBy: usuarioId },
+      }),
+    );
+    return this.me(usuarioId, empresaAtivaId);
+  }
+
   async updateTamanhoPagina(
     usuarioId: string,
     empresaAtivaId: string,

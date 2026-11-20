@@ -1,28 +1,13 @@
 "use client";
 
-import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import {
   ArrowDownToLine,
-  ArrowRight,
   ArrowUpDown,
   ArrowUpFromLine,
   Cake,
-  CalendarDays,
-  ClipboardList,
-  FileText,
-  History,
-  LayoutDashboard,
   Megaphone,
-  MessageCircle,
-  Package,
   Pin,
-  Receipt,
-  ShoppingCart,
-  Target,
-  TrendingUp,
-  Users,
-  type LucideIcon,
 } from "lucide-react";
 import type {
   Aniversariante,
@@ -30,133 +15,11 @@ import type {
   StatusIntegracao,
 } from "@plataforma/contracts";
 import { useAuthStore } from "@/stores/auth-store";
-import { useWhatsappIntegracao } from "@/hooks/use-whatsapp-integracao";
-import { useIsMobile } from "@/hooks/use-mobile";
-import { rotaDisponivelNoCelular, useMenu } from "@/hooks/use-menu";
 import { apiFetch } from "@/lib/api-client";
+import { AtalhosInicio } from "@/components/inicio/atalhos-inicio";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { cn } from "@/lib/utils";
-
-interface Atalho {
-  href: string;
-  titulo: string;
-  descricao: string;
-  icone: LucideIcon;
-  /** `rotina.acao` — a mesma string do RBAC. */
-  permissao: string;
-  /**
-   * Some quando o WhatsApp da empresa está desligado, mesmo para quem tem a
-   * permissão: o cartão levaria a uma tela sem conversa nenhuma.
-   */
-  exigeWhatsapp?: boolean;
-}
-
-/**
- * Atalhos da tela inicial: lista curada, filtrada pela permissão de cada um.
- *
- * Curada e não automática (o menu lateral já lista tudo): aqui cabem oito
- * cartões, e a graça é serem as telas do dia a dia. A ordem é a do trabalho de
- * um vendedor — quem ele atende, o que vende, o que precisa cobrar —, não a
- * ordem do menu.
- */
-const ATALHOS: Atalho[] = [
-  {
-    href: "/comercial/atendimento",
-    titulo: "Conversas",
-    descricao: "Atendimento por WhatsApp",
-    icone: MessageCircle,
-    permissao: "whatsapp-conversas.visualizar",
-    exigeWhatsapp: true,
-  },
-  {
-    href: "/comercial/meus-atendimentos",
-    titulo: "Meus Atendimentos",
-    descricao: "O que você fez nos últimos dias",
-    icone: History,
-    permissao: "meus-atendimentos.visualizar",
-  },
-  {
-    href: "/comercial/posicao-cliente",
-    titulo: "Posição de Cliente",
-    descricao: "Carteira, compras e títulos",
-    icone: Users,
-    permissao: "posicao-cliente.visualizar",
-  },
-  {
-    href: "/crm/orcamentos",
-    titulo: "Orçamentos",
-    descricao: "Propostas em aberto",
-    icone: FileText,
-    permissao: "orcamentos.visualizar",
-  },
-  {
-    href: "/crm/agenda",
-    titulo: "Agenda",
-    descricao: "Compromissos e visitas",
-    icone: CalendarDays,
-    permissao: "agenda.visualizar",
-  },
-  {
-    href: "/crm/atividades",
-    titulo: "Atividades",
-    descricao: "Tarefas e follow-up",
-    icone: ClipboardList,
-    permissao: "atividades.visualizar",
-  },
-  {
-    href: "/comercial/titulos-receber",
-    titulo: "Títulos a Receber",
-    descricao: "Cobrança e vencimentos",
-    icone: Receipt,
-    permissao: "titulos-receber.visualizar",
-  },
-  {
-    href: "/comercial/dashboard",
-    titulo: "Dashboard",
-    descricao: "Vendas do período",
-    icone: LayoutDashboard,
-    permissao: "dashboard-comercial.visualizar",
-  },
-  {
-    href: "/comercial/produtos",
-    titulo: "Produtos",
-    descricao: "Catálogo e preços",
-    icone: Package,
-    permissao: "produtos.visualizar",
-  },
-  {
-    href: "/gerencial/sugestao-compra",
-    titulo: "Sugestão de Compra",
-    descricao: "O que oferecer a cada cliente",
-    icone: ShoppingCart,
-    permissao: "sugestao-compra.visualizar",
-  },
-  {
-    href: "/crm/oportunidades",
-    titulo: "Oportunidades",
-    descricao: "Funil de vendas",
-    icone: TrendingUp,
-    permissao: "oportunidades.visualizar",
-  },
-  {
-    href: "/gerencial/objetivos",
-    titulo: "Objetivos",
-    descricao: "Metas por vendedor",
-    icone: Target,
-    permissao: "objetivos.visualizar",
-  },
-  {
-    href: "/gerencial/dashboard",
-    titulo: "Dashboard Gerencial",
-    descricao: "Resultado da equipe",
-    icone: LayoutDashboard,
-    permissao: "dashboard-gerencial.visualizar",
-  },
-];
-
-/** Quantos atalhos cabem sem a tela virar um segundo menu. */
-const MAX_ATALHOS = 8;
 
 function saudacao(hora: number) {
   if (hora < 12) return "Bom dia";
@@ -184,21 +47,6 @@ function formatarDataHora(isoString: string | null | undefined) {
 
 export default function InicioPage() {
   const user = useAuthStore((s) => s.user);
-  const permissoes = user?.permissoes;
-  const { ativo: whatsappAtivo } = useWhatsappIntegracao();
-  const isMobile = useIsMobile();
-  const { data: modulos } = useMenu();
-
-  // No celular, só os atalhos cuja tela está liberada para tela pequena — o
-  // cartão que levaria à mensagem "abra em uma tela maior" não deve existir.
-  // Enquanto o menu carrega, não se sabe ainda: nada aparece, em vez de piscar.
-  const visiveis = ATALHOS.filter(
-    (a) =>
-      permissoes?.includes(a.permissao) &&
-      (!a.exigeWhatsapp || whatsappAtivo === true) &&
-      (!isMobile || rotaDisponivelNoCelular(modulos, a.href)),
-  ).slice(0, MAX_ATALHOS);
-
   const statusIntegracaoQuery = useQuery({
     queryKey: ["inicio", "status-integracao"],
     queryFn: () => apiFetch<StatusIntegracao>("/inicio/status-integracao"),
@@ -241,33 +89,7 @@ export default function InicioPage() {
         />
       </div>
 
-      {visiveis.length > 0 && (
-        <section className="space-y-3" data-tour="acesso-rapido">
-          <h2 className="text-sm font-semibold tracking-wider text-muted-foreground uppercase">
-            Acesso rápido
-          </h2>
-          <div className="grid grid-cols-2 gap-2 sm:gap-3 lg:grid-cols-4">
-            {visiveis.map((atalho) => (
-              <Link key={atalho.href} href={atalho.href} className="min-w-0">
-                <Card className="group h-full shadow-sm transition-all hover:-translate-y-0.5 hover:shadow-md hover:ring-1 hover:ring-primary/30">
-                  <CardHeader className="px-3 sm:px-4">
-                    <div className="mb-1 flex items-center justify-between">
-                      <div className="flex size-9 items-center justify-center rounded-full bg-primary/10 text-primary sm:size-10">
-                        <atalho.icone className="size-4.5 sm:size-5" />
-                      </div>
-                      <ArrowRight className="size-4 text-muted-foreground/40 transition-transform group-hover:translate-x-0.5 group-hover:text-primary" />
-                    </div>
-                    <CardTitle className="text-sm leading-snug sm:text-base">{atalho.titulo}</CardTitle>
-                    <p className="line-clamp-2 text-xs text-muted-foreground sm:text-sm">
-                      {atalho.descricao}
-                    </p>
-                  </CardHeader>
-                </Card>
-              </Link>
-            ))}
-          </div>
-        </section>
-      )}
+      <AtalhosInicio />
 
       <div className="grid gap-6 lg:grid-cols-3">
         <Mural
