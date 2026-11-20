@@ -22,6 +22,9 @@ import { ChevronDown, ChevronRight, Search } from "lucide-react";
 
 const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 const quantidade = (v: number) => v.toLocaleString("pt-BR", { maximumFractionDigits: 3 });
+/** Desconto médio ponderado (vem pronto da API), com uma casa. */
+const descontoMedio = (v: number | null) =>
+  v == null ? "—" : `${v.toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`;
 const percentual = (v: number, total: number) =>
   total > 0 ? `${((v * 100) / total).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%` : "—";
 
@@ -129,6 +132,7 @@ export function ComposicaoTabela({
           mono: true,
           qtd: `${quantidade(p.quantidade)} ${p.unidade ?? ""}`,
           realizado: p.realizado,
+          desconto: p.descontoMedio,
         }))
     : data.clientes
         .filter((c) => casa(c.nome, c.codigo, c.municipio))
@@ -137,8 +141,10 @@ export function ComposicaoTabela({
           titulo: c.nome,
           sub: [c.codigo, c.municipio].filter(Boolean).join(" · "),
           mono: false,
-          qtd: null as string | null,
+          // Unidades diferentes somadas: é volume de itens, não de um produto.
+          qtd: quantidade(c.quantidade),
           realizado: c.realizado,
+          desconto: c.descontoMedio,
         }));
 
   const filhos = (chave: string) =>
@@ -157,21 +163,21 @@ export function ComposicaoTabela({
             sub: [c?.codigo, c?.municipio].filter(Boolean).join(" · "),
             qtd: `${quantidade(i.quantidade)} ${unidade}`,
             realizado: i.realizado,
+            desconto: i.descontoMedio,
           };
         }
         const p = nomes.produtos.get(chaveProduto(i.produtoId));
         return {
           chave: chaveProduto(i.produtoId),
           titulo: p?.descricao ?? "—",
-          sub: [p?.codigo, `${quantidade(i.quantidade)} ${p?.unidade ?? ""}`.trim()]
-            .filter(Boolean)
-            .join(" · "),
-          qtd: null as string | null,
+          sub: p?.codigo ?? "",
+          qtd: `${quantidade(i.quantidade)} ${p?.unidade ?? ""}`.trim(),
           realizado: i.realizado,
+          desconto: i.descontoMedio,
         };
       });
 
-  const colunas = 2 + (ehProdutos ? 1 : 0) + (mostrarValores ? 1 : 0);
+  const colunas = 4 + (mostrarValores ? 1 : 0);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col gap-2">
@@ -197,9 +203,12 @@ export function ComposicaoTabela({
           <TableHeader className="sticky top-0 z-10 bg-card">
             <TableRow>
               <TableHead>{ehProdutos ? "Produto" : "Cliente"}</TableHead>
-              {ehProdutos && <TableHead className="text-right">Qtd.</TableHead>}
+              <TableHead className="text-right">Qtd.</TableHead>
               {mostrarValores && <TableHead className="text-right">Realizado</TableHead>}
               <TableHead className="text-right">%</TableHead>
+              <TableHead className="text-right" title="Desconto médio sobre a tabela, ponderado pelo valor">
+                Desc. médio
+              </TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -238,9 +247,7 @@ export function ComposicaoTabela({
                         </div>
                       </div>
                     </TableCell>
-                    {ehProdutos && (
-                      <TableCell className="text-right text-xs tabular-nums">{l.qtd}</TableCell>
-                    )}
+                    <TableCell className="text-right text-xs tabular-nums">{l.qtd}</TableCell>
                     {mostrarValores && (
                       <TableCell className="text-right text-xs font-medium tabular-nums">
                         {moeda(l.realizado)}
@@ -248,6 +255,9 @@ export function ComposicaoTabela({
                     )}
                     <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                       {percentual(l.realizado, total)}
+                    </TableCell>
+                    <TableCell className="text-right text-xs tabular-nums">
+                      {descontoMedio(l.desconto)}
                     </TableCell>
                   </TableRow>
                   {aberta &&
@@ -257,9 +267,7 @@ export function ComposicaoTabela({
                           <p className="text-xs break-words">{f.titulo}</p>
                           {f.sub && <p className="text-[11px] text-muted-foreground">{f.sub}</p>}
                         </TableCell>
-                        {ehProdutos && (
-                          <TableCell className="text-right text-xs tabular-nums">{f.qtd}</TableCell>
-                        )}
+                        <TableCell className="text-right text-xs tabular-nums">{f.qtd}</TableCell>
                         {mostrarValores && (
                           <TableCell className="text-right text-xs tabular-nums">
                             {moeda(f.realizado)}
@@ -267,6 +275,9 @@ export function ComposicaoTabela({
                         )}
                         <TableCell className="text-right text-xs text-muted-foreground tabular-nums">
                           {percentual(f.realizado, l.realizado)}
+                        </TableCell>
+                        <TableCell className="text-right text-xs tabular-nums">
+                          {descontoMedio(f.desconto)}
                         </TableCell>
                       </TableRow>
                     ))}
@@ -276,11 +287,14 @@ export function ComposicaoTabela({
           </TableBody>
           <TableFooter className="sticky bottom-0 bg-card">
             <TableRow>
-              <TableCell colSpan={ehProdutos ? 2 : 1}>{rotuloTotal}</TableCell>
+              <TableCell colSpan={2}>{rotuloTotal}</TableCell>
               {mostrarValores && (
                 <TableCell className="text-right tabular-nums">{moeda(total)}</TableCell>
               )}
               <TableCell className="text-right tabular-nums">100%</TableCell>
+              <TableCell className="text-right tabular-nums">
+                {descontoMedio(data.descontoMedio)}
+              </TableCell>
             </TableRow>
           </TableFooter>
         </Table>

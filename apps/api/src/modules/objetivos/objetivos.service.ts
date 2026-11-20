@@ -699,16 +699,65 @@ export class ObjetivosService {
           vlrDev: true,
           quantidade: true,
           quantidadeDev: true,
+          vlrDesconto: true,
         },
       });
 
       const arredondar = (v: number) => Math.round(v * 100) / 100;
-      const itens = grupos.map((g) => ({
+      // Desconto médio ponderado pelo valor (20/11/2026): desconto ÷ (vendido
+      // + desconto), sobre o que foi faturado — a devolução não entra.
+      const desconto = (d: { desconto: number; vendido: number }) =>
+        d.vendido + d.desconto > 0
+          ? Math.round((d.desconto / (d.vendido + d.desconto)) * 1000) / 10
+          : null;
+      const brutos = grupos.map((g) => ({
+        desconto: g._sum.vlrDesconto ?? 0,
+        vendido: g._sum.vlrTotal ?? 0,
+      }));
+      const itens = grupos.map((g, k) => ({
         produtoId: g.produtoId,
         clienteId: g.clienteId,
         quantidade: (g._sum.quantidade ?? 0) - (g._sum.quantidadeDev ?? 0),
         realizado: arredondar((g._sum.vlrTotal ?? 0) - (g._sum.vlrDev ?? 0)),
+        descontoMedio: desconto(brutos[k]),
       }));
+      const somar = (
+        mapa: Map<string | null, { desconto: number; vendido: number }>,
+        chave: string | null,
+        k: number,
+      ) => {
+        const atual = mapa.get(chave) ?? { desconto: 0, vendido: 0 };
+        atual.desconto += brutos[k].desconto;
+        atual.vendido += brutos[k].vendido;
+        mapa.set(chave, atual);
+      };
+      const descPorProduto = new Map<string | null, { desconto: number; vendido: number }>();
+      const descPorCliente = new Map<string | null, { desconto: number; vendido: number }>();
+      const qtdPorCliente = new Map<string | null, number>();
+      grupos.forEach((g, k) => {
+        somar(descPorProduto, g.produtoId, k);
+        somar(descPorCliente, g.clienteId, k);
+        qtdPorCliente.set(
+          g.clienteId,
+          (qtdPorCliente.get(g.clienteId) ?? 0) + itens[k].quantidade,
+        );
+      });
+      const descontoTotal = desconto(
+        brutos.reduce(
+          (acc, b) => ({
+            desconto: acc.desconto + b.desconto,
+            vendido: acc.vendido + b.vendido,
+          }),
+          { desconto: 0, vendido: 0 },
+        ),
+      );
+      const descontoDe = (
+        mapa: Map<string | null, { desconto: number; vendido: number }>,
+        chave: string | null,
+      ) => {
+        const d = mapa.get(chave);
+        return d ? desconto(d) : null;
+      };
 
       const semNulos = (ids: (string | null)[]) => [
         ...new Set(ids.filter((id): id is string => id !== null)),
@@ -758,6 +807,7 @@ export class ObjetivosService {
           unidade: p.unidade,
           quantidade: porProduto.get(p.id)?.quantidade ?? 0,
           realizado: arredondar(porProduto.get(p.id)?.realizado ?? 0),
+          descontoMedio: descontoDe(descPorProduto, p.id),
         })),
         ...(semProduto
           ? [
@@ -768,6 +818,7 @@ export class ObjetivosService {
                 unidade: null,
                 quantidade: semProduto.quantidade,
                 realizado: arredondar(semProduto.realizado),
+                descontoMedio: descontoDe(descPorProduto, null),
               },
             ]
           : []),
@@ -779,7 +830,9 @@ export class ObjetivosService {
           codigo: c.codigoErp,
           nome: c.nomeFantasia || c.razaoSocial,
           municipio: c.municipio,
+          quantidade: qtdPorCliente.get(c.id) ?? 0,
           realizado: arredondar(porCliente.get(c.id) ?? 0),
+          descontoMedio: descontoDe(descPorCliente, c.id),
         })),
         ...(porCliente.has(null)
           ? [
@@ -788,7 +841,9 @@ export class ObjetivosService {
                 codigo: null,
                 nome: '(Sem cliente vinculado)',
                 municipio: null,
+                quantidade: qtdPorCliente.get(null) ?? 0,
                 realizado: arredondar(porCliente.get(null) ?? 0),
+                descontoMedio: descontoDe(descPorCliente, null),
               },
             ]
           : []),
@@ -800,6 +855,7 @@ export class ObjetivosService {
         produtos,
         clientes,
         itens,
+        descontoMedio: descontoTotal,
       };
     });
   }

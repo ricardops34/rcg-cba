@@ -83,6 +83,12 @@ export const OBJETIVO_DASHBOARD_EXAMPLE: ObjetivoDashboard = {
  * `itens` é o cruzamento produto × cliente — a tela abre um produto para ver
  * quem comprou, ou um cliente para ver o que comprou, sem nova ida à API.
  */
+/**
+ * Desconto médio (%) ponderado pelo valor: soma do desconto dos itens ÷ (valor
+ * vendido + desconto), sobre a tabela de preço. Nulo sem base (20/11/2026).
+ */
+const descontoMedioSchema = z.number().nullable();
+
 export const objetivoDashboardCategoriaDetalheSchema = z.object({
   categoria: z
     .object({
@@ -101,6 +107,7 @@ export const objetivoDashboardCategoriaDetalheSchema = z.object({
       unidade: z.string().nullable(),
       quantidade: z.number().describe("Quantidade vendida líquida de devolução"),
       realizado: z.number(),
+      descontoMedio: descontoMedioSchema,
     }),
   ),
   clientes: z.array(
@@ -109,7 +116,11 @@ export const objetivoDashboardCategoriaDetalheSchema = z.object({
       codigo: z.string().nullable(),
       nome: z.string(),
       municipio: z.string().nullable(),
+      quantidade: z
+        .number()
+        .describe("Soma das quantidades dos produtos (unidades diferentes somadas)"),
       realizado: z.number(),
+      descontoMedio: descontoMedioSchema,
     }),
   ),
   itens: z.array(
@@ -118,8 +129,11 @@ export const objetivoDashboardCategoriaDetalheSchema = z.object({
       clienteId: z.string().uuid().nullable(),
       quantidade: z.number(),
       realizado: z.number(),
+      descontoMedio: descontoMedioSchema,
     }),
   ),
+  /** Desconto médio do total do detalhe (mesma ponderação). */
+  descontoMedio: descontoMedioSchema,
 });
 export type ObjetivoDashboardCategoriaDetalhe = z.infer<
   typeof objetivoDashboardCategoriaDetalheSchema
