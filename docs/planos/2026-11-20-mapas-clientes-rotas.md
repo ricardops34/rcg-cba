@@ -79,8 +79,11 @@ Gravar a localização do dispositivo (navegador) em:
 - aprovações do orçamento: pelo cliente (link), pelo supervisor e pelo gerente;
 - liberações de desconto.
 
-A levantar: cada ponto de aprovação no código e se a coordenada é obrigatória (o
-navegador pode negar a localização).
+Decisões (20/11): **não é obrigatória** — se o navegador negar ou falhar, a ação
+segue e o registro fica "localização não informada" com o motivo; a localização
+aparece **no detalhe do orçamento**, por evento (criado, enviado, aprovado pelo
+cliente/supervisor/gerente, desconto liberado), com a posição e um mapa.
+A levantar no código: cada ponto de aprovação.
 
 ## Proposta em fases
 
