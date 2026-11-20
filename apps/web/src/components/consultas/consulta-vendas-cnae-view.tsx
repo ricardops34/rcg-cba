@@ -518,6 +518,12 @@ export function ConsultaVendasCnaeView() {
                             className="px-1.5 text-right align-top text-[11px] tabular-nums"
                           >
                             {celula(v)}
+                            {/* Parte do total do mês (20/11/2026). */}
+                            {v !== 0 && (
+                              <span className="block text-[10px] text-muted-foreground">
+                                {percentualDoTotal(v, data.totais[i])}
+                              </span>
+                            )}
                           </TableCell>
                         ))}
                         <TableCell className="px-1.5 text-right align-top text-[11px] font-medium tabular-nums">
