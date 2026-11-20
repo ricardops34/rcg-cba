@@ -20,6 +20,7 @@ import {
   anosDisponiveis,
   erroDoPeriodo,
   mesesDoPeriodo,
+  percentualDoTotal,
   periodoPadrao,
 } from "@/components/consultas/periodo-consulta";
 import {
@@ -519,7 +520,7 @@ export function ConsultaEvolucaoView() {
                 <Table
                   className="w-full table-fixed"
                   style={{
-                    minWidth: Math.max(720, 220 + data.colunas.length * 88),
+                    minWidth: Math.max(790, 290 + data.colunas.length * 88),
                   }}
                 >
                   <TableHeader className="sticky top-0 z-10 bg-card">
@@ -534,6 +535,10 @@ export function ConsultaEvolucaoView() {
                         </TableHead>
                       ))}
                       <TableHead className="px-1.5 text-right text-xs">Total</TableHead>
+                      {/* Participação no total geral do período (20/11/2026). */}
+                      <TableHead className="w-[70px] px-1.5 text-right text-xs whitespace-nowrap">
+                        % do total
+                      </TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -578,6 +583,9 @@ export function ConsultaEvolucaoView() {
                         <TableCell className="px-1.5 text-right align-top text-[11px] font-medium tabular-nums">
                           {valorCheio(l.total)}
                         </TableCell>
+                        <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums text-muted-foreground">
+                          {percentualDoTotal(l.total, data.total)}
+                        </TableCell>
                       </TableRow>
                     ))}
                   </TableBody>
@@ -594,6 +602,9 @@ export function ConsultaEvolucaoView() {
                       ))}
                       <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                         {valorCheio(data.total)}
+                      </TableCell>
+                      <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
+                        {data.total ? "100,0%" : "—"}
                       </TableCell>
                     </TableRow>
                   </tfoot>

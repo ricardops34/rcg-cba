@@ -10,7 +10,7 @@ import {
   type ConsultaVendasLinha,
   type ConsultaVendasNoCategoria,
 } from "@plataforma/contracts";
-import { TODOS } from "@/components/consultas/periodo-consulta";
+import { TODOS, percentualDoTotal } from "@/components/consultas/periodo-consulta";
 import {
   CortinaParametros,
   Resumo,
@@ -56,12 +56,6 @@ const ROTINA = "consulta-vendas-categoria";
 const TITULO = "Vendas por Categoria";
 
 type OrdenarPor = "descricao" | "total" | "media";
-
-/** Parte do total geral do período, com uma casa (ex.: 23,8%). */
-const percentualDoTotal = (v: number, total: number) =>
-  total
-    ? `${((v / total) * 100).toLocaleString("pt-BR", { minimumFractionDigits: 1, maximumFractionDigits: 1 })}%`
-    : "—";
 
 /** Um nó qualquer da árvore, visto só pelo que todos têm em comum. */
 type No = ConsultaVendasLinha & { filhos?: No[] };

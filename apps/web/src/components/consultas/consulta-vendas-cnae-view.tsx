@@ -9,7 +9,7 @@ import type {
   ConsultaVendasCnaeResultado,
   ConsultaVendasLinha,
 } from "@plataforma/contracts";
-import { PADRAO_EMPRESA, TODOS } from "@/components/consultas/periodo-consulta";
+import { PADRAO_EMPRESA, TODOS, percentualDoTotal } from "@/components/consultas/periodo-consulta";
 import {
   CortinaParametros,
   Resumo,
@@ -427,7 +427,7 @@ export function ConsultaVendasCnaeView() {
               <Table
                 className="w-full table-fixed"
                 style={{
-                  minWidth: Math.max(760, 260 + data.colunas.length * 88),
+                  minWidth: Math.max(830, 330 + data.colunas.length * 88),
                 }}
               >
                 <TableHeader className="sticky top-0 z-10 bg-card">
@@ -454,6 +454,10 @@ export function ConsultaVendasCnaeView() {
                       order={sortOrder}
                       onClick={() => alternarOrdem("total")}
                     />
+                    {/* Participação no total geral do período (20/11/2026). */}
+                    <TableHead className="w-[70px] px-1.5 text-right text-xs whitespace-nowrap">
+                      % do total
+                    </TableHead>
                     <SortableTableHead
                       label="Média"
                       className="px-1.5 text-right"
@@ -519,6 +523,9 @@ export function ConsultaVendasCnaeView() {
                         <TableCell className="px-1.5 text-right align-top text-[11px] font-medium tabular-nums">
                           {moeda(no.total)}
                         </TableCell>
+                        <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums text-muted-foreground">
+                          {percentualDoTotal(no.total, data.total)}
+                        </TableCell>
                         <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums">
                           {celula(no.media)}
                         </TableCell>
@@ -561,6 +568,9 @@ export function ConsultaVendasCnaeView() {
                     ))}
                     <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                       {moeda(data.total)}
+                    </TableCell>
+                    <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
+                      {data.total ? "100,0%" : "—"}
                     </TableCell>
                     <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                       {celula(data.media)}

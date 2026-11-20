@@ -7,7 +7,7 @@ import type {
   ConsultaVendasLinha,
   ConsultaVendasResultado,
 } from "@plataforma/contracts";
-import { TODOS } from "@/components/consultas/periodo-consulta";
+import { TODOS, percentualDoTotal } from "@/components/consultas/periodo-consulta";
 import {
   CortinaParametros,
   Resumo,
@@ -288,7 +288,7 @@ export function ConsultaVendasView({
               <Table
                 className="w-full table-fixed"
                 style={{
-                  minWidth: Math.max(720, 220 + data.colunas.length * 88),
+                  minWidth: Math.max(790, 290 + data.colunas.length * 88),
                 }}
               >
                 <TableHeader className="sticky top-0 z-10 bg-card">
@@ -315,6 +315,10 @@ export function ConsultaVendasView({
                       order={sortOrder}
                       onClick={() => alternarOrdem("total")}
                     />
+                    {/* Participação no total geral do período (20/11/2026). */}
+                    <TableHead className="w-[70px] px-1.5 text-right text-xs whitespace-nowrap">
+                      % do total
+                    </TableHead>
                     <SortableTableHead
                       label="Média"
                       className="px-1.5 text-right"
@@ -353,6 +357,9 @@ export function ConsultaVendasView({
                       <TableCell className="px-1.5 text-right align-top text-[11px] font-medium tabular-nums">
                         {moeda(l.total)}
                       </TableCell>
+                      <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums text-muted-foreground">
+                        {percentualDoTotal(l.total, data.total)}
+                      </TableCell>
                       <TableCell className="px-1.5 text-right align-top text-[11px] tabular-nums">
                         {celula(l.media)}
                       </TableCell>
@@ -372,6 +379,9 @@ export function ConsultaVendasView({
                     ))}
                     <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                       {moeda(data.total)}
+                    </TableCell>
+                    <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
+                      {data.total ? "100,0%" : "—"}
                     </TableCell>
                     <TableCell className="px-1.5 text-right text-[11px] tabular-nums">
                       {celula(data.media)}

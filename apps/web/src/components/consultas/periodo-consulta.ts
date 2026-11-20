@@ -29,11 +29,19 @@ export function anosDisponiveis(): number[] {
   return Array.from({ length: 7 }, (_, i) => atual - i);
 }
 
-/** Período padrão: os 12 meses que terminam no mês corrente. */
+/**
+ * Meses do período com que as consultas abrem (decisão do usuário,
+ * 2026-11-20: eram 12). O máximo que se pode escolher continua
+ * MAX_MESES_CONSULTA.
+ */
+export const MESES_PERIODO_PADRAO = 4;
+
+/** Período padrão: os MESES_PERIODO_PADRAO meses que terminam no mês corrente. */
 export function periodoPadrao(): PeriodoFiltros {
   const hoje = new Date();
   const fim = { ano: hoje.getFullYear(), mes: hoje.getMonth() + 1 };
-  const inicioEmMeses = emMeses(fim.ano, fim.mes) - (MAX_MESES_CONSULTA - 1);
+  const inicioEmMeses =
+    emMeses(fim.ano, fim.mes) - (Math.min(MESES_PERIODO_PADRAO, MAX_MESES_CONSULTA) - 1);
   // emMeses = ano*12 + mes, com mes de 1 a 12: desfazer a conta exige tratar
   // o mês 12 como resto 0 do ano anterior.
   const ano = Math.floor((inicioEmMeses - 1) / 12);
@@ -44,6 +52,19 @@ export function periodoPadrao(): PeriodoFiltros {
     anoFinal: String(fim.ano),
     mesFinal: String(fim.mes),
   };
+}
+
+/**
+ * Coluna "% do total" das consultas (2026-11-20): a parte da linha no total
+ * geral do período, com uma casa (ex.: 23,8%).
+ */
+export function percentualDoTotal(valor: number, total: number): string {
+  return total
+    ? `${((valor / total) * 100).toLocaleString("pt-BR", {
+        minimumFractionDigits: 1,
+        maximumFractionDigits: 1,
+      })}%`
+    : "—";
 }
 
 /** Quantos meses o rascunho da cortina cobre. */
