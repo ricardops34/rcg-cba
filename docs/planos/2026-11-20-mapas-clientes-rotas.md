@@ -85,6 +85,23 @@ aparece **no detalhe do orçamento**, por evento (criado, enviado, aprovado pelo
 cliente/supervisor/gerente, desconto liberado), com a posição e um mapa.
 A levantar no código: cada ponto de aprovação.
 
+## Regiões de atuação dos vendedores (pedido do usuário, 20/11 — depois dos mapas)
+
+Em Gerencial > Vendedores: desenhar regiões no mapa (polígonos) e atribuí-las a
+vendedores; há regiões de um vendedor e regiões livres. Vendedor do interior pode ter
+um **município inteiro** como região (sem desenhar). Ferramentas para mostrar
+**invasão de região**: cliente atendido/vendido por vendedor que não é o dono da região
+onde ele está. A detalhar quando chegar a vez (o que conta como invasão: carteira do
+cliente, quem vendeu a nota, quem fez o orçamento).
+
+## Mapa da Posição melhorado (20/11 — em andamento)
+
+Ordem acordada: (1) agrupar pinos próximos (leaflet.markercluster); (2) "Colorir por"
+— financeiro, situação, vendedor, dias sem compra, tipo de pessoa, ramo (CNAE),
+faturamento; legenda clicável com contagem; (3) filtro de tipo de pessoa; (4) balão
+com vendedor, faturamento 12 meses, dias sem compra; (6) lista dos sem coordenadas e a
+empresa como referência. Seleção por área fica com as rotas.
+
 ## Proposta em fases
 
 Cada fase é uma entrega com commit próprio.

@@ -1585,7 +1585,7 @@ export class ClientesService {
         WHERE ${where}`;
       // 0/0 é campo vazio vindo do ERP (ver `coordenadaVazia`), não um lugar.
       const comCoordenadas = Prisma.sql`c."latitude" IS NOT NULL AND c."longitude" IS NOT NULL AND NOT (c."latitude" = 0 AND c."longitude" = 0)`;
-      const [rows, contagem] = await Promise.all([
+      const [rows, contagem, semCoordenadas] = await Promise.all([
         tx.$queryRaw<
           Array<{
             id: string;
@@ -1601,11 +1601,20 @@ export class ClientesService {
             bloqueado: boolean;
             temTituloVencido: boolean;
             temTituloAberto: boolean;
+            tipoPessoa: 'fisica' | 'juridica';
+            vendedorId: string | null;
+            vendedorNome: string | null;
+            venda12Meses: number | null;
+            cnaeCodigo: string | null;
+            cnaeDescricao: string | null;
           }>
         >(Prisma.sql`
           SELECT
             c.id, c."codigoErp", c."razaoSocial", c."nomeFantasia",
             c."municipio", c."uf", c."latitude", c."longitude", c."ativo",
+            c."tipoPessoa", c."vendedorId", vd."nome" AS "vendedorNome",
+            v12.total::float8 AS "venda12Meses",
+            cn."codigoErp" AS "cnaeCodigo", cn."descricao" AS "cnaeDescricao",
             COALESCE(u."ultimaData", c."ultimaCompra") AS "ultimaCompra",
             (c."dataBloqueio" IS NOT NULL AND (c."dataReativacao" IS NULL OR c."dataReativacao" < c."dataBloqueio")) AS "bloqueado",
             EXISTS (
@@ -1618,13 +1627,50 @@ export class ClientesService {
               WHERE ta."clienteId" = c.id AND ta."empresaId" = c."empresaId"
                 AND ta."deletedAt" IS NULL AND ta."dtBaixa" IS NULL
             ) AS "temTituloAberto"
-          ${desde} AND ${comCoordenadas}
+          FROM clientes c
+          LEFT JOIN (
+            SELECT "clienteId", MAX("dtEmissao") AS "ultimaData"
+            FROM notas_saida
+            WHERE "empresaId" = ${empresaId} AND ${NOTA_DE_VENDA_SQL}
+            GROUP BY "clienteId"
+          ) u ON u."clienteId" = c.id
+          LEFT JOIN vendedores vd ON vd.id = c."vendedorId"
+          LEFT JOIN (
+            SELECT "clienteId", SUM("vlrBruto") AS total
+            FROM notas_saida
+            WHERE "empresaId" = ${empresaId} AND ${NOTA_DE_VENDA_SQL}
+              AND "dtEmissao" >= now() - interval '12 months'
+            GROUP BY "clienteId"
+          ) v12 ON v12."clienteId" = c.id
+          LEFT JOIN LATERAL (
+            SELECT k."codigoErp", k."descricao"
+            FROM cliente_cnaes cc JOIN cnaes k ON k.id = cc."cnaeId"
+            WHERE cc."clienteId" = c.id AND cc."empresaId" = ${empresaId}
+              AND cc."deletedAt" IS NULL AND cc."principal" = true
+            LIMIT 1
+          ) cn ON true
+          WHERE ${where} AND ${comCoordenadas}
           ORDER BY c."razaoSocial"
           LIMIT ${LIMITE_PINS_MAPA + 1}
         `),
         tx.$queryRaw<{ total: number }[]>(
           Prisma.sql`SELECT COUNT(*)::int AS total ${desde}`,
         ),
+        tx.$queryRaw<
+          Array<{
+            id: string;
+            codigoErp: string | null;
+            razaoSocial: string;
+            endereco: string | null;
+            municipio: string | null;
+            uf: string | null;
+          }>
+        >(Prisma.sql`
+          SELECT c.id, c."codigoErp", c."razaoSocial", c."endereco", c."municipio", c."uf"
+          ${desde} AND NOT (${comCoordenadas})
+          ORDER BY c."razaoSocial"
+          LIMIT 500
+        `),
       ]);
       const limitado = rows.length > LIMITE_PINS_MAPA;
       const leads = await this.leadsDoMapa(tx, empresaId, user, query);
@@ -1649,9 +1695,18 @@ export class ClientesService {
                 : r.ativo
                   ? 'ativo'
                   : 'inativo',
+          ativo: r.ativo,
+          bloqueado: r.bloqueado,
+          tipoPessoa: r.tipoPessoa,
+          vendedorId: r.vendedorId,
+          vendedorNome: r.vendedorNome,
+          venda12Meses: Number(r.venda12Meses ?? 0),
+          cnaeCodigo: r.cnaeCodigo,
+          cnaeDescricao: r.cnaeDescricao,
         })),
         totalFiltrados: contagem[0]?.total ?? 0,
         limitado,
+        semCoordenadas,
       };
     });
   }
@@ -1760,6 +1815,10 @@ export class ClientesService {
     if (query.ativo !== undefined)
       condicoes.push(Prisma.sql`c."ativo" = ${query.ativo}`);
     if (query.uf) condicoes.push(Prisma.sql`c."uf" = ${query.uf}`);
+    if (query.tipoPessoa)
+      condicoes.push(
+        Prisma.sql`c."tipoPessoa" = ${query.tipoPessoa}::"TipoPessoa"`,
+      );
     if (query.municipio)
       condicoes.push(Prisma.sql`c."municipio" = ${query.municipio}`);
     if (query.carteira !== undefined)

@@ -1,38 +1,48 @@
 "use client";
 
 import "leaflet/dist/leaflet.css";
-import { useEffect, useMemo } from "react";
-import L from "leaflet";
-import { MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import "leaflet.markercluster/dist/MarkerCluster.css";
+import "leaflet.markercluster/dist/MarkerCluster.Default.css";
+import L from "@/components/mapa/leaflet-global";
+import "leaflet.markercluster";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { MapContainer, Marker, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
 import {
   LEAD_SITUACAO_LABEL,
   LEAD_TEMPERATURA_LABEL,
-  SITUACAO_PIN_CLIENTE_ROTULO,
   type PosicaoClienteMapaLead,
   type PosicaoClienteMapaPin,
-  type SituacaoPinCliente,
 } from "@plataforma/contracts";
 import { dataCivilBr } from "@/lib/data";
-import { COR_LEAD, COR_SITUACAO, ORDEM_SITUACAO } from "./mapa-clientes-cores";
+import { COR_LEAD } from "./mapa-clientes-cores";
+
+export type PinColorido = { pin: PosicaoClienteMapaPin; cor: string; rotuloGrupo: string };
+
+const moeda = (v: number) => v.toLocaleString("pt-BR", { style: "currency", currency: "BRL" });
 
 /**
  * Pin em SVG (divIcon), sem as imagens padrão do Leaflet — elas dependem de
  * caminho de arquivo que o bundler do Next não resolve, e não mudam de cor.
  * Bloqueado leva um traço no lugar do ponto, para não depender só da cor.
  */
-function iconeDoPin(situacao: SituacaoPinCliente) {
-  const cor = COR_SITUACAO[situacao];
-  const miolo =
-    situacao === "bloqueado"
+const icones = new Map<string, L.DivIcon>();
+function iconeDoPin(cor: string, bloqueado: boolean) {
+  const chave = `${cor}|${bloqueado}`;
+  let icone = icones.get(chave);
+  if (!icone) {
+    const miolo = bloqueado
       ? '<rect x="7.5" y="10.5" width="9" height="3" rx="1" fill="#fff"/>'
       : '<circle cx="12" cy="12" r="3.5" fill="#fff"/>';
-  return L.divIcon({
-    className: "",
-    html: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="34" viewBox="0 0 24 34"><path d="M12 33s11-11.6 11-21A11 11 0 0 0 1 12c0 9.4 11 21 11 21z" fill="${cor}" stroke="#fff" stroke-width="1.5"/>${miolo}</svg>`,
-    iconSize: [24, 34],
-    iconAnchor: [12, 33],
-    popupAnchor: [0, -30],
-  });
+    icone = L.divIcon({
+      className: "",
+      html: `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="34" viewBox="0 0 24 34"><path d="M12 33s11-11.6 11-21A11 11 0 0 0 1 12c0 9.4 11 21 11 21z" fill="${cor}" stroke="#fff" stroke-width="1.5"/>${miolo}</svg>`,
+      iconSize: [24, 34],
+      iconAnchor: [12, 33],
+      popupAnchor: [0, -30],
+    });
+    icones.set(chave, icone);
+  }
+  return icone;
 }
 
 /**
@@ -49,6 +59,14 @@ function iconeDoLead() {
   });
 }
 
+const ICONE_EMPRESA = L.divIcon({
+  className: "",
+  html: '<svg xmlns="http://www.w3.org/2000/svg" width="30" height="42" viewBox="0 0 24 34"><path d="M12 33s11-11.6 11-21A11 11 0 0 0 1 12c0 9.4 11 21 11 21z" fill="#0f172a" stroke="#fff" stroke-width="1.5"/><rect x="8" y="7.5" width="8" height="8" rx="1" fill="#fff"/></svg>',
+  iconSize: [30, 42],
+  iconAnchor: [15, 41],
+  tooltipAnchor: [0, -36],
+});
+
 /**
  * Enquadra os pontos quando os dados mudam (filtro novo). Recebe todos os
  * pontos, não só os visíveis: esconder um grupo pela legenda não mexe no zoom.
@@ -62,6 +80,54 @@ function Enquadrar({ pontos }: { pontos: Array<[number, number]> }) {
   return null;
 }
 
+/**
+ * Os pins dos clientes, criados direto no Leaflet: com mais de mil, um
+ * componente React por pin pesa, e o agrupamento (markercluster) é uma camada
+ * do Leaflet. O clique abre o balão, que é React (ver `Selecionado`).
+ */
+function CamadaClientes({
+  itens,
+  agrupar,
+  onClique,
+}: {
+  itens: PinColorido[];
+  agrupar: boolean;
+  onClique: (pin: PosicaoClienteMapaPin) => void;
+}) {
+  const map = useMap();
+  const cliqueRef = useRef(onClique);
+  useEffect(() => {
+    cliqueRef.current = onClique;
+  }, [onClique]);
+
+  useEffect(() => {
+    const camada: L.LayerGroup = agrupar
+      ? L.markerClusterGroup({
+          chunkedLoading: true,
+          showCoverageOnHover: false,
+          maxClusterRadius: 50,
+          disableClusteringAtZoom: 17,
+          spiderfyOnMaxZoom: true,
+        })
+      : L.layerGroup();
+    const marcadores = itens.map(({ pin, cor }) => {
+      const m = L.marker([pin.latitude, pin.longitude], {
+        icon: iconeDoPin(cor, pin.bloqueado),
+        title: pin.razaoSocial,
+      });
+      m.on("click", () => cliqueRef.current(pin));
+      return m;
+    });
+    if (agrupar) (camada as L.MarkerClusterGroup).addLayers(marcadores);
+    else marcadores.forEach((m) => camada.addLayer(m));
+    map.addLayer(camada);
+    return () => {
+      map.removeLayer(camada);
+    };
+  }, [map, itens, agrupar]);
+  return null;
+}
+
 function diasDesde(iso: string) {
   return Math.floor((Date.now() - new Date(iso).getTime()) / 86_400_000);
 }
@@ -71,87 +137,105 @@ function diasDesde(iso: string) {
  * `MapaClientesDialog`, que o importa com `ssr: false`.
  */
 export default function MapaClientesLeaflet({
-  pins,
+  itens,
   leads,
   pontos,
+  agrupar,
+  empresa,
   onAbrirPosicao,
 }: {
-  pins: PosicaoClienteMapaPin[];
+  itens: PinColorido[];
   leads: PosicaoClienteMapaLead[];
   pontos: Array<[number, number]>;
+  agrupar: boolean;
+  empresa: { nome: string; latitude: number; longitude: number } | null;
   onAbrirPosicao: (clienteId: string) => void;
 }) {
   const iconeLead = useMemo(() => iconeDoLead(), []);
-  const icones = useMemo(
-    () =>
-      Object.fromEntries(ORDEM_SITUACAO.map((s) => [s, iconeDoPin(s)])) as Record<
-        SituacaoPinCliente,
-        L.DivIcon
-      >,
-    [],
+  const [selecionado, setSelecionado] = useState<PosicaoClienteMapaPin | null>(null);
+  const grupoDe = useMemo(
+    () => new Map(itens.map((i) => [i.pin.id, { cor: i.cor, rotulo: i.rotuloGrupo }])),
+    [itens],
   );
+  const grupoSelecionado = selecionado ? grupoDe.get(selecionado.id) : undefined;
 
   return (
-    <MapContainer
-      center={[-15.78, -47.93]}
-      zoom={4}
-      className="size-full"
-      scrollWheelZoom
-    >
+    <MapContainer center={[-15.78, -47.93]} zoom={4} className="size-full" scrollWheelZoom>
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
         maxZoom={19}
       />
       <Enquadrar pontos={pontos} />
-      {pins.map((p) => (
-        <Marker
-          key={p.id}
-          position={[p.latitude, p.longitude]}
-          icon={icones[p.situacao]}
-          title={p.razaoSocial}
+      <CamadaClientes itens={itens} agrupar={agrupar} onClique={setSelecionado} />
+
+      {empresa && (
+        <Marker position={[empresa.latitude, empresa.longitude]} icon={ICONE_EMPRESA} zIndexOffset={1000}>
+          <Tooltip>{empresa.nome}</Tooltip>
+        </Marker>
+      )}
+
+      {selecionado && (
+        <Popup
+          position={[selecionado.latitude, selecionado.longitude]}
+          offset={[0, -30]}
+          eventHandlers={{ remove: () => setSelecionado(null) }}
         >
-          <Popup>
-            <div className="min-w-48 space-y-1 text-xs">
-              <p className="font-mono text-muted-foreground">{p.codigoErp ?? "sem código"}</p>
-              <p className="text-sm font-semibold leading-tight">{p.razaoSocial}</p>
-              {p.nomeFantasia && p.nomeFantasia !== p.razaoSocial && (
-                <p className="text-muted-foreground">{p.nomeFantasia}</p>
-              )}
-              {p.municipio && (
-                <p className="text-muted-foreground">
-                  {p.municipio}
-                  {p.uf ? ` - ${p.uf}` : ""}
-                </p>
-              )}
-              <p>
-                Última compra:{" "}
-                {p.ultimaCompra ? (
-                  <strong>
-                    {dataCivilBr(p.ultimaCompra)} ({diasDesde(p.ultimaCompra)} dias)
-                  </strong>
-                ) : (
-                  <strong>nunca comprou</strong>
-                )}
+          <div className="min-w-56 space-y-1 text-xs">
+            <p className="font-mono text-muted-foreground">{selecionado.codigoErp ?? "sem código"}</p>
+            <p className="text-sm font-semibold leading-tight">{selecionado.razaoSocial}</p>
+            {selecionado.nomeFantasia && selecionado.nomeFantasia !== selecionado.razaoSocial && (
+              <p className="text-muted-foreground">{selecionado.nomeFantasia}</p>
+            )}
+            {selecionado.municipio && (
+              <p className="text-muted-foreground">
+                {selecionado.municipio}
+                {selecionado.uf ? ` - ${selecionado.uf}` : ""}
+                {" · "}
+                {selecionado.tipoPessoa === "fisica" ? "Pessoa física" : "Pessoa jurídica"}
               </p>
+            )}
+            <p>
+              Vendedor: <strong>{selecionado.vendedorNome ?? "sem vendedor"}</strong>
+            </p>
+            <p>
+              Última compra:{" "}
+              {selecionado.ultimaCompra ? (
+                <strong>
+                  {dataCivilBr(selecionado.ultimaCompra)} ({diasDesde(selecionado.ultimaCompra)} dias)
+                </strong>
+              ) : (
+                <strong>nunca comprou</strong>
+              )}
+            </p>
+            <p>
+              Venda 12 meses: <strong>{moeda(selecionado.venda12Meses)}</strong>
+            </p>
+            {selecionado.cnaeDescricao && (
+              <p className="text-muted-foreground">
+                {selecionado.cnaeCodigo} {selecionado.cnaeDescricao}
+              </p>
+            )}
+            {grupoSelecionado && (
               <p className="flex items-center gap-1.5">
                 <span
                   className="inline-block size-2.5 rounded-full"
-                  style={{ background: COR_SITUACAO[p.situacao] }}
+                  style={{ background: grupoSelecionado.cor }}
                 />
-                {SITUACAO_PIN_CLIENTE_ROTULO[p.situacao]}
+                {grupoSelecionado.rotulo}
               </p>
-              <button
-                type="button"
-                className="mt-1 font-medium text-primary hover:underline"
-                onClick={() => onAbrirPosicao(p.id)}
-              >
-                Abrir posição do cliente
-              </button>
-            </div>
-          </Popup>
-        </Marker>
-      ))}
+            )}
+            <button
+              type="button"
+              className="mt-1 font-medium text-primary hover:underline"
+              onClick={() => onAbrirPosicao(selecionado.id)}
+            >
+              Abrir posição do cliente
+            </button>
+          </div>
+        </Popup>
+      )}
+
       {leads.map((l) => (
         <Marker
           key={`lead-${l.id}`}
@@ -162,15 +246,12 @@ export default function MapaClientesLeaflet({
           <Popup>
             <div className="min-w-48 space-y-1 text-xs">
               <p className="font-medium" style={{ color: COR_LEAD }}>
-                Lead · {LEAD_TEMPERATURA_LABEL[l.temperatura]} ·{" "}
-                {LEAD_SITUACAO_LABEL[l.situacao]}
+                Lead · {LEAD_TEMPERATURA_LABEL[l.temperatura]} · {LEAD_SITUACAO_LABEL[l.situacao]}
               </p>
               <p className="text-sm font-semibold leading-tight">
                 {l.empresaInformada || l.nome || "Sem nome"}
               </p>
-              {l.empresaInformada && l.nome && (
-                <p className="text-muted-foreground">{l.nome}</p>
-              )}
+              {l.empresaInformada && l.nome && <p className="text-muted-foreground">{l.nome}</p>}
               <p className="font-mono text-muted-foreground">{l.telefone}</p>
               {l.municipio && (
                 <p className="text-muted-foreground">

@@ -70,6 +70,7 @@ export const posicaoClienteListQuerySchema = paginationQuerySchema.extend({
   comodatoBaixado: booleanQueryParam,
   /** Está com algum equipamento em comodato (saldo > 0), cadastrado ou não. */
   comodatoEmPoder: booleanQueryParam,
+  tipoPessoa: z.enum(["fisica", "juridica"]).optional().describe("Pessoa física ou jurídica"),
   /**
    * Ramo de atividade, por **prefixo** do código CNAE — o mesmo filtro da
    * listagem de Clientes. Vale o principal e os secundários: basta um bater.
@@ -149,6 +150,27 @@ export type PosicaoClienteMapaPin = {
   longitude: number;
   ultimaCompra: string | null;
   situacao: SituacaoPinCliente;
+  // Para o "Colorir por" e o balão do mapa (20/11/2026).
+  ativo: boolean;
+  bloqueado: boolean;
+  tipoPessoa: "fisica" | "juridica";
+  vendedorId: string | null;
+  vendedorNome: string | null;
+  /** Total das notas de venda dos últimos 12 meses. */
+  venda12Meses: number;
+  /** CNAE principal do cliente, quando cadastrado. */
+  cnaeCodigo: string | null;
+  cnaeDescricao: string | null;
+};
+
+/** Cliente filtrado que não tem coordenada (vazia ou 0/0): a lista do mapa. */
+export type PosicaoClienteMapaSemCoordenada = {
+  id: string;
+  codigoErp: string | null;
+  razaoSocial: string;
+  endereco: string | null;
+  municipio: string | null;
+  uf: string | null;
 };
 
 /**
@@ -181,4 +203,6 @@ export type PosicaoClienteMapa = {
   totalFiltrados: number;
   /** Mais pins que o limite: o mapa mostra só os primeiros. */
   limitado: boolean;
+  /** Os filtrados sem coordenada (até 500), para posicionar. */
+  semCoordenadas: PosicaoClienteMapaSemCoordenada[];
 };
