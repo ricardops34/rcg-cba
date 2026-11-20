@@ -51,6 +51,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { ArrowLeft, Search } from "lucide-react";
 import { ResultadoReceitaDialog, type ResultadoReceita } from "@/components/crud/cliente-receita-dialog";
 import { MapaLocal } from "@/components/mapa/mapa-local";
+import { AvisoFornecedor } from "@/components/crud/cliente-aviso-fornecedor";
 
 const LIST_ROUTE = "/cadastros/clientes";
 
@@ -443,6 +444,8 @@ export function ClienteFormContent({
           <FieldError errors={[form.formState.errors.cnpjCpf]} />
         </Field>
       </div>
+
+      <AvisoFornecedor documento={form.watch("cnpjCpf") ?? ""} />
 
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <Field data-invalid={!!form.formState.errors.razaoSocial}>

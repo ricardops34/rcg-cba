@@ -213,6 +213,25 @@ export class ClientesController {
   }
 
   @ApiOperation({
+    summary: 'Fornecedores com o mesmo CNPJ/CPF do cliente',
+    description:
+      'O cliente também é fornecedor? Procura no cadastro de fornecedores da empresa pelo ' +
+      'documento (só os dígitos). CNPJ também traz os da mesma raiz (8 primeiros dígitos, outra ' +
+      'filial), marcados com mesmoDocumento=false. Requer clientes.visualizar.',
+  })
+  @RequirePermission('clientes', 'visualizar')
+  @Get('fornecedores-por-documento/:documento')
+  fornecedoresPorDocumento(
+    @Param('documento') documento: string,
+    @CurrentUser() user: AuthenticatedUser,
+  ) {
+    return this.service.fornecedoresPorDocumento(
+      user.empresaAtivaId,
+      documento,
+    );
+  }
+
+  @ApiOperation({
     summary: 'Atualizar clientes pela Receita em lote',
     description:
       'Consulta na Receita (MinhaReceita) o CNPJ de cada cliente **ativo** do escopo, a ~1/s, ' +

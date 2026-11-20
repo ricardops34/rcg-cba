@@ -29,6 +29,7 @@ import type {
   ClienteUpdate,
   PosicaoClienteListQuery,
   PosicaoClienteMapa,
+  ClienteFornecedorVinculo,
   PosicaoClienteMapaQuery as PosicaoClienteFiltro,
   PosicaoClienteListRow,
 } from '@plataforma/contracts';
@@ -1554,6 +1555,57 @@ export class ClientesService {
       semConsumoAplicaveis: resumir(aplicaveis),
       semCompra30Dias: resumir(semCompra),
     };
+  }
+
+  /**
+   * O cliente também é fornecedor? (pedido do usuário, 20/11/2026). Compara só
+   * os dígitos do documento, porque cada cadastro pode guardar com ou sem
+   * máscara. CNPJ traz também a mesma raiz (8 primeiros dígitos): outra filial
+   * do mesmo grupo, marcada como `mesmoDocumento: false`.
+   */
+  fornecedoresPorDocumento(
+    empresaId: string,
+    documento: string,
+  ): Promise<ClienteFornecedorVinculo[]> {
+    const digitos = documento.replace(/\D/g, '');
+    if (digitos.length !== 11 && digitos.length !== 14) {
+      return Promise.resolve([]);
+    }
+    const raiz = digitos.length === 14 ? digitos.slice(0, 8) : null;
+    return this.prisma.withTenant(empresaId, async (tx) => {
+      const linhas = await tx.$queryRaw<
+        Array<{
+          id: string;
+          codigoErp: string | null;
+          razaoSocial: string;
+          nomeFantasia: string | null;
+          cnpjCpf: string;
+          municipio: string | null;
+          uf: string | null;
+          ativo: boolean;
+          mesmoDocumento: boolean;
+        }>
+      >(Prisma.sql`
+        SELECT f.id, f."codigoErp", f."razaoSocial", f."nomeFantasia", f."cnpjCpf",
+               f."municipio", f."uf", f."ativo",
+               regexp_replace(f."cnpjCpf", '[^0-9]', '', 'g') = ${digitos} AS "mesmoDocumento"
+        FROM fornecedores f
+        WHERE f."empresaId" = ${empresaId} AND f."deletedAt" IS NULL
+          AND f."cnpjCpf" IS NOT NULL
+          AND (
+            regexp_replace(f."cnpjCpf", '[^0-9]', '', 'g') = ${digitos}
+            ${
+              raiz
+                ? Prisma.sql`OR (length(regexp_replace(f."cnpjCpf", '[^0-9]', '', 'g')) = 14
+                     AND left(regexp_replace(f."cnpjCpf", '[^0-9]', '', 'g'), 8) = ${raiz})`
+                : Prisma.empty
+            }
+          )
+        ORDER BY 9 DESC, f."razaoSocial"
+        LIMIT 20
+      `);
+      return linhas;
+    });
   }
 
   /**

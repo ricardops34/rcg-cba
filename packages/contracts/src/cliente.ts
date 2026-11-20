@@ -220,6 +220,23 @@ export const CLIENTE_EXAMPLE: Cliente = {
 // que precisa localizar/filtrar até vendedor bloqueado que ainda tenha
 // clientes na carteira. Sem o parâmetro, comportamento igual a sempre foi
 // (só vendedores ativos, sem exigir cliente).
+/**
+ * Fornecedor com o mesmo documento do cliente (GET
+ * /clientes/fornecedores-por-documento/:documento, 20/11/2026). CNPJ traz
+ * também a mesma raiz — outra filial —, com `mesmoDocumento: false`.
+ */
+export type ClienteFornecedorVinculo = {
+  id: string;
+  codigoErp: string | null;
+  razaoSocial: string;
+  nomeFantasia: string | null;
+  cnpjCpf: string;
+  municipio: string | null;
+  uf: string | null;
+  ativo: boolean;
+  mesmoDocumento: boolean;
+};
+
 export const vendedoresEscopoQuerySchema = z.object({
   apenasComCliente: booleanQueryParam,
   // Facetas irmãs já selecionadas no filtro (Posição de Cliente/Clientes) —
