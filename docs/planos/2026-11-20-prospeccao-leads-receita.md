@@ -215,3 +215,16 @@ Saiu do GitHub (arquivado) para o Codeberg: `codeberg.org/cuducos/minha-receita`
      passa a ser um fork a manter a cada versão nova do projeto.
   Recomendação: começar pelo caminho 1, que não exige manter fork, e partir para o 2
   se o pico de disco da carga for o problema.
+
+**Decisão do usuário (2026-11-20): a instância própria é de consumo exclusivo da
+plataforma.** Consequências:
+
+- **Sem trava de busca:** `SEARCH_SCAN_GUARD` fica sem valor. Com a fonte própria, a
+  coleta busca vários CNAEs e municípios de uma vez, sem pausa entre buscas nem a
+  espera de 61 s, e com teto maior (definir quando a base existir).
+- **Sem acesso de fora:** o serviço não ganha rota no Traefik nem porta publicada.
+  Só a API da plataforma fala com ele, pela rede interna do Docker
+  (`MINHARECEITA_BASE_URL=http://<serviço>:<porta>`). Assim o "exclusivo" é garantido
+  pela rede, não por combinação.
+- A administração (mês carregado, limpeza, recarga) passa pela API da plataforma, em
+  Administração > Base da Receita, nunca acessando o serviço diretamente.
