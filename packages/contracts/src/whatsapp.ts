@@ -131,14 +131,11 @@ export const WHATSAPP_AVISO_NAO_OFICIAL =
 export const WHATSAPP_AVISO_NUMERO_PARTICULAR =
   "Conecte só um número fornecido pela empresa. Nunca pareie o seu número " +
   "pessoal: a partir da conexão, todo o conteúdo dele passa a ser tratado " +
-  "como atendimento — gravado na plataforma e visível ao seu supervisor.";
+  "como atendimento.";
 
 export const WHATSAPP_ACEITE_TEXTO =
   "Este número é seu, mas foi fornecido pela empresa para o atendimento de " +
-  "clientes — não o use para conversas pessoais. Todas as conversas deste " +
-  "número são monitoradas: " +
-  "ficam gravadas na plataforma, inclusive as de contatos ainda não vinculados " +
-  "a um cliente, e podem ser consultadas pelo seu supervisor e pelo gerente.";
+  "clientes — não o use para conversas pessoais.";
 
 // --------------------------------------------------------------------------
 // Configuração da empresa (Configurações > WhatsApp)
