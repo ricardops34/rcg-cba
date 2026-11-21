@@ -1,0 +1,156 @@
+From a3734857c61a73e0618cdfccbdf907c3e3f0b0c4 Mon Sep 17 00:00:00 2001
+From: ricardops <ricardops34@hotmail.com>
+Date: Sat, 21 Nov 2026 03:46:08 -0400
+Subject: [PATCH] =?UTF-8?q?Download=20recusa=20a=20p=C3=A1gina=20de=20reje?=
+ =?UTF-8?q?i=C3=A7=C3=A3o=20do=20firewall=20da=20Receita=20(patch=20da=20p?=
+ =?UTF-8?q?lataforma)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ cmd/controle.go                               | 10 +++
+ download/rejeicao_test.go                     | 73 +++++++++++++++++++
+ .../cuducos.me/chunk/downloader.go            | 13 +++-
+ 3 files changed, 95 insertions(+), 1 deletion(-)
+ create mode 100644 download/rejeicao_test.go
+
+diff --git a/cmd/controle.go b/cmd/controle.go
+index 679812d..d71707d 100644
+--- a/cmd/controle.go
++++ b/cmd/controle.go
+@@ -311,6 +311,16 @@ func (c *controle) executarCarga() {
+ 			break
+ 		}
+ 		c.logLinha(fmt.Sprintf("Corrompidos no download: %s — baixando de novo (tentativa %d)", strings.Join(ruins, ", "), tentativa+1))
++		// O download reaproveita o arquivo existente (só trunca para o tamanho),
++		// então trecho estragado que não for regravado ficaria; apaga antes.
++		for _, r := range ruins {
++			if e := os.Remove(filepath.Join(c.dir, r)); e != nil && !os.IsNotExist(e) {
++				err = e
++			}
++		}
++		if err != nil {
++			break
++		}
+ 		err = c.baixar(mes, true)
+ 	}
+ 	if err == nil {
+diff --git a/download/rejeicao_test.go b/download/rejeicao_test.go
+new file mode 100644
+index 0000000..54617c5
+--- /dev/null
++++ b/download/rejeicao_test.go
+@@ -0,0 +1,73 @@
++package download
++
++import (
++	"bytes"
++	"crypto/rand"
++	"fmt"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"sync/atomic"
++	"testing"
++	"time"
++
++	"tangled.org/cuducos.me/chunk"
++)
++
++// Sob carga, o firewall da Receita responde 200 com a página "Request
++// Rejected" no lugar do pedaço pedido (visto em 2026-11-21: a página aparecia
++// no início de vários pedaços de 4 MiB dos zips). O download tem de recusar a
++// resposta e tentar de novo, nunca gravar a página no arquivo.
++func TestDownloadRecusaPaginaDeRejeicao(t *testing.T) {
++	conteudo := make([]byte, 3*1024+100)
++	if _, err := rand.Read(conteudo); err != nil {
++		t.Fatal(err)
++	}
++	pagina := []byte("<html><head><title>Request Rejected</title></head><body>The requested URL was rejected.</body></html>")
++	var rejeitadas, headsRejeitados atomic.Int32
++	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.Method == http.MethodHead && headsRejeitados.Add(1) <= 2 {
++			w.Header().Set("Content-Type", "text/html")
++			w.Header().Set("Content-Length", fmt.Sprint(len(pagina)))
++			w.WriteHeader(http.StatusOK)
++			return
++		}
++		rg := r.Header.Get("Range")
++		if r.Method == http.MethodGet && rg != "" && rg != "bytes=0-1023" && rejeitadas.Add(1) <= 4 {
++			w.WriteHeader(http.StatusOK)
++			w.Write(pagina)
++			return
++		}
++		http.ServeContent(w, r, "Empresas0.zip", time.Time{}, bytes.NewReader(conteudo))
++	}))
++	defer srv.Close()
++
++	dir := t.TempDir()
++	t.Setenv("CHUNK_DIR", filepath.Join(dir, ".chunk"))
++	d := chunk.DefaultDownloader()
++	d.OutputDir = dir
++	d.ChunkSize = 1024
++	d.MaxRetries = 10
++	d.WaitRetry = time.Millisecond
++	d.ConcurrencyPerServer = 1
++	d.Client = nil
++	for s := range d.Download(srv.URL + "/Empresas0.zip") {
++		if s.Error != nil {
++			t.Fatalf("download falhou: %v", s.Error)
++		}
++	}
++	got, err := os.ReadFile(filepath.Join(dir, "Empresas0.zip"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if headsRejeitados.Load() < 3 {
++		t.Fatalf("o tamanho devia ter sido pedido de novo depois das rejeições, HEADs: %d", headsRejeitados.Load())
++	}
++	if rejeitadas.Load() < 4 {
++		t.Fatalf("o servidor de teste devia ter rejeitado 4 pedidos, rejeitou %d", rejeitadas.Load())
++	}
++	if !bytes.Equal(got, conteudo) {
++		t.Fatal(fmt.Sprintf("arquivo gravado difere do original (contém a página? %v)", bytes.Contains(got, pagina[:20])))
++	}
++}
+diff --git a/vendor/tangled.org/cuducos.me/chunk/downloader.go b/vendor/tangled.org/cuducos.me/chunk/downloader.go
+index f1b5fc4..5666623 100644
+--- a/vendor/tangled.org/cuducos.me/chunk/downloader.go
++++ b/vendor/tangled.org/cuducos.me/chunk/downloader.go
+@@ -150,11 +150,20 @@ func (d *Downloader) downloadChunkWithContext(ctx context.Context, u string, c c
+ 	if resp.StatusCode != http.StatusPartialContent && resp.StatusCode != http.StatusOK {
+ 		return nil, fmt.Errorf("got http response %s from %s", resp.Status, u)
+ 	}
++	// Patch da plataforma: sob carga, o firewall da Receita responde 200 com a
++	// página "Request Rejected" no lugar do pedaço pedido, e a página era
++	// gravada no meio do zip. 200 só vale para um pedaço que é o arquivo todo.
++	if resp.StatusCode == http.StatusOK && c.start != 0 {
++		return nil, fmt.Errorf("got http response %s instead of 206 for %s from %s", resp.Status, c.rangeHeader(), u)
++	}
+ 	var b bytes.Buffer
+ 	_, err = b.ReadFrom(resp.Body)
+ 	if err != nil {
+ 		return nil, fmt.Errorf("error reading body from %s: %w", u, err)
+ 	}
++	if int64(b.Len()) != c.size() { // patch da plataforma: pedaço incompleto ou trocado
++		return nil, fmt.Errorf("got %d bytes for %s from %s, expected %d", b.Len(), c.rangeHeader(), u, c.size())
++	}
+ 	return b.Bytes(), nil
+ }
+ 
+@@ -237,7 +246,9 @@ func (d *Downloader) getDownloadSize(ctx context.Context, u string) (int64, erro
+ 		if err := resp.Body.Close(); err != nil {
+ 			slog.Warn("error closing HTTP response body", "url", u, "error", err)
+ 		}
+-		if resp.StatusCode != 200 {
++		// Patch da plataforma: a rejeição do firewall vem como 200 em HTML, e o
++		// tamanho dela viraria o tamanho do arquivo.
++		if resp.StatusCode != 200 || strings.HasPrefix(strings.ToLower(resp.Header.Get("Content-Type")), "text/html") {
+ 			n++
+ 			if n >= d.MaxRetries {
+ 				return 0, fmt.Errorf("got unexpected http response status for %s: %s", u, resp.Status)
+-- 
+2.55.0.windows.2
+

@@ -1938,9 +1938,10 @@ volta na próxima mensagem desse tipo.
 ## Base própria da Receita (minha-receita) **[dev: subiu e a carga roda em 2026-11-20; VPS: escrito, não rodado]**
 
 Plano: `docs/planos/2026-11-20-prospeccao-leads-receita.md`. É o minha-receita
-(MIT) com dois patches da plataforma (`docker/minha-receita/patches`): o filtro da
-carga (só as UFs e situações escolhidas) e o serviço de controle (estado e carga,
-chamado pela API). **Uso exclusivo da plataforma:** sem Traefik e sem porta
+(MIT) com quatro patches da plataforma (`docker/minha-receita/patches`): o filtro
+da carga (só as UFs e situações escolhidas), o serviço de controle (estado e carga,
+chamado pela API), o download resiliente e a recusa da página de rejeição do
+firewall da Receita (ver "Download da Receita" abaixo). **Uso exclusivo da plataforma:** sem Traefik e sem porta
 publicada; só a API alcança, pela rede interna. A configuração fica toda em
 **Administração > Base da Receita** (estados, situações, URLs, token, fonte e
 limites da coleta).
@@ -1958,6 +1959,15 @@ docker compose -f docker/docker-compose.dev.yml up -d --no-deps minha-receita-db
 docker compose -f docker/docker-compose.dev.yml up -d --no-deps api
 ```
 
+Reconstruir a imagem depois de mexer nos patches: o `docker compose build` pede
+`--allow=fs.read=...` (o Dockerfile fica fora do contexto padrão); use o
+`docker build` direto, da raiz do repositório:
+
+```bash
+docker build -f docker/minha-receita/Dockerfile -t plataforma-minha-receita:dev .
+docker compose -f docker/docker-compose.dev.yml up -d --no-deps --force-recreate minha-receita minha-receita-controle
+```
+
 **Não recrie o `minha-receita-controle` com uma carga rodando:** a carga é um
 processo filho dele e morre junto (o estado volta como "interrompida").
 
@@ -1967,6 +1977,29 @@ resto do dev lento. Na VPS, programar a carga para fora do horário de uso.
 
 Disco em dev: a carga baixa 7,9 GB (2026-11) e usa ~15 GB de temporários no volume;
 apaga tudo ao terminar. A máquina de dev tinha 164 GB livres em 2026-11-20.
+
+### Download da Receita: firewall e instabilidade **[visto em dev, 2026-11-20/21]**
+
+O servidor da Receita (`arquivos.receitafederal.gov.br`) oscila: recusa conexão
+(`connect: connection refused`) por minutos seguidos e, sob carga, o firewall
+dele responde **200 com a página "Request Rejected"** (com um "support ID") no
+lugar do pedaço do arquivo. A biblioteca de download original aceitava qualquer
+200 e gravava a página dentro do zip: três cargas seguidas morreram em
+"zip corrompido" (`not a valid zip file`, `flate: corrupt input`), e a página
+aparecia no início de vários pedaços de 4 MiB.
+
+O que a imagem faz desde então:
+- **Patch 0004** (corrige a biblioteca em `vendor/`): pedaço só vale com 206 e o
+  tamanho exato; tamanho do arquivo vindo em HTML é recusado. Recusado = nova
+  tentativa, contando nas tentativas por pedaço.
+- **Patch 0003**: conexões, tentativas por pedaço e espera entre elas vêm de
+  Administração > Base da Receita (padrão 4 / 30 / 15 s). Se a carga cair por
+  download, aumentar tentativas e espera antes de mais conexões — conexão a mais
+  é o que provoca o firewall.
+- **Controle**: confere o CRC de todos os zips antes do `transform`; apaga os
+  defeituosos e baixa de novo (até 3 rodadas). O progresso do download fica no
+  volume (`CHUNK_DIR=/dados/.chunk`) e é apagado com os zips, para nenhuma carga
+  reaproveitar pedaço de outra.
 
 ### VPS **[escrito em 2026-11-20, não rodado — confirmar cada passo]**
 
