@@ -1,4 +1,4 @@
-From 00316ac8ae7737dd8a857a59253459a6b6fa41ac Mon Sep 17 00:00:00 2001
+From 14827c1b91b9db536ec92188c2894ccde5c97725 Mon Sep 17 00:00:00 2001
 From: plataforma <plataforma@local>
 Date: Fri, 20 Nov 2026 22:37:35 -0400
 Subject: [PATCH] =?UTF-8?q?Servi=C3=A7o=20de=20controle=20interno:=20estad?=
@@ -9,9 +9,9 @@ Content-Transfer-Encoding: 8bit
 
 ---
  cmd/cmd.go           |   1 +
- cmd/controle.go      | 443 +++++++++++++++++++++++++++++++++++++++++++
- cmd/controle_test.go |  76 ++++++++
- 3 files changed, 520 insertions(+)
+ cmd/controle.go      | 489 +++++++++++++++++++++++++++++++++++++++++++
+ cmd/controle_test.go | 124 +++++++++++
+ 3 files changed, 614 insertions(+)
  create mode 100644 cmd/controle.go
  create mode 100644 cmd/controle_test.go
 
@@ -29,10 +29,10 @@ index c984653..8231f6a 100644
  		dropCmd,
 diff --git a/cmd/controle.go b/cmd/controle.go
 new file mode 100644
-index 0000000..caccf58
+index 0000000..68435f2
 --- /dev/null
 +++ b/cmd/controle.go
-@@ -0,0 +1,443 @@
+@@ -0,0 +1,489 @@
 +package cmd
 +
 +// Serviço de controle — patch da plataforma (não existe no projeto original).
@@ -105,6 +105,8 @@ index 0000000..caccf58
 +	recente   string
 +	recenteEm time.Time
 +	log       *slog.Logger
++	// rodarFn substitui a execução das etapas nos testes.
++	rodarFn func(etapa string, env []string, args ...string) error
 +}
 +
 +func (c *controle) caminhoEstado() string { return filepath.Join(c.dir, arquivoEstadoControle) }
@@ -189,6 +191,50 @@ index 0000000..caccf58
 +	return nil
 +}
 +
++// Retentativas do download: o servidor da Receita recusa conexão no meio do
++// caminho (2026-11-21, dev: "connect: connection refused" no chunk #95). O
++// download original retoma de onde parou, então tentar de novo só busca o que
++// falta.
++var (
++	tentativasDownload = 5
++	esperaDownload     = 2 * time.Minute
++)
++
++func (c *controle) baixar(mes string, restart bool) error {
++	args := []string{"download", "--directory", c.dir}
++	if restart {
++		args = append(args, "--restart")
++	}
++	args = append(args, mes)
++	var err error
++	for t := 1; t <= tentativasDownload; t++ {
++		run := c.rodar
++		if c.rodarFn != nil {
++			run = c.rodarFn
++		}
++		if err = run("download", nil, args...); err == nil {
++			return nil
++		}
++		if t < tentativasDownload {
++			c.logLinha(fmt.Sprintf("Download falhou (tentativa %d de %d): %v — nova tentativa em %s", t, tentativasDownload, err, esperaDownload))
++			time.Sleep(esperaDownload)
++			// A retomada continua o que já veio; só a primeira chamada recomeça.
++			args = slicesSemRestart(args)
++		}
++	}
++	return err
++}
++
++func slicesSemRestart(args []string) []string {
++	out := make([]string, 0, len(args))
++	for _, a := range args {
++		if a != "--restart" {
++			out = append(out, a)
++		}
++	}
++	return out
++}
++
 +// verificarZips lê por inteiro cada arquivo de cada zip baixado: o pacote
 +// archive/zip confere o CRC no fim da leitura, então zip corrompido aparece
 +// aqui, e não horas depois no meio do transform. Devolve os zips com defeito.
@@ -263,7 +309,7 @@ index 0000000..caccf58
 +	}
 +	err := c.limparArquivos()
 +	if err == nil {
-+		err = c.rodar("download", nil, "download", "--directory", c.dir, mes)
++		err = c.baixar(mes, false)
 +	}
 +	// O download em partes já entregou zip corrompido (2026-11-20, dev:
 +	// "inflate error" no meio dos Estabelecimentos), e o transform só descobre
@@ -279,7 +325,7 @@ index 0000000..caccf58
 +			break
 +		}
 +		c.logLinha(fmt.Sprintf("Corrompidos no download: %s — baixando de novo (tentativa %d)", strings.Join(ruins, ", "), tentativa+1))
-+		err = c.rodar("download", nil, "download", "--directory", c.dir, "--restart", mes)
++		err = c.baixar(mes, true)
 +	}
 +	if err == nil {
 +		err = c.rodar("transform", filtro, "transform", "--directory", c.dir, "--clean-up", "--skip-graph")
@@ -478,19 +524,21 @@ index 0000000..caccf58
 +}
 diff --git a/cmd/controle_test.go b/cmd/controle_test.go
 new file mode 100644
-index 0000000..10ef075
+index 0000000..d0f9dfe
 --- /dev/null
 +++ b/cmd/controle_test.go
-@@ -0,0 +1,76 @@
+@@ -0,0 +1,124 @@
 +package cmd
 +
 +import (
 +	"archive/zip"
 +	"bytes"
++	"errors"
 +	"log/slog"
 +	"math/rand"
 +	"os"
 +	"path/filepath"
++	"slices"
 +	"testing"
 +)
 +
@@ -556,5 +604,51 @@ index 0000000..10ef075
 +	}
 +	if len(ruins) != 1 || ruins[0] != "Empresas0.zip" {
 +		t.Fatalf("esperava só Empresas0.zip, veio %v", ruins)
++	}
++}
++
++func TestBaixarTentaDeNovoERetoma(t *testing.T) {
++	esperaOriginal := esperaDownload
++	esperaDownload = 0
++	defer func() { esperaDownload = esperaOriginal }()
++
++	var chamadas [][]string
++	c := &controle{dir: t.TempDir(), log: slog.Default()}
++	c.rodarFn = func(_ string, _ []string, args ...string) error {
++		chamadas = append(chamadas, append([]string(nil), args...))
++		if len(chamadas) < 3 {
++			return errors.New("connection refused")
++		}
++		return nil
++	}
++	if err := c.baixar("2026-11", true); err != nil {
++		t.Fatalf("devia ter conseguido na terceira: %v", err)
++	}
++	if len(chamadas) != 3 {
++		t.Fatalf("esperava 3 tentativas, foram %d", len(chamadas))
++	}
++	if !slices.Contains(chamadas[0], "--restart") {
++		t.Error("a primeira tentativa pedida com restart devia recomeçar")
++	}
++	for _, ch := range chamadas[1:] {
++		if slices.Contains(ch, "--restart") {
++			t.Error("as retentativas devem retomar, não recomeçar")
++		}
++	}
++}
++
++func TestBaixarDesisteDepoisDoLimite(t *testing.T) {
++	esperaOriginal := esperaDownload
++	esperaDownload = 0
++	defer func() { esperaDownload = esperaOriginal }()
++
++	n := 0
++	c := &controle{dir: t.TempDir(), log: slog.Default()}
++	c.rodarFn = func(string, []string, ...string) error { n++; return errors.New("connection refused") }
++	if err := c.baixar("2026-11", false); err == nil {
++		t.Fatal("devia falhar depois de esgotar as tentativas")
++	}
++	if n != tentativasDownload {
++		t.Fatalf("esperava %d tentativas, foram %d", tentativasDownload, n)
 +	}
 +}
