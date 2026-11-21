@@ -29,3 +29,24 @@ hierarquia de quem acessa (escopo de carteira, `resolverEscopoVendedores`).
   administradores (migration `20261120200000_evolucao_vendas`).
 - **Sem exportação** (decisão do usuário, 2026-11-20): no módulo Comercial só o
   Orçamento exporta. Exportar fica nas Consultas.
+
+## Gráficos em Apache ECharts (2026-11-20)
+
+Decisão do usuário: os gráficos desta tela passam a usar o **Apache ECharts**
+(`echarts` 6.1.0, licença Apache 2.0), escolhido pelas animações. Recharts/shadcn
+e Nivo foram comparados e animam bem menos.
+
+- Base comum em `apps/web/src/components/graficos/echarts.tsx`: import por partes
+  (barra, linha, pizza), renderer SVG, cores lidas das variáveis do tema (`--viz-N`,
+  `--border`...) e recalculadas na troca claro/escuro, e tooltip com texto escapado
+  (`escaparHtml`), porque o tooltip do ECharts é HTML.
+- **Evolução mensal:** as mesmas 4 formas (linhas, área, barras agrupadas e
+  empilhadas), com a troca entre elas animada. A legenda é clicável e liga/desliga
+  a série.
+- **Participação no total:** barras ou rosca, com a troca animada. Mostra as mesmas
+  6 + "Outros" do gráfico mensal, com as mesmas cores (antes eram os 10 maiores).
+- Quem pede "reduzir movimento" no sistema operacional fica sem animação.
+- **As Consultas continuam com o SVG próprio** (`consultas/grafico-evolucao.tsx`).
+  Migrar depende da conferência visual desta tela.
+
+Pendente: conferência visual (claro e escuro, celular) e publicar.

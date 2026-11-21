@@ -32,11 +32,16 @@ import {
   type FiltroExtra,
 } from "@/components/consultas/filtros-consulta";
 import {
-  GraficoEvolucao,
   TIPOS_GRAFICO_EVOLUCAO,
   type SerieEvolucao,
   type TipoGraficoEvolucao,
 } from "@/components/consultas/grafico-evolucao";
+import {
+  GraficoEvolucaoMensal,
+  GraficoParticipacao,
+  type FormaParticipacao,
+  type ItemParticipacao,
+} from "@/components/comercial/evolucao-vendas-graficos";
 import { TODOS, percentualDoTotal } from "@/components/consultas/periodo-consulta";
 
 const MAX_SERIES = 6;
@@ -79,6 +84,7 @@ export function EvolucaoVendasView() {
   const [busca, setBusca] = useState("");
   const [abertos, setAbertos] = useState<Set<string>>(new Set());
   const [tipoGrafico, setTipoGrafico] = useState<TipoGraficoEvolucao>("linha");
+  const [formaParticipacao, setFormaParticipacao] = useState<FormaParticipacao>("barras");
 
   const estado = useFiltrosConsulta(CHAVES_EXTRAS);
   const { filtros, rascunho, setRascunho, abrirCortina, quantidadeFiltros, queryPadrao } = estado;
@@ -170,6 +176,18 @@ export function EvolucaoVendasView() {
     }
     return principais;
   }, [data]);
+
+  // Participação no total: as mesmas entidades e cores do gráfico mensal.
+  const participacao = useMemo<ItemParticipacao[]>(
+    () =>
+      series.map((s) => ({
+        id: s.id,
+        nome: s.nome,
+        valor: s.valores.reduce((a, v) => a + v, 0),
+        cor: s.cor,
+      })),
+    [series],
+  );
 
   /** Chaves de todos os nós que expandem — para o Expandir tudo. */
   const chavesExpansiveis = useMemo(() => {
@@ -339,13 +357,7 @@ export function EvolucaoVendasView() {
                 />
               </div>
               {series.length ? (
-                <GraficoEvolucao
-                  meses={meses}
-                  series={series}
-                  formato="moeda"
-                  rotuloValor="Venda"
-                  tipo={tipoGrafico}
-                />
+                <GraficoEvolucaoMensal meses={meses} series={series} tipo={tipoGrafico} />
               ) : (
                 <p className="text-sm text-muted-foreground">Nenhuma venda no período.</p>
               )}
@@ -353,35 +365,34 @@ export function EvolucaoVendasView() {
           </Card>
           <Card>
             <CardContent className="space-y-2">
-              <p className="text-sm font-semibold">Participação no total</p>
-              {data.linhas.slice(0, 10).map((l, i) => {
-                const pct = data.total ? (l.total / data.total) * 100 : 0;
-                return (
-                  <div key={l.id} className="space-y-0.5">
-                    <div className="flex justify-between gap-2 text-xs">
-                      <span className="truncate" title={l.descricao}>
-                        {l.descricao}
-                      </span>
-                      <span className="shrink-0 tabular-nums text-muted-foreground">
-                        {percentualDoTotal(l.total, data.total)}
-                      </span>
-                    </div>
-                    <div className="h-2 rounded bg-muted">
-                      <div
-                        className="h-full rounded"
-                        style={{
-                          width: `${Math.max(pct, 0.5)}%`,
-                          background:
-                            i < MAX_SERIES ? `var(--viz-${i + 1})` : "var(--muted-foreground)",
-                        }}
-                      />
-                    </div>
-                  </div>
-                );
-              })}
-              {data.linhas.length > 10 && (
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-sm font-semibold">Participação no total</p>
+                <Tabs
+                  value={formaParticipacao}
+                  onValueChange={(v) => setFormaParticipacao(v as FormaParticipacao)}
+                >
+                  <TabsList className="h-8">
+                    <TabsTrigger value="barras" className="text-xs">
+                      Barras
+                    </TabsTrigger>
+                    <TabsTrigger value="rosca" className="text-xs">
+                      Rosca
+                    </TabsTrigger>
+                  </TabsList>
+                </Tabs>
+              </div>
+              {participacao.length ? (
+                <GraficoParticipacao
+                  itens={participacao}
+                  total={data.total}
+                  forma={formaParticipacao}
+                />
+              ) : (
+                <p className="text-sm text-muted-foreground">Nenhuma venda no período.</p>
+              )}
+              {data.linhas.length > MAX_SERIES && (
                 <p className="text-xs text-muted-foreground">
-                  Os 10 maiores de {data.linhas.length}.
+                  Os {MAX_SERIES} maiores de {data.linhas.length}; o resto está em Outros.
                 </p>
               )}
             </CardContent>
