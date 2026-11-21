@@ -189,6 +189,22 @@ depois de cada limpeza.
     de dev para a conferência visual.
   - Coleta que estava rodando quando a API reiniciou é marcada como interrompida.
     Rodar de novo continua sem repetir.
+- **Fase 1 (base própria): feita e verificada em dev em 21/11.** Administração > Base
+  da Receita (rotina `base-receita`), stack `receita` e patches em
+  `docker/minha-receita`.
+  - **Carga completa:** mês 2026-11, MS e MT, só ativas. Resultado: 969.239 empresas e
+    banco de 2,3 GB, em 71 min.
+  - **As quatro cargas anteriores caíram no download.** O firewall da Receita, sob
+    carga, responde "200 Request Rejected" no lugar do pedaço do arquivo, e a
+    biblioteca de download gravava essa página no zip. A correção é o patch 0004. O
+    detalhe está no runbook ("Download da Receita").
+  - **Coleta pela fonte própria:** 3 municípios × 3 CNAEs numa busca só. Leu 267 em
+    ~1 s; importou 223, com 10 já clientes e 34 já leads. Em dev, a fonte da RCG ficou
+    em `propria`.
+  - **Telas conferidas logado:** Base da Receita e Prospecção de Leads. Na RCG de dev,
+    a Prospecção aparece sem o botão de coleta, porque a empresa não tem o módulo CRM.
+  - **Falta:** rodar a stack na VPS (procedimento escrito, não rodado).
+- **Fases 4 a 6 (distribuição, conversão, indicadores): não começadas.**
 
 ## Base própria: o que a instância nossa permite (conferido no código, 2026-11-20)
 
