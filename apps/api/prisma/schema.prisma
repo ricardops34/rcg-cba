@@ -3025,6 +3025,11 @@ model Municipio {
   codigoErp  String?
   descricao  String
   codigoIbge String?
+  /// Código municipal da Receita (TOM/SIAFI, 4 dígitos), o que vem no cadastro
+  /// de CNPJ. Preenchido por Administração > Base da Receita > Atualizar
+  /// referências (tabela do Tesouro e, para município novo, a da Receita) —
+  /// docs/planos/2026-11-21-tabelas-referencia-compartilhadas.md.
+  codigoReceita String?
   ativo      Boolean @default(true)
 
   createdAt DateTime  @default(now())
@@ -3037,8 +3042,10 @@ model Municipio {
   estado          Estado?          @relation(fields: [estadoId], references: [id])
   ceps            Cep[]
   vendedorRegioes VendedorRegiao[]
+  leads           Lead[]
 
   @@unique([codigoErp])
+  @@index([codigoReceita])
   // Chave natural do sync do IBGE e do casamento com o município que a
   // MinhaReceita/ViaCEP devolvem por código. Nulo é permitido (Postgres não
   // colide NULLs no índice único) — município cadastrado à mão fica de fora.
@@ -3097,9 +3104,28 @@ model Cnae {
   deletedBy String?
 
   clientes ClienteCnae[]
+  leads    LeadCnae[]
 
   @@unique([codigoErp])
   @@map("cnaes")
+}
+
+/// Natureza jurídica da Receita (tabela de referência global, sem empresaId).
+/// Preenchida por Administração > Base da Receita > Atualizar referências.
+model NaturezaJuridica {
+  id        String  @id @default(uuid())
+  /// Código da Receita, 4 dígitos (ex.: "2062").
+  codigo    String
+  descricao String
+  ativo     Boolean @default(true)
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  leads Lead[]
+
+  @@unique([codigo])
+  @@map("naturezas_juridicas")
 }
 
 // CNAEs de um cliente (principal + secundárias), apontando para a referência
@@ -5714,6 +5740,10 @@ model Lead {
   municipio                String?
   uf                       String?
   cep                      String?
+  /// Lead da Receita: o município e a natureza jurídica apontam para as
+  /// tabelas de referência (o texto acima fica para o lead informado à mão).
+  municipioId              String?
+  naturezaJuridicaId       String?
   latitude                 Float?
   longitude                Float?
   coordenadasConsultadasEm DateTime?
@@ -5723,10 +5753,13 @@ model Lead {
 
   empresa Empresa @relation(fields: [empresaId], references: [id])
   coleta        LeadColeta?        @relation(fields: [coletaId], references: [id], onDelete: SetNull)
+  municipioRef  Municipio?         @relation(fields: [municipioId], references: [id])
+  naturezaRef   NaturezaJuridica?  @relation(fields: [naturezaJuridicaId], references: [id])
   cnaes         LeadCnae[]
   distribuicoes LeadDistribuicao[]
 
   @@unique([empresaId, conversaId])
+  @@index([empresaId, municipioId])
   @@unique([empresaId, cnpj])
   @@index([empresaId, situacao, createdAt])
   @@index([empresaId, origem])
@@ -5740,8 +5773,9 @@ enum LeadOrigem {
   manual
 }
 
-/// CNAEs do lead (principal + secundários), pelo código da Receita — sem
-/// apontar para a referência `cnaes`, que pode não ter o código carregado.
+/// CNAEs do lead (principal + secundários), pelo código da Receita. Aponta
+/// para a referência `cnaes` quando ela tem o código (a Receita ainda usa
+/// alguns que o IBGE não publica mais; Atualizar referências os inclui).
 model LeadCnae {
   id        String  @id @default(uuid())
   empresaId String
@@ -5749,10 +5783,12 @@ model LeadCnae {
   /// Código da subclasse, só dígitos (ex.: "4711302").
   codigo    String
   descricao String?
+  cnaeId    String?
   principal Boolean @default(false)
 
   empresa Empresa @relation(fields: [empresaId], references: [id])
   lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+  cnae    Cnae?   @relation(fields: [cnaeId], references: [id])
 
   @@unique([leadId, codigo])
   @@index([empresaId, codigo])

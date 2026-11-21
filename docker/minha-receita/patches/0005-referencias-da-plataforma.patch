@@ -1,0 +1,643 @@
+From e7c04a4b175f442b7006f5f81ec06f72f2c0c74c Mon Sep 17 00:00:00 2001
+From: ricardops <ricardops34@hotmail.com>
+Date: Sat, 21 Nov 2026 07:40:10 -0400
+Subject: [PATCH] =?UTF-8?q?Refer=C3=AAncias=20da=20plataforma:=20tabmun=20?=
+ =?UTF-8?q?da=20plataforma=20na=20carga,=20GET=20/referencias=20e=20GET=20?=
+ =?UTF-8?q?/ceps=20(patch=20da=20plataforma)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ cmd/controle.go                     | 151 ++++++++++++++++++++-
+ cmd/controle_referencias_test.go    |  72 ++++++++++
+ download/referencias.go             | 198 ++++++++++++++++++++++++++++
+ download/referencias_test.go        |  54 ++++++++
+ transform/tabmun_plataforma_test.go |  58 ++++++++
+ 5 files changed, 532 insertions(+), 1 deletion(-)
+ create mode 100644 cmd/controle_referencias_test.go
+ create mode 100644 download/referencias.go
+ create mode 100644 download/referencias_test.go
+ create mode 100644 transform/tabmun_plataforma_test.go
+
+diff --git a/cmd/controle.go b/cmd/controle.go
+index d71707d..f18f76a 100644
+--- a/cmd/controle.go
++++ b/cmd/controle.go
+@@ -19,6 +19,14 @@ package cmd
+ // --skip-graph` com MR_FILTRO_UFS/MR_FILTRO_SITUACOES. Depois de carregar, os
+ // arquivos baixados são apagados para devolver o espaço (~8 GB). Durante a
+ // carga a base fica vazia/incompleta: a coleta de leads espera ela terminar.
++//
++// Tabelas de referência (docs/planos/2026-11-21-tabelas-referencia-compartilhadas.md):
++// a plataforma guarda o código da Receita nos municípios e manda os pares
++// código da Receita → IBGE na carga; o controle os grava como
++// tabmun-plataforma.csv, que o transform lê junto com o tabmun.csv do Tesouro
++// (todo arquivo que começa com "tabmun"). Assim município novo, que o Tesouro
++// ainda não traz, sai com IBGE. GET /referencias entrega as tabelas da Receita
++// e do Tesouro; GET /ceps, os CEPs da base para a tabela de CEPs da plataforma.
+ 
+ import (
+ 	"archive/zip"
+@@ -74,6 +82,8 @@ type controle struct {
+ 	recente   string
+ 	recenteEm time.Time
+ 	log       *slog.Logger
++	// Pares código da Receita → IBGE da última carga pedida (não vão para o estado).
++	municipios []municipioCarga
+ 	// rodarFn substitui a execução das etapas nos testes.
+ 	rodarFn func(etapa string, env []string, args ...string) error
+ }
+@@ -323,6 +333,9 @@ func (c *controle) executarCarga() {
+ 		}
+ 		err = c.baixar(mes, true)
+ 	}
++	if err == nil {
++		err = c.gravarTabmunPlataforma()
++	}
+ 	if err == nil {
+ 		err = c.rodar("transform", filtro, "transform", "--directory", c.dir, "--clean-up", "--skip-graph")
+ 	}
+@@ -367,6 +380,83 @@ func (c *controle) mesMaisRecente() string {
+ 	return r
+ }
+ 
++// municipioCarga é um par código da Receita → IBGE da tabela da plataforma.
++type municipioCarga struct {
++	CodigoReceita string `json:"codigoReceita"`
++	UF            string `json:"uf"`
++	IBGE          int    `json:"ibge"`
++}
++
++var reCodigoReceita = regexp.MustCompile(`^\d{4}$`)
++
++const arquivoTabmunPlataforma = "tabmun-plataforma.csv"
++
++// gravarTabmunPlataforma grava os pares no formato do tabmun.csv do Tesouro
++// (TOM;CNPJ;NOME;UF;IBGE); o transform só lê o IBGE (quinta coluna).
++func (c *controle) gravarTabmunPlataforma() error {
++	c.mu.Lock()
++	ms := c.municipios
++	c.mu.Unlock()
++	if len(ms) == 0 {
++		return nil
++	}
++	var b strings.Builder
++	for _, m := range ms {
++		fmt.Fprintf(&b, "%s;;;%s;%d\n", m.CodigoReceita, m.UF, m.IBGE)
++	}
++	if err := os.WriteFile(filepath.Join(c.dir, arquivoTabmunPlataforma), []byte(b.String()), 0o644); err != nil {
++		return err
++	}
++	c.logLinha(fmt.Sprintf("Municípios da plataforma: %d pares código da Receita → IBGE", len(ms)))
++	return nil
++}
++
++// cepBase é um CEP da base com o endereço mais frequente entre as empresas dele.
++type cepBase struct {
++	CEP           string `json:"cep"`
++	UF            string `json:"uf"`
++	CodigoReceita string `json:"codigoReceita"`
++	Bairro        string `json:"bairro"`
++	Endereco      string `json:"endereco"`
++	Empresas      int    `json:"empresas"`
++}
++
++func (c *controle) ceps(ctx context.Context) ([]cepBase, error) {
++	pool, err := pgxpool.New(ctx, c.dbURL)
++	if err != nil {
++		return nil, err
++	}
++	defer pool.Close()
++	rows, err := pool.Query(ctx, `
++		SELECT cep, uf, codmun, bairro, endereco, total::int FROM (
++			SELECT cep, uf, codmun, bairro, endereco,
++			       sum(count(*)) OVER (PARTITION BY cep) AS total,
++			       row_number() OVER (PARTITION BY cep ORDER BY (endereco <> '') DESC, count(*) DESC) AS rn
++			FROM (
++				SELECT json->>'cep' AS cep, json->>'uf' AS uf,
++				       lpad(json->>'codigo_municipio', 4, '0') AS codmun,
++				       coalesce(json->>'bairro', '') AS bairro,
++				       trim(concat_ws(' ', nullif(json->>'descricao_tipo_de_logradouro', ''), nullif(json->>'logradouro', ''))) AS endereco
++				FROM cnpj
++				WHERE json->>'cep' ~ '^[0-9]{8}$' AND json->>'cep' <> '00000000'
++			) e
++			GROUP BY cep, uf, codmun, bairro, endereco
++		) x WHERE rn = 1`)
++	if err != nil {
++		return nil, err
++	}
++	defer rows.Close()
++	var out []cepBase
++	for rows.Next() {
++		var c cepBase
++		if err := rows.Scan(&c.CEP, &c.UF, &c.CodigoReceita, &c.Bairro, &c.Endereco, &c.Empresas); err != nil {
++			return nil, err
++		}
++		out = append(out, c)
++	}
++	return out, rows.Err()
++}
++
+ type estadoBase struct {
+ 	Mes          string `json:"mes"`
+ 	Empresas     int64  `json:"empresas"`
+@@ -423,6 +513,52 @@ func (c *controle) handler(token string) http.Handler {
+ 			"mesMaisRecente": c.mesMaisRecente(),
+ 		})
+ 	})
++	mux.HandleFunc("GET /referencias", func(w http.ResponseWriter, r *http.Request) {
++		c.mu.Lock()
++		rodando := c.carga.Rodando
++		c.mu.Unlock()
++		if rodando {
++			erroJSON(w, http.StatusConflict, "há uma carga rodando; atualize as referências depois")
++			return
++		}
++		mes := r.URL.Query().Get("mes")
++		if mes == "" {
++			mes = c.mesMaisRecente()
++		}
++		if !reMes.MatchString(mes) {
++			erroJSON(w, http.StatusBadGateway, "a Receita não informou o mês mais recente; tente de novo")
++			return
++		}
++		dir, err := os.MkdirTemp(c.dir, ".referencias-")
++		if err != nil {
++			erroJSON(w, http.StatusInternalServerError, err.Error())
++			return
++		}
++		defer os.RemoveAll(dir)
++		refs, err := download.BaixarReferencias(dir, mes)
++		if err != nil {
++			erroJSON(w, http.StatusBadGateway, "não baixou as referências: "+err.Error())
++			return
++		}
++		responderJSON(w, http.StatusOK, refs)
++	})
++	mux.HandleFunc("GET /ceps", func(w http.ResponseWriter, r *http.Request) {
++		c.mu.Lock()
++		rodando := c.carga.Rodando
++		c.mu.Unlock()
++		if rodando {
++			erroJSON(w, http.StatusConflict, "há uma carga rodando; a base está incompleta")
++			return
++		}
++		ctx, cancel := context.WithTimeout(r.Context(), 10*time.Minute)
++		defer cancel()
++		cs, err := c.ceps(ctx)
++		if err != nil {
++			erroJSON(w, http.StatusInternalServerError, "não leu os CEPs da base: "+err.Error())
++			return
++		}
++		responderJSON(w, http.StatusOK, map[string]any{"ceps": cs})
++	})
+ 	mux.HandleFunc("POST /carga", func(w http.ResponseWriter, r *http.Request) {
+ 		var in struct {
+ 			Mes          string   `json:"mes"`
+@@ -431,8 +567,10 @@ func (c *controle) handler(token string) http.Handler {
+ 			Conexoes     int      `json:"conexoes"`
+ 			Retentativas int      `json:"retentativas"`
+ 			EsperaS      int      `json:"esperaS"`
++			// Municípios da plataforma (código da Receita → IBGE), opcional.
++			Municipios []municipioCarga `json:"municipios"`
+ 		}
+-		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
++		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<20)).Decode(&in); err != nil {
+ 			erroJSON(w, http.StatusBadRequest, "corpo inválido")
+ 			return
+ 		}
+@@ -454,6 +592,16 @@ func (c *controle) handler(token string) http.Handler {
+ 			erroJSON(w, http.StatusBadRequest, "download: conexões 1-32, tentativas 1-1000, espera 0-600 s")
+ 			return
+ 		}
++		if len(in.Municipios) > 10000 {
++			erroJSON(w, http.StatusBadRequest, "municípios demais (máximo 10.000)")
++			return
++		}
++		for _, m := range in.Municipios {
++			if !reCodigoReceita.MatchString(m.CodigoReceita) || !reUF.MatchString(m.UF) || m.IBGE < 1000000 || m.IBGE > 9999999 {
++				erroJSON(w, http.StatusBadRequest, fmt.Sprintf("município inválido: %+v", m))
++				return
++			}
++		}
+ 		for _, s := range in.Situacoes {
+ 			if !reSit.MatchString(s) {
+ 				erroJSON(w, http.StatusBadRequest, "situação inválida: "+s)
+@@ -478,6 +626,7 @@ func (c *controle) handler(token string) http.Handler {
+ 			EsperaS:      in.EsperaS,
+ 			IniciadaEm:   &agora,
+ 		}
++		c.municipios = in.Municipios
+ 		c.salvar()
+ 		c.mu.Unlock()
+ 		go c.executarCarga()
+diff --git a/cmd/controle_referencias_test.go b/cmd/controle_referencias_test.go
+new file mode 100644
+index 0000000..8328491
+--- /dev/null
++++ b/cmd/controle_referencias_test.go
+@@ -0,0 +1,72 @@
++package cmd
++
++import (
++	"log/slog"
++	"net/http"
++	"net/http/httptest"
++	"os"
++	"path/filepath"
++	"strings"
++	"testing"
++)
++
++func TestGravarTabmunPlataforma(t *testing.T) {
++	c := &controle{dir: t.TempDir(), log: slog.Default()}
++	c.municipios = []municipioCarga{{CodigoReceita: "1182", UF: "MT", IBGE: 5101837}, {CodigoReceita: "9051", UF: "MS", IBGE: 5002704}}
++	if err := c.gravarTabmunPlataforma(); err != nil {
++		t.Fatal(err)
++	}
++	b, err := os.ReadFile(filepath.Join(c.dir, arquivoTabmunPlataforma))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if got, want := string(b), "1182;;;MT;5101837\n9051;;;MS;5002704\n"; got != want {
++		t.Fatalf("arquivo no formato do tabmun errado:\n%q\nesperava\n%q", got, want)
++	}
++}
++
++func TestGravarTabmunPlataformaSemMunicipiosNaoGrava(t *testing.T) {
++	c := &controle{dir: t.TempDir(), log: slog.Default()}
++	if err := c.gravarTabmunPlataforma(); err != nil {
++		t.Fatal(err)
++	}
++	if _, err := os.Stat(filepath.Join(c.dir, arquivoTabmunPlataforma)); !os.IsNotExist(err) {
++		t.Fatal("sem municípios não deve gravar arquivo")
++	}
++}
++
++func TestCargaRecusaMunicipioInvalido(t *testing.T) {
++	c := &controle{dir: t.TempDir(), log: slog.Default()}
++	h := c.handler("token-de-teste-1234567890")
++	for _, corpo := range []string{
++		`{"mes":"2026-11","ufs":["MT"],"situacoes":["02"],"municipios":[{"codigoReceita":"11","uf":"MT","ibge":5101837}]}`,
++		`{"mes":"2026-11","ufs":["MT"],"situacoes":["02"],"municipios":[{"codigoReceita":"1182","uf":"Mato","ibge":5101837}]}`,
++		`{"mes":"2026-11","ufs":["MT"],"situacoes":["02"],"municipios":[{"codigoReceita":"1182","uf":"MT","ibge":51}]}`,
++	} {
++		req := httptest.NewRequest(http.MethodPost, "/carga", strings.NewReader(corpo))
++		req.Header.Set("Authorization", "Bearer token-de-teste-1234567890")
++		rec := httptest.NewRecorder()
++		h.ServeHTTP(rec, req)
++		if rec.Code != http.StatusBadRequest {
++			t.Errorf("esperava 400 para %s, veio %d: %s", corpo, rec.Code, rec.Body.String())
++		}
++	}
++	if c.carga.Rodando {
++		t.Fatal("carga inválida não pode começar")
++	}
++}
++
++func TestReferenciasECepsRecusamDuranteACarga(t *testing.T) {
++	c := &controle{dir: t.TempDir(), log: slog.Default()}
++	c.carga.Rodando = true
++	h := c.handler("token-de-teste-1234567890")
++	for _, rota := range []string{"/referencias", "/ceps"} {
++		req := httptest.NewRequest(http.MethodGet, rota, nil)
++		req.Header.Set("Authorization", "Bearer token-de-teste-1234567890")
++		rec := httptest.NewRecorder()
++		h.ServeHTTP(rec, req)
++		if rec.Code != http.StatusConflict {
++			t.Errorf("%s durante a carga: esperava 409, veio %d", rota, rec.Code)
++		}
++	}
++}
+diff --git a/download/referencias.go b/download/referencias.go
+new file mode 100644
+index 0000000..65590fa
+--- /dev/null
++++ b/download/referencias.go
+@@ -0,0 +1,198 @@
++package download
++
++import (
++	"archive/zip"
++	"bytes"
++	"encoding/csv"
++	"fmt"
++	"io"
++	"log/slog"
++	"os"
++	"path/filepath"
++	"strings"
++	"time"
++
++	"golang.org/x/text/encoding/charmap"
++)
++
++// Patch da plataforma: as tabelas de referência que a plataforma guarda com os
++// códigos da Receita (docs/planos/2026-11-21-tabelas-referencia-compartilhadas.md).
++// O serviço de controle as entrega à API em GET /referencias; a plataforma
++// grava em municipios.codigoReceita, naturezas_juridicas e cnaes.
++
++// Referencia é um código com a descrição, como a Receita publica.
++type Referencia struct {
++	Codigo    string `json:"codigo"`
++	Descricao string `json:"descricao"`
++}
++
++// MunicipioTesouro é uma linha do tabmun.csv do Tesouro: o código municipal
++// da Receita (TOM/SIAFI) com o IBGE.
++type MunicipioTesouro struct {
++	CodigoReceita string `json:"codigoReceita"`
++	Nome          string `json:"nome"`
++	UF            string `json:"uf"`
++	IBGE          string `json:"ibge"`
++}
++
++// Referencias reúne o que a plataforma sincroniza.
++type Referencias struct {
++	Mes        string             `json:"mes"`
++	Tesouro    []MunicipioTesouro `json:"tesouro"`
++	Municipios []Referencia       `json:"municipios"`
++	Naturezas  []Referencia       `json:"naturezas"`
++	CNAEs      []Referencia       `json:"cnaes"`
++}
++
++var (
++	tentativasReferencia = 5
++	esperaReferencia     = 10 * time.Second
++)
++
++// comTentativas repete fn: o servidor da Receita recusa conexão e o firewall
++// dele troca o arquivo por uma página de rejeição (ver resiliencia.go).
++func comTentativas(nome string, fn func() error) error {
++	var err error
++	for t := 1; t <= tentativasReferencia; t++ {
++		if err = fn(); err == nil {
++			return nil
++		}
++		if t < tentativasReferencia {
++			slog.Warn("referência falhou, tentando de novo", "arquivo", nome, "tentativa", t, "error", err)
++			time.Sleep(esperaReferencia)
++		}
++	}
++	return fmt.Errorf("%s: %w", nome, err)
++}
++
++// lerCSVLatin1 lê um CSV da Receita/Tesouro (ISO-8859-15, separado por ;).
++func lerCSVLatin1(b []byte) ([][]string, error) {
++	r := csv.NewReader(charmap.ISO8859_15.NewDecoder().Reader(bytes.NewReader(b)))
++	r.Comma = ';'
++	r.LazyQuotes = true
++	r.FieldsPerRecord = -1
++	return r.ReadAll()
++}
++
++// lerZipCSV abre o zip e lê o primeiro arquivo dele como CSV.
++func lerZipCSV(pth string) ([][]string, error) {
++	z, err := zip.OpenReader(pth)
++	if err != nil {
++		return nil, err
++	}
++	defer z.Close()
++	if len(z.File) == 0 {
++		return nil, fmt.Errorf("zip vazio")
++	}
++	f, err := z.File[0].Open()
++	if err != nil {
++		return nil, err
++	}
++	defer f.Close()
++	b, err := io.ReadAll(f)
++	if err != nil {
++		return nil, err
++	}
++	return lerCSVLatin1(b)
++}
++
++func paraReferencias(linhas [][]string) []Referencia {
++	var out []Referencia
++	for _, l := range linhas {
++		if len(l) < 2 || strings.TrimSpace(l[0]) == "" {
++			continue
++		}
++		out = append(out, Referencia{Codigo: strings.TrimSpace(l[0]), Descricao: strings.TrimSpace(l[1])})
++	}
++	return out
++}
++
++func paraTesouro(linhas [][]string) []MunicipioTesouro {
++	var out []MunicipioTesouro
++	for _, l := range linhas {
++		// TOM;CNPJ;NOME;UF;IBGE
++		if len(l) < 5 || strings.TrimSpace(l[0]) == "" {
++			continue
++		}
++		out = append(out, MunicipioTesouro{
++			CodigoReceita: strings.TrimSpace(l[0]),
++			Nome:          strings.TrimSpace(l[2]),
++			UF:            strings.TrimSpace(l[3]),
++			IBGE:          strings.TrimSpace(l[4]),
++		})
++	}
++	return out
++}
++
++// BaixarReferencias baixa o tabmun do Tesouro e os Municipios, Naturezas e
++// Cnaes da Receita do mês ym para dir e devolve o conteúdo.
++func BaixarReferencias(dir, ym string) (*Referencias, error) {
++	if err := validateYearMonth(ym); err != nil {
++		return nil, err
++	}
++	ym = normalizeYearMonth(ym)
++	refs := Referencias{Mes: ym}
++
++	err := comTentativas("tabmun.csv", func() error {
++		urls, err := ckanURLs(nationalTreasureBase, nationalTreasurePkgID)
++		if err != nil {
++			return err
++		}
++		for _, u := range urls {
++			if !strings.HasSuffix(strings.ToLower(u), "tabmun.csv") {
++				continue
++			}
++			pth := filepath.Join(dir, "tabmun.csv")
++			if _, err := downloadURL(u, pth); err != nil {
++				return err
++			}
++			b, err := os.ReadFile(pth)
++			if err != nil {
++				return err
++			}
++			linhas, err := lerCSVLatin1(b)
++			if err != nil {
++				return err
++			}
++			refs.Tesouro = paraTesouro(linhas)
++			if len(refs.Tesouro) == 0 {
++				return fmt.Errorf("tabmun.csv sem municípios")
++			}
++			return nil
++		}
++		return fmt.Errorf("o Tesouro não lista o tabmun.csv")
++	})
++	if err != nil {
++		return nil, err
++	}
++
++	base := newClient(cnpjToken).authBase() + ym + "/"
++	for _, a := range []struct {
++		nome    string
++		destino *[]Referencia
++	}{
++		{"Municipios.zip", &refs.Municipios},
++		{"Naturezas.zip", &refs.Naturezas},
++		{"Cnaes.zip", &refs.CNAEs},
++	} {
++		err := comTentativas(a.nome, func() error {
++			pth := filepath.Join(dir, a.nome)
++			if _, err := downloadURL(base+a.nome, pth); err != nil {
++				return err
++			}
++			linhas, err := lerZipCSV(pth)
++			if err != nil {
++				return err
++			}
++			*a.destino = paraReferencias(linhas)
++			if len(*a.destino) == 0 {
++				return fmt.Errorf("arquivo sem linhas")
++			}
++			return nil
++		})
++		if err != nil {
++			return nil, err
++		}
++	}
++	return &refs, nil
++}
+diff --git a/download/referencias_test.go b/download/referencias_test.go
+new file mode 100644
+index 0000000..1281c11
+--- /dev/null
++++ b/download/referencias_test.go
+@@ -0,0 +1,54 @@
++package download
++
++import (
++	"archive/zip"
++	"os"
++	"path/filepath"
++	"testing"
++
++	"golang.org/x/text/encoding/charmap"
++)
++
++func latin1(t *testing.T, s string) []byte {
++	t.Helper()
++	b, err := charmap.ISO8859_15.NewEncoder().Bytes([]byte(s))
++	if err != nil {
++		t.Fatal(err)
++	}
++	return b
++}
++
++func TestParaTesouroLeLinhaDoTabmun(t *testing.T) {
++	linhas, err := lerCSVLatin1(latin1(t, "9051;03501509000106;CAMPO GRANDE                                 ;MS;5002704\n"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	got := paraTesouro(linhas)
++	if len(got) != 1 || got[0] != (MunicipioTesouro{CodigoReceita: "9051", Nome: "CAMPO GRANDE", UF: "MS", IBGE: "5002704"}) {
++		t.Fatalf("linha do tabmun lida errada: %+v", got)
++	}
++}
++
++func TestLerZipCSVDaReceita(t *testing.T) {
++	pth := filepath.Join(t.TempDir(), "Naturezas.zip")
++	f, err := os.Create(pth)
++	if err != nil {
++		t.Fatal(err)
++	}
++	z := zip.NewWriter(f)
++	w, err := z.Create("F.K03200$Z.D61114.NATJUCSV")
++	if err != nil {
++		t.Fatal(err)
++	}
++	w.Write(latin1(t, "\"2062\";\"Sociedade Empresária Limitada\"\n\"2135\";\"Empresário (Individual)\"\n"))
++	z.Close()
++	f.Close()
++	linhas, err := lerZipCSV(pth)
++	if err != nil {
++		t.Fatal(err)
++	}
++	got := paraReferencias(linhas)
++	if len(got) != 2 || got[0].Codigo != "2062" || got[0].Descricao != "Sociedade Empresária Limitada" || got[1].Descricao != "Empresário (Individual)" {
++		t.Fatalf("zip da Receita lido errado (acentos em Latin-1?): %+v", got)
++	}
++}
+diff --git a/transform/tabmun_plataforma_test.go b/transform/tabmun_plataforma_test.go
+new file mode 100644
+index 0000000..a25757d
+--- /dev/null
++++ b/transform/tabmun_plataforma_test.go
+@@ -0,0 +1,58 @@
++package transform
++
++import (
++	"context"
++	"os"
++	"path/filepath"
++	"testing"
++)
++
++// Patch da plataforma: o controle grava tabmun-plataforma.csv (pares código da
++// Receita → IBGE da tabela de municípios da plataforma) ao lado do tabmun.csv
++// do Tesouro. O transform lê os dois, e um código que só a plataforma tem
++// (município novo, como Boa Esperança do Norte-MT = 1182) ganha IBGE.
++func TestTabmunDaPlataformaCompletaODoTesouro(t *testing.T) {
++	dir := t.TempDir()
++	b, err := os.ReadFile(filepath.Join(testdataDir, "tabmun.csv"))
++	if err != nil {
++		t.Fatal(err)
++	}
++	if err := os.WriteFile(filepath.Join(dir, "tabmun.csv"), b, 0o644); err != nil {
++		t.Fatal(err)
++	}
++	// 1182 só a plataforma tem; 9701 (Brasília) está nos dois, com o mesmo IBGE.
++	if err := os.WriteFile(filepath.Join(dir, "tabmun-plataforma.csv"), []byte("1182;;;MT;5101837\n9701;;;DF;5300108\n"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	kv, err := newBadger(nil, t.TempDir(), false)
++	if err != nil {
++		t.Fatalf("expected no error creating kv, got %s", err)
++	}
++	defer func() {
++		if err := kv.db.Close(); err != nil {
++			t.Errorf("expected no error closing badger, got %s", err)
++		}
++	}()
++	srcs := sources()
++	var tab *source
++	for _, s := range srcs {
++		if s.key == "tab" {
++			tab = s
++		}
++	}
++	if tab == nil {
++		t.Fatal("fonte tabmun não encontrada")
++	}
++	if err := loadCSVs(context.Background(), dir, tab, nil, kv); err != nil {
++		t.Fatalf("não carregou os dois tabmun: %s", err)
++	}
++	if err := kv.flush(); err != nil {
++		t.Fatal(err)
++	}
++	for cod, ibge := range map[string]string{"1182": "5101837", "9701": "5300108"} {
++		got, err := stringFromKV(srcs, kv, "tab", cod, 3)
++		if err != nil || got == nil || *got != ibge {
++			t.Errorf("código %s: esperava IBGE %s, veio %v (%v)", cod, ibge, got, err)
++		}
++	}
++}
+-- 
+2.55.0.windows.2
+

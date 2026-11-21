@@ -2008,6 +2008,33 @@ O que a imagem faz desde então:
   volume (`CHUNK_DIR=/dados/.chunk`) e é apagado com os zips, para nenhuma carga
   reaproveitar pedaço de outra.
 
+### Tabelas de referência e CEPs **[verificado em dev, 2026-11-21]**
+
+Plano: `docs/planos/2026-11-21-tabelas-referencia-compartilhadas.md`. Em
+Administração > Base da Receita > "Tabelas de referência" há dois botões. Eles
+gravam em tabelas **globais**, então valem para todas as empresas.
+
+- **Atualizar referências** (~10 s):
+  - O que faz: grava `municipios.codigoReceita` (pela tabela do Tesouro e, para
+    município novo, pelo nome), as `naturezas_juridicas` e os CNAEs que a Receita usa e
+    o IBGE não publica mais.
+  - Quando rodar: **antes de cada carga**. A carga manda ao controle os pares código da
+    Receita → IBGE da nossa tabela; sem eles, município novo fica sem IBGE na base. O
+    caso visto em 2026-11 foi Boa Esperança do Norte-MT, com 606 empresas que a coleta
+    não achava.
+  - Se a tela listar município "sem código da Receita", o nome dele não casou. Conferir
+    o nome na tabela de municípios.
+- **Atualizar CEPs** (~2 min 20 s para MS + MT):
+  - O que faz: grava na tabela `ceps`, com `origem = receita`, os CEPs da base própria
+    que ainda não estão lá, cada um com o endereço mais frequente entre as empresas
+    dele. CEP que já existe, inclusive vindo do ViaCEP, não é alterado.
+  - Quando rodar: depois de cada carga.
+
+Publicar a API e a imagem `receita` juntas. O controle anterior ao patch 0005 ignora
+os pares no pedido de carga, mas só aceita corpo de até 64 KB. Com MS e MT o pedido
+tem ~12 KB e passa; com o Brasil todo (5.571 pares, ~300 KB) a carga é recusada como
+"corpo inválido".
+
 ### VPS **[escrito em 2026-11-20, não rodado — confirmar cada passo]**
 
 1. Publicar a imagem: `.\publish.ps1 -Target receita` (não entra no `all`). Anote a

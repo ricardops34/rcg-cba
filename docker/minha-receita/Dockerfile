@@ -12,7 +12,11 @@
 #        "Request Rejected" no lugar do pedaço do arquivo, e a biblioteca de
 #        download (tangled.org/cuducos.me/chunk) gravava a página no zip. O
 #        patch corrige a biblioteca em vendor/ — por isso o `go mod vendor`
-#        antes do `git apply`.
+#        antes do `git apply`;
+#   0005 referências da plataforma: a carga recebe os pares código da Receita →
+#        IBGE da tabela de municípios da plataforma (tabmun-plataforma.csv, lido
+#        junto com o tabmun do Tesouro); GET /referencias e GET /ceps entregam
+#        as tabelas da Receita e os CEPs da base para a plataforma.
 #
 # Atualizar o original: trocar MR_COMMIT e conferir se os patches ainda aplicam
 # (o build falha no `git apply` se não aplicarem) e se os testes passam.
@@ -29,7 +33,7 @@ RUN go mod vendor
 RUN git -c core.autocrlf=false apply --whitespace=nowarn /patches/*.patch
 # Os testes do filtro e os do pacote de carga original: um patch que quebre a
 # carga não chega a virar imagem.
-RUN go test ./transform/ ./download/ && go test ./cmd/ -run "ConferirZip|VerificarZips|Baixar|EnvDownload"
+RUN go test ./transform/ ./download/ && go test ./cmd/ -run "ConferirZip|VerificarZips|Baixar|EnvDownload|Tabmun|Carga|Referencias"
 RUN CGO_ENABLED=1 go build -o /usr/bin/minha-receita
 # Diretório dos arquivos baixados, gravável pelo usuário sem privilégio da
 # imagem final (o volume nomeado herda dono e permissão na primeira montagem).

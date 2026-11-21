@@ -60,6 +60,7 @@ interface EmpresaReceita {
   descricao_situacao_cadastral?: string | null;
   data_inicio_atividade?: string | null;
   natureza_juridica?: string | null;
+  codigo_natureza_juridica?: number | null;
   porte?: string | null;
   capital_social?: number | null;
   email?: string | null;
@@ -71,12 +72,29 @@ interface EmpresaReceita {
   complemento?: string | null;
   bairro?: string | null;
   municipio?: string | null;
+  codigo_municipio?: number | null;
+  codigo_municipio_ibge?: number | null;
   uf?: string | null;
   cep?: string | null;
   cnae_fiscal?: number | null;
   cnae_fiscal_descricao?: string | null;
   cnaes_secundarios?: { codigo: number; descricao: string }[] | null;
 }
+
+/**
+ * Ids das tabelas de referência para as empresas de uma página
+ * (docs/planos/2026-11-21-tabelas-referencia-compartilhadas.md): município
+ * pelo IBGE (ou pelo código da Receita, para o que veio sem IBGE), natureza e
+ * CNAE pelo código.
+ */
+interface ReferenciasPagina {
+  municipioPorIbge: Map<string, string>;
+  municipioPorReceita: Map<string, string>;
+  natureza: Map<string, string>;
+  cnae: Map<string, string>;
+}
+
+const codigoCnae = (v: number | string) => String(v).padStart(7, '0');
 
 interface PaginaReceita {
   data?: EmpresaReceita[];
@@ -477,6 +495,7 @@ export class ProspeccaoService {
         ]);
         const ehCliente = new Set(clientes.map((c) => c.cnpjCpf));
         const ehLead = new Set(leads.map((l) => l.cnpj));
+        const refs = await this.referenciasDaPagina(tx, empresas);
 
         for (const e of empresas) {
           totais.encontrados++;
@@ -489,7 +508,7 @@ export class ProspeccaoService {
           } else if (ehLead.has(e.cnpj)) {
             totais.jaLeads++;
           } else {
-            await this.criarLead(tx, empresaId, usuarioId, coletaId, e);
+            await this.criarLead(tx, empresaId, usuarioId, coletaId, e, refs);
             ehLead.add(e.cnpj);
             totais.importados++;
           }
@@ -503,12 +522,63 @@ export class ProspeccaoService {
     );
   }
 
+  /** Referências globais (sem RLS) das empresas de uma página, numa ida só. */
+  private async referenciasDaPagina(
+    tx: TenantTx,
+    empresas: EmpresaReceita[],
+  ): Promise<ReferenciasPagina> {
+    const ibges = new Set<string>();
+    const receitas = new Set<string>();
+    const naturezas = new Set<string>();
+    const cnaes = new Set<string>();
+    for (const e of empresas) {
+      if (e.codigo_municipio_ibge) ibges.add(String(e.codigo_municipio_ibge));
+      else if (e.codigo_municipio)
+        receitas.add(String(e.codigo_municipio).padStart(4, '0'));
+      if (e.codigo_natureza_juridica)
+        naturezas.add(String(e.codigo_natureza_juridica).padStart(4, '0'));
+      if (e.cnae_fiscal) cnaes.add(codigoCnae(e.cnae_fiscal));
+      for (const c of e.cnaes_secundarios ?? [])
+        if (c.codigo) cnaes.add(codigoCnae(c.codigo));
+    }
+    // Conjunto vazio vira `in: []`: o Prisma devolve vazio sem ir ao banco.
+    const [porIbge, porReceita, nats, cns] = await Promise.all([
+      tx.municipio.findMany({
+        where: { deletedAt: null, codigoIbge: { in: [...ibges] } },
+        select: { id: true, codigoIbge: true },
+      }),
+      tx.municipio.findMany({
+        where: { deletedAt: null, codigoReceita: { in: [...receitas] } },
+        select: { id: true, codigoReceita: true },
+      }),
+      tx.naturezaJuridica.findMany({
+        where: { codigo: { in: [...naturezas] } },
+        select: { id: true, codigo: true },
+      }),
+      tx.cnae.findMany({
+        where: { codigoErp: { in: [...cnaes] } },
+        select: { id: true, codigoErp: true },
+      }),
+    ]);
+    return {
+      municipioPorIbge: new Map(
+        porIbge.map((m): [string, string] => [m.codigoIbge!, m.id]),
+      ),
+      municipioPorReceita: new Map(
+        porReceita.map((m): [string, string] => [m.codigoReceita!, m.id]),
+      ),
+      natureza: new Map(nats.map((n): [string, string] => [n.codigo, n.id])),
+      cnae: new Map(cns.map((c): [string, string] => [c.codigoErp!, c.id])),
+    };
+  }
+
   private async criarLead(
     tx: TenantTx,
     empresaId: string,
     usuarioId: string,
     coletaId: string,
     e: EmpresaReceita,
+    refs: ReferenciasPagina,
   ) {
     const endereco = [
       [texto(e.descricao_tipo_de_logradouro), texto(e.logradouro)]
@@ -523,8 +593,9 @@ export class ProspeccaoService {
       ...(e.cnae_fiscal
         ? [
             {
-              codigo: String(e.cnae_fiscal).padStart(7, '0'),
+              codigo: codigoCnae(e.cnae_fiscal),
               descricao: texto(e.cnae_fiscal_descricao),
+              cnaeId: refs.cnae.get(codigoCnae(e.cnae_fiscal)) ?? null,
               principal: true,
             },
           ]
@@ -532,8 +603,9 @@ export class ProspeccaoService {
       ...(e.cnaes_secundarios ?? [])
         .filter((c) => c.codigo)
         .map((c) => ({
-          codigo: String(c.codigo).padStart(7, '0'),
+          codigo: codigoCnae(c.codigo),
           descricao: texto(c.descricao),
+          cnaeId: refs.cnae.get(codigoCnae(c.codigo)) ?? null,
           principal: false,
         })),
     ];
@@ -564,6 +636,19 @@ export class ProspeccaoService {
         municipio: texto(e.municipio),
         uf: texto(e.uf),
         cep: texto(e.cep),
+        municipioId:
+          (e.codigo_municipio_ibge
+            ? refs.municipioPorIbge.get(String(e.codigo_municipio_ibge))
+            : e.codigo_municipio
+              ? refs.municipioPorReceita.get(
+                  String(e.codigo_municipio).padStart(4, '0'),
+                )
+              : undefined) ?? null,
+        naturezaJuridicaId: e.codigo_natureza_juridica
+          ? (refs.natureza.get(
+              String(e.codigo_natureza_juridica).padStart(4, '0'),
+            ) ?? null)
+          : null,
         dadosReceita: e as unknown as Prisma.InputJsonValue,
         coletaId,
         coletadoEm: new Date(),

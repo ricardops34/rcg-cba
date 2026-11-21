@@ -1,6 +1,7 @@
 import { Body, Controller, Get, Post, Put, UseGuards } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
 import { ReceitaBaseService } from './receita-base.service';
+import { ReceitaReferenciasService } from './receita-referencias.service';
 import {
   ReceitaBaseCargaDto,
   ReceitaBaseConfigSalvarDto,
@@ -23,7 +24,10 @@ import {
 @UseGuards(JwtAuthGuard, PermissionsGuard)
 @Controller('receita-base')
 export class ReceitaBaseController {
-  constructor(private readonly service: ReceitaBaseService) {}
+  constructor(
+    private readonly service: ReceitaBaseService,
+    private readonly referencias: ReceitaReferenciasService,
+  ) {}
 
   @ApiOperation({ summary: 'Parâmetros da base própria e da coleta' })
   @RequirePermission('base-receita', 'visualizar')
@@ -71,5 +75,30 @@ export class ReceitaBaseController {
     @CurrentUser() user: AuthenticatedUser,
   ) {
     return this.service.carregar(user.empresaAtivaId, dto.mes || undefined);
+  }
+
+  @ApiOperation({
+    summary: 'Atualizar as tabelas de referência pela Receita',
+    description:
+      'Grava o código da Receita nos municípios (tabela do Tesouro e, para ' +
+      'município novo, nome + UF), as naturezas jurídicas e os CNAEs que ' +
+      'faltam. Tabelas globais: vale para todas as empresas.',
+  })
+  @RequirePermission('base-receita', 'editar')
+  @Post('referencias')
+  atualizarReferencias(@CurrentUser() user: AuthenticatedUser) {
+    return this.referencias.atualizarReferencias(user.empresaAtivaId);
+  }
+
+  @ApiOperation({
+    summary: 'Gravar na tabela de CEPs os CEPs da base própria',
+    description:
+      'Só os CEPs que a tabela ainda não tem (o ViaCEP não é sobrescrito), ' +
+      'com o endereço mais frequente entre as empresas de cada um.',
+  })
+  @RequirePermission('base-receita', 'editar')
+  @Post('ceps')
+  atualizarCeps(@CurrentUser() user: AuthenticatedUser) {
+    return this.referencias.atualizarCeps(user.empresaAtivaId);
   }
 }

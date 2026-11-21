@@ -123,6 +123,51 @@ export interface ReceitaBaseEstado {
     situacoes: string[];
     empresas: { nome: string; ufs: string[] }[];
   };
+  /** Tabelas de referência da plataforma com os códigos da Receita. */
+  referencias: ReceitaReferenciasResumo;
+}
+
+/**
+ * Tabelas de referência compartilhadas com a Receita
+ * (docs/planos/2026-11-21-tabelas-referencia-compartilhadas.md): a plataforma
+ * é a fonte única; município guarda o código da Receita, natureza jurídica e
+ * CNAE usam o código oficial, e os CEPs da base própria entram na tabela de CEPs.
+ */
+export interface ReceitaReferenciasResumo {
+  municipios: number;
+  municipiosComCodigoReceita: number;
+  naturezas: number;
+  cnaes: number;
+  /** CEPs gravados a partir da base própria (origem "receita"). */
+  cepsReceita: number;
+}
+
+/** Resultado de "Atualizar referências". */
+export interface ReceitaReferenciasResultado {
+  mes: string;
+  /** Municípios que receberam ou mudaram o código da Receita. */
+  municipiosAtualizados: number;
+  /** Casados pela tabela do Tesouro (código da Receita ↔ IBGE). */
+  municipiosPeloTesouro: number;
+  /** Casados pelo nome + UF, para o que o Tesouro ainda não traz. */
+  municipiosPeloNome: { nome: string; uf: string | null; codigoReceita: string }[];
+  /** Municípios da plataforma que ficaram sem código da Receita. */
+  municipiosSemCodigo: { nome: string; uf: string | null }[];
+  naturezasNovas: number;
+  naturezasAtualizadas: number;
+  /** CNAEs que a Receita usa e a tabela (do IBGE) não tinha. */
+  cnaesNovos: { codigo: string; descricao: string }[];
+}
+
+/** Resultado de "Atualizar CEPs". */
+export interface ReceitaCepsResultado {
+  /** CEPs distintos na base própria. */
+  lidos: number;
+  novos: number;
+  /** Já estavam na tabela (ViaCEP ou carga anterior): não são alterados. */
+  jaExistiam: number;
+  /** Sem município da plataforma para o código da Receita. */
+  semMunicipio: number;
 }
 
 export const receitaBaseCargaSchema = z.object({

@@ -13,6 +13,7 @@ import {
   type ReceitaBaseConfig,
   type ReceitaBaseConfigSalvar,
   type ReceitaBaseEstado,
+  type ReceitaReferenciasResumo,
 } from '@plataforma/contracts';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ParametrosService } from '../parametros/parametros.service';
@@ -259,11 +260,13 @@ export class ReceitaBaseService {
     };
   }
 
-  private async chamarControle<T>(
+  /** Também usado por ReceitaReferenciasService (referências e CEPs demoram mais). */
+  async chamarControle<T>(
     empresaId: string,
     metodo: 'GET' | 'POST',
     caminho: string,
     corpo?: unknown,
+    timeoutMs = 20_000,
   ): Promise<{ status: number; corpo: T | { message?: string } }> {
     const a = await this.acesso(empresaId);
     if (!a.controleUrl || !a.controleToken) {
@@ -272,7 +275,7 @@ export class ReceitaBaseService {
       );
     }
     const controller = new AbortController();
-    const timer = setTimeout(() => controller.abort(), 20_000);
+    const timer = setTimeout(() => controller.abort(), timeoutMs);
     try {
       const r = await fetch(`${a.controleUrl}${caminho}`, {
         method: metodo,
@@ -338,8 +341,37 @@ export class ReceitaBaseService {
     };
   }
 
+  /** Contagens das tabelas de referência (globais, sem RLS). */
+  async resumoReferencias(): Promise<ReceitaReferenciasResumo> {
+    const [
+      municipios,
+      municipiosComCodigoReceita,
+      naturezas,
+      cnaes,
+      cepsReceita,
+    ] = await Promise.all([
+      this.prisma.municipio.count({ where: { deletedAt: null } }),
+      this.prisma.municipio.count({
+        where: { deletedAt: null, codigoReceita: { not: null } },
+      }),
+      this.prisma.naturezaJuridica.count(),
+      this.prisma.cnae.count({ where: { deletedAt: null } }),
+      this.prisma.cep.count({ where: { origem: 'receita' } }),
+    ]);
+    return {
+      municipios,
+      municipiosComCodigoReceita,
+      naturezas,
+      cnaes,
+      cepsReceita,
+    };
+  }
+
   async estado(empresaId: string): Promise<ReceitaBaseEstado> {
-    const proximaCarga = await this.proximaCarga();
+    const [proximaCarga, referencias] = await Promise.all([
+      this.proximaCarga(),
+      this.resumoReferencias(),
+    ]);
     try {
       const r = await this.chamarControle<{
         carga: ReceitaBaseEstado['carga'];
@@ -355,6 +387,7 @@ export class ReceitaBaseService {
           base: null,
           mesMaisRecente: null,
           proximaCarga,
+          referencias,
         };
       }
       return {
@@ -364,6 +397,7 @@ export class ReceitaBaseService {
         base: r.corpo.base,
         mesMaisRecente: r.corpo.mesMaisRecente || null,
         proximaCarga,
+        referencias,
       };
     } catch (e) {
       return {
@@ -373,6 +407,7 @@ export class ReceitaBaseService {
         base: null,
         mesMaisRecente: null,
         proximaCarga,
+        referencias,
       };
     }
   }
@@ -387,6 +422,24 @@ export class ReceitaBaseService {
         'Nenhum estado marcado: escolha ao menos um estado antes de carregar (senão a base viria com o Brasil inteiro).',
       );
     }
+    // Pares código da Receita → IBGE da nossa tabela de municípios, para os
+    // estados da carga: a tabela do Tesouro que a carga usa atrasa em
+    // município novo (Boa Esperança do Norte-MT, 2023, ficou sem IBGE em
+    // 2026-11). O controle os grava ao lado dela (patch 0005). Vazio enquanto
+    // ninguém rodou "Atualizar referências" — a carga segue só com o Tesouro.
+    const municipios = await this.prisma.municipio.findMany({
+      where: {
+        deletedAt: null,
+        codigoIbge: { not: null },
+        codigoReceita: { not: null },
+        estado: { sigla: { in: proxima.ufs } },
+      },
+      select: {
+        codigoIbge: true,
+        codigoReceita: true,
+        estado: { select: { sigla: true } },
+      },
+    });
     const r = await this.chamarControle<{ mes: string }>(
       empresaId,
       'POST',
@@ -398,6 +451,18 @@ export class ReceitaBaseService {
         conexoes: cfg.downloadConexoes,
         retentativas: cfg.downloadRetentativas,
         esperaS: cfg.downloadEsperaS,
+        municipios: municipios
+          .filter(
+            (m) =>
+              m.estado &&
+              /^\d{7}$/.test(m.codigoIbge ?? '') &&
+              /^\d{4}$/.test(m.codigoReceita ?? ''),
+          )
+          .map((m) => ({
+            codigoReceita: m.codigoReceita!,
+            uf: m.estado!.sigla,
+            ibge: Number(m.codigoIbge),
+          })),
       },
     );
     if (r.status === 409)

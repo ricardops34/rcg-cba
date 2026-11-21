@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { toast } from "sonner";
-import { Database, Loader2, Play, RefreshCw } from "lucide-react";
+import { Database, Library, Loader2, MapPin, Play, RefreshCw } from "lucide-react";
 import {
   PROSPECCAO_FONTE_LABEL,
   RECEITA_CARGA_ETAPA_LABEL,
@@ -13,6 +13,8 @@ import {
   type ReceitaBaseConfig,
   type ReceitaBaseConfigSalvar,
   type ReceitaBaseEstado,
+  type ReceitaCepsResultado,
+  type ReceitaReferenciasResultado,
 } from "@plataforma/contracts";
 import { ApiError, apiFetch } from "@/lib/api-client";
 import { useAuthStore } from "@/stores/auth-store";
@@ -75,6 +77,8 @@ export default function BaseReceitaPage() {
       </div>
 
       <Estado />
+
+      <Referencias />
 
       {isLoading || !cfg ? (
         <Card>
@@ -259,6 +263,148 @@ function Estado() {
             </div>
           )}
         </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+/**
+ * Tabelas de referência compartilhadas com a Receita
+ * (docs/planos/2026-11-21-tabelas-referencia-compartilhadas.md): a plataforma
+ * guarda o código da Receita nos municípios, as naturezas jurídicas e os CNAEs
+ * que faltam, e os CEPs da base própria. Globais: valem para todas as empresas.
+ */
+function Referencias() {
+  const queryClient = useQueryClient();
+  const podeEditar = useAuthStore((s) => s.hasPermission("base-receita", "editar"));
+  const { data: e } = useQuery({
+    queryKey: ["receita-base", "estado"],
+    queryFn: () => apiFetch<ReceitaBaseEstado>("/receita-base/estado"),
+  });
+  const [refs, setRefs] = useState<ReceitaReferenciasResultado | null>(null);
+  const [ceps, setCeps] = useState<ReceitaCepsResultado | null>(null);
+
+  const atualizarRefs = useMutation({
+    mutationFn: () =>
+      apiFetch<ReceitaReferenciasResultado>("/receita-base/referencias", { method: "POST" }),
+    onSuccess: (r) => {
+      setRefs(r);
+      toast.success("Referências atualizadas.");
+      void queryClient.invalidateQueries({ queryKey: ["receita-base", "estado"] });
+    },
+    onError: (err) => toast.error(erroDe(err, "Não foi possível atualizar as referências")),
+  });
+  const atualizarCeps = useMutation({
+    mutationFn: () => apiFetch<ReceitaCepsResultado>("/receita-base/ceps", { method: "POST" }),
+    onSuccess: (r) => {
+      setCeps(r);
+      toast.success(`${numero(r.novos)} CEPs novos gravados.`);
+      void queryClient.invalidateQueries({ queryKey: ["receita-base", "estado"] });
+    },
+    onError: (err) => toast.error(erroDe(err, "Não foi possível atualizar os CEPs")),
+  });
+
+  const r = e?.referencias;
+  const rodando = !!e?.carga?.rodando;
+
+  return (
+    <Card>
+      <CardContent className="space-y-4">
+        <div>
+          <p className="font-medium">Tabelas de referência</p>
+          <p className="text-sm text-muted-foreground">
+            Os cadastros da plataforma guardam os códigos da Receita, para a base própria e os
+            leads apontarem para eles em vez de repetir texto. Valem para todas as empresas.
+          </p>
+        </div>
+
+        <dl className="grid gap-3 text-sm sm:grid-cols-4">
+          <div>
+            <dt className="text-xs text-muted-foreground">Municípios com código da Receita</dt>
+            <dd className="font-medium">
+              {r ? `${numero(r.municipiosComCodigoReceita)} de ${numero(r.municipios)}` : "—"}
+            </dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">Naturezas jurídicas</dt>
+            <dd className="font-medium">{r ? numero(r.naturezas) : "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">CNAEs</dt>
+            <dd className="font-medium">{r ? numero(r.cnaes) : "—"}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-muted-foreground">CEPs vindos da base própria</dt>
+            <dd className="font-medium">{r ? numero(r.cepsReceita) : "—"}</dd>
+          </div>
+        </dl>
+
+        {podeEditar && (
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant="outline"
+              onClick={() => atualizarRefs.mutate()}
+              disabled={atualizarRefs.isPending || !e?.disponivel || rodando}
+            >
+              {atualizarRefs.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <Library className="size-4" />
+              )}
+              Atualizar referências
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => atualizarCeps.mutate()}
+              disabled={atualizarCeps.isPending || !e?.disponivel || rodando || !e?.base?.empresas}
+            >
+              {atualizarCeps.isPending ? (
+                <Loader2 className="size-4 animate-spin" />
+              ) : (
+                <MapPin className="size-4" />
+              )}
+              Atualizar CEPs
+            </Button>
+          </div>
+        )}
+        <FieldDescription>
+          Referências: baixa a tabela do Tesouro e as da Receita (segundos). Rode antes da carga,
+          para município novo sair com IBGE. CEPs: grava os CEPs da base própria que a tabela ainda
+          não tem (cerca de 1 minuto para MS e MT); os do ViaCEP não são alterados.
+        </FieldDescription>
+
+        {refs && (
+          <div className="space-y-1 rounded-lg border p-3 text-sm">
+            <p className="font-medium">Referências de {refs.mes}</p>
+            <p className="text-muted-foreground">
+              {numero(refs.municipiosAtualizados)} municípios atualizados (
+              {numero(refs.municipiosPeloTesouro)} pela tabela do Tesouro
+              {refs.municipiosPeloNome.length > 0 &&
+                `, ${refs.municipiosPeloNome.length} pelo nome: ${refs.municipiosPeloNome
+                  .map((m) => `${m.nome}-${m.uf ?? "?"} (${m.codigoReceita})`)
+                  .join(", ")}`}
+              ) · naturezas: {numero(refs.naturezasNovas)} novas, {numero(refs.naturezasAtualizadas)}{" "}
+              atualizadas · CNAEs novos: {numero(refs.cnaesNovos.length)}
+            </p>
+            {refs.municipiosSemCodigo.length > 0 && (
+              <p className="text-xs text-amber-600">
+                Sem código da Receita ({refs.municipiosSemCodigo.length}):{" "}
+                {refs.municipiosSemCodigo
+                  .slice(0, 20)
+                  .map((m) => `${m.nome}-${m.uf ?? "?"}`)
+                  .join(", ")}
+                {refs.municipiosSemCodigo.length > 20 && "…"}
+              </p>
+            )}
+          </div>
+        )}
+        {ceps && (
+          <p className="rounded-lg border p-3 text-sm text-muted-foreground">
+            CEPs: {numero(ceps.lidos)} na base própria · {numero(ceps.novos)} novos ·{" "}
+            {numero(ceps.jaExistiam)} já estavam na tabela
+            {ceps.semMunicipio > 0 && ` · ${numero(ceps.semMunicipio)} sem município da plataforma`}
+          </p>
+        )}
       </CardContent>
     </Card>
   );
