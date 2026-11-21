@@ -3,14 +3,16 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import {
+  Building2,
   Flame,
   MapPin,
   MessageCircle,
   Snowflake,
   Thermometer,
 } from "lucide-react";
-import type { Lead, LeadSituacao, LeadTemperatura } from "@plataforma/contracts";
+import type { Lead, LeadOrigem, LeadSituacao, LeadTemperatura } from "@plataforma/contracts";
 import {
+  LEAD_ORIGEM_LABEL,
   LEAD_SITUACAO_LABEL,
   LEAD_TEMPERATURA_LABEL,
 } from "@plataforma/contracts";
@@ -37,16 +39,17 @@ import { cn } from "@/lib/utils";
 import { LeadEnderecoDialog } from "@/components/comercial/lead-endereco-dialog";
 
 /**
- * Leads: quem procurou a empresa pelo número institucional e ainda não é
- * cliente.
+ * Leads: quem ainda não é cliente. Vêm de duas origens:
  *
- * **Fila, não cadastro.** Não há botão de novo: quem cria é a IA da triagem, a
- * partir da conversa. O trabalho desta tela é uma decisão por lead — entregar a
- * um vendedor, ou descartar.
+ * - **WhatsApp** — quem procurou a empresa pelo número institucional. O que
+ *   aparece é **o que a pessoa disse**, nada conferido; o telefone é o único
+ *   dado que não depende do que ela conta.
+ * - **Receita** — empresas coletadas na base pública (prospecção, 20/11/2026):
+ *   razão social, CNPJ, CNAE e o resto vêm do cadastro da Receita.
  *
- * O que aparece aqui é **o que a pessoa disse**, nada conferido contra cadastro
- * nenhum; por isso o nome e a empresa são texto simples, sem link para cliente.
- * O telefone é o único dado que não depende do que ela conta.
+ * **Fila, não cadastro.** Não há botão de novo: quem cria é a IA da triagem ou
+ * a coleta da prospecção. O trabalho desta tela é uma decisão por lead —
+ * entregar a um vendedor, ou descartar.
  *
  * Quem vê o quê é decidido pela API (`LeadsService.listar`): quem tem equipe
  * abaixo vê a fila inteira, quem não tem vê só o que lhe foi entregue.
@@ -80,6 +83,20 @@ const SITUACOES: { valor: LeadSituacao | null; rotulo: string }[] = [
   { valor: null, rotulo: "Todos" },
 ];
 
+const ORIGENS: { valor: LeadOrigem | null; rotulo: string }[] = [
+  { valor: null, rotulo: "Todas as origens" },
+  { valor: "whatsapp", rotulo: "WhatsApp" },
+  { valor: "receita", rotulo: "Receita" },
+  { valor: "manual", rotulo: "Manual" },
+];
+
+/** "12.345.678/0001-90" a partir dos dígitos. */
+function cnpjBr(valor: string) {
+  const d = valor.replace(/\D/g, "");
+  if (d.length !== 14) return valor;
+  return `${d.slice(0, 2)}.${d.slice(2, 5)}.${d.slice(5, 8)}/${d.slice(8, 12)}-${d.slice(12)}`;
+}
+
 /** "(67) 99988-7766" a partir do que veio do WhatsApp (com ou sem DDI). */
 function telefoneBr(valor: string) {
   const so = valor.replace(/\D/g, "");
@@ -105,6 +122,7 @@ function quando(iso: string) {
 export default function LeadsPage() {
   const [search, setSearch] = useState("");
   const [situacao, setSituacao] = useState<LeadSituacao | null>("novo");
+  const [origem, setOrigem] = useState<LeadOrigem | null>(null);
   const [page, setPage] = useState(1);
   const [leadEndereco, setLeadEndereco] = useState<Lead | null>(null);
 
@@ -117,6 +135,7 @@ export default function LeadsPage() {
       pageSize: 20,
       ...(search ? { search } : {}),
       ...(situacao ? { situacao } : {}),
+      ...(origem ? { origem } : {}),
     },
   );
 
@@ -164,6 +183,24 @@ export default function LeadsPage() {
             {s.rotulo}
           </QuickFilterButton>
         ))}
+        <Select
+          value={origem ?? "todas"}
+          onValueChange={(v) => {
+            setOrigem(v === "todas" ? null : (v as LeadOrigem));
+            setPage(1);
+          }}
+        >
+          <SelectTrigger className="h-8 w-44">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {ORIGENS.map((o) => (
+              <SelectItem key={o.rotulo} value={o.valor ?? "todas"}>
+                {o.rotulo}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </QuickFilterGroup>
 
       {isLoading ? (
@@ -200,21 +237,47 @@ export default function LeadsPage() {
                           {LEAD_TEMPERATURA_LABEL[lead.temperatura]}
                         </span>
                         <span className="font-medium">
-                          {lead.empresaInformada || lead.nome || "Sem nome"}
+                          {lead.empresaInformada ||
+                            lead.nomeFantasia ||
+                            lead.razaoSocial ||
+                            lead.nome ||
+                            "Sem nome"}
                         </span>
                         {lead.empresaInformada && lead.nome && (
                           <span className="text-sm text-muted-foreground">
                             {lead.nome}
                           </span>
                         )}
+                        {!lead.empresaInformada &&
+                          lead.nomeFantasia &&
+                          lead.razaoSocial &&
+                          lead.nomeFantasia !== lead.razaoSocial && (
+                            <span className="text-sm text-muted-foreground">
+                              {lead.razaoSocial}
+                            </span>
+                          )}
                         <Badge variant="outline">
                           {LEAD_SITUACAO_LABEL[lead.situacao]}
                         </Badge>
+                        <Badge variant="secondary">
+                          {LEAD_ORIGEM_LABEL[lead.origem]}
+                        </Badge>
                       </div>
                       <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                        <span className="font-mono">
-                          {telefoneBr(lead.telefone)}
-                        </span>
+                        {lead.cnpj && (
+                          <span className="font-mono">{cnpjBr(lead.cnpj)}</span>
+                        )}
+                        {lead.telefone && (
+                          <span className="font-mono">
+                            {telefoneBr(lead.telefone)}
+                          </span>
+                        )}
+                        {lead.telefone2 && (
+                          <span className="font-mono">
+                            {telefoneBr(lead.telefone2)}
+                          </span>
+                        )}
+                        {lead.email && <span>{lead.email}</span>}
                         <span>{quando(lead.createdAt)}</span>
                         {lead.vendedorNome && <span>com {lead.vendedorNome}</span>}
                       </div>
@@ -231,7 +294,26 @@ export default function LeadsPage() {
                     )}
                   </div>
 
-                  <p className="text-sm">{lead.interesse}</p>
+                  {lead.interesse && <p className="text-sm">{lead.interesse}</p>}
+                  {/* Dados da empresa, quando vieram da Receita. */}
+                  {(lead.cnaePrincipal || lead.porte || lead.dataAbertura) && (
+                    <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
+                      <Building2 className="size-3.5 shrink-0" />
+                      {lead.cnaePrincipal && (
+                        <span>
+                          {lead.cnaePrincipal.descricao ?? lead.cnaePrincipal.codigo}
+                        </span>
+                      )}
+                      {lead.porte && <span>{lead.porte}</span>}
+                      {lead.dataAbertura && (
+                        <span>
+                          aberta em{" "}
+                          {new Date(`${lead.dataAbertura.slice(0, 10)}T12:00:00`).toLocaleDateString("pt-BR")}
+                        </span>
+                      )}
+                      {lead.situacaoCadastral && <span>{lead.situacaoCadastral}</span>}
+                    </p>
+                  )}
                   {(lead.endereco || lead.municipio) && (
                     <p className="flex items-center gap-1 text-xs text-muted-foreground">
                       <MapPin className="size-3.5 shrink-0" />

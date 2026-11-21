@@ -201,6 +201,9 @@ model Empresa {
   whatsappTemplates          WhatsappTemplate[]
   whatsappRespostasRapidas   WhatsappRespostaRapida[]
   leads                      Lead[]
+  leadCnaes                  LeadCnae[]
+  leadColetas                LeadColeta[]
+  leadDistribuicoes          LeadDistribuicao[]
   whatsappRecados            WhatsappRecadoInterno[]
   whatsappRecadoDestinos     WhatsappRecadoDestinatario[]
   notificacoes               Notificacao[]
@@ -242,6 +245,7 @@ model GrupoEconomico {
   createdBy String?
   updatedBy String?
   deletedAt DateTime?
+
   @@map("grupos_economicos")
 }
 
@@ -974,7 +978,6 @@ model Sessao {
 
 /**
  * Aparelho que aceitou receber notificação no celular (Web Push).
- *
  * Por usuário, sem `empresaId`, como `sessoes`: é o aparelho da pessoa, não um
  * dado de empresa. O aviso só sai enquanto a sessão de onde a assinatura veio
  * estiver aberta — sair, ser substituído por outro aparelho ou cair no fim do
@@ -984,13 +987,17 @@ model PushAssinatura {
   id         String   @id @default(uuid())
   usuarioId  String
   sessaoId   String?
-  /** URL do serviço de push do navegador; identifica o aparelho. */
+  /**
+   * URL do serviço de push do navegador; identifica o aparelho.
+   */
   endpoint   String   @unique
   p256dh     String
   auth       String
   userAgent  String?
   criadaEm   DateTime @default(now())
-  /** Último envio aceito pelo serviço de push. */
+  /**
+   * Último envio aceito pelo serviço de push.
+   */
   ultimoEnvioEm DateTime?
 
   usuario Usuario @relation(fields: [usuarioId], references: [id], onDelete: Cascade)
@@ -4149,6 +4156,9 @@ model Atividade {
   empresaId      String
   clienteId      String?
   oportunidadeId String?
+  /// Lead trabalhado (prospecção): o histórico do lead na Agenda. Ao converter,
+  /// a atividade ganha também o `clienteId`.
+  leadId                String?
   orcamentoId    String?
   /// Dono da carteira — é nele que a agenda/histórico do cliente aparece.
   vendedorId     String
@@ -4207,6 +4217,7 @@ model Atividade {
   @@index([empresaId, oportunidadeId])
   @@index([empresaId, orcamentoId])
   @@index([empresaId, dataVencimento])
+  @@index([empresaId, leadId])
   @@map("atividades")
 }
 
@@ -4283,6 +4294,8 @@ model Orcamento {
   // para o ERP (fica fora de /integracao/orcamentos/pendentes) e não é efetivado
   // até ser vinculado a um cadastro.
   clienteId           String?
+  /// Orçamento feito para um lead (prospecção): os campos prospect* vêm dele.
+  leadId              String?
   prospectNome        String?
   prospectDocumento   String?
   prospectTelefone    String?
@@ -4400,14 +4413,15 @@ model Orcamento {
   links              OrcamentoLink[]
 
   @@unique([empresaId, chave])
-  @@index([empresaId, codigoErp])
   @@unique([empresaId, numero])
+  @@index([empresaId, codigoErp])
   @@index([empresaId, vendedorId])
   @@index([empresaId, clienteId])
   @@index([empresaId, status])
   @@index([empresaId, tabelaPrecoId])
   @@index([empresaId, clienteDecididoPorContatoId])
   @@index([empresaId, enviadoEm])
+  @@index([empresaId, leadId])
   @@map("orcamentos")
 }
 
@@ -4464,11 +4478,11 @@ model OrcamentoItem {
   orcamento     Orcamento      @relation(fields: [orcamentoId], references: [id], onDelete: Cascade)
   produto       Produto        @relation(fields: [produtoId], references: [id], onDelete: Restrict)
 
+  @@unique([orcamentoId, chave])
   @@index([empresaId, produtoId])
   @@index([orcamentoId])
   @@index([empresaId, regraDescontoId])
   @@map("orcamento_itens")
-  @@unique([orcamentoId, chave])
 }
 
 // ------------------------------------------------------------------
@@ -5631,11 +5645,46 @@ model Lead {
   empresaInformada String?
   documento        String?
 
-  /// De onde veio. É o único dado que não depende do que ela diz.
-  telefone String
+  /// De onde o lead veio: conversa no WhatsApp, coleta na base da Receita ou
+  /// cadastro manual (docs/planos/2026-11-20-prospeccao-leads-receita.md).
+  origem LeadOrigem @default(whatsapp)
 
-  /// O que procura, em uma linha, escrito pela IA a partir da conversa.
-  interesse String @db.Text
+  /// No WhatsApp, de onde veio — o único dado que não depende do que a pessoa
+  /// diz. Na Receita, o primeiro telefone da empresa (pode não haver).
+  telefone String?
+
+  /// O que procura, em uma linha, escrito pela IA a partir da conversa. Vazio
+  /// no lead da Receita: ninguém disse nada ainda.
+  interesse String? @db.Text
+
+  /// Dados da empresa, vindos da Receita (coleta) — no lead do WhatsApp, só
+  /// quando alguém consulta o CNPJ. `cnpj` só com dígitos, único por empresa.
+  cnpj              String?
+  razaoSocial       String?
+  nomeFantasia      String?
+  situacaoCadastral String?
+  dataAbertura      DateTime? @db.Date
+  naturezaJuridica  String?
+  porte             String?
+  capitalSocial     Decimal?  @db.Decimal(18, 2)
+  email             String?
+  telefone2         String?
+  /// Retorno bruto da Receita: "todos os dados recebidos" (sócios já vêm com
+  /// o CPF mascarado pela fonte).
+  dadosReceita      Json?
+
+  /// Coleta que trouxe o lead (origem = receita).
+  coletaId    String?
+  coletadoEm  DateTime?
+  coletadoPor String?
+
+  /// Conversão: o cliente com o mesmo CNPJ, quando ele surge (tela ou ERP).
+  clienteId    String?
+  convertidoEm DateTime?
+
+  /// Primeira atividade, conversa ou orçamento depois de ter dono — base do
+  /// indicador "tempo até o primeiro atendimento".
+  primeiroAtendimentoEm DateTime?
 
   temperatura LeadTemperatura @default(morno)
 
@@ -5673,10 +5722,101 @@ model Lead {
   updatedAt DateTime @updatedAt
 
   empresa Empresa @relation(fields: [empresaId], references: [id])
+  coleta        LeadColeta?        @relation(fields: [coletaId], references: [id], onDelete: SetNull)
+  cnaes         LeadCnae[]
+  distribuicoes LeadDistribuicao[]
 
   @@unique([empresaId, conversaId])
+  @@unique([empresaId, cnpj])
   @@index([empresaId, situacao, createdAt])
+  @@index([empresaId, origem])
+  @@index([empresaId, clienteId])
   @@map("leads")
+}
+
+enum LeadOrigem {
+  whatsapp
+  receita
+  manual
+}
+
+/// CNAEs do lead (principal + secundários), pelo código da Receita — sem
+/// apontar para a referência `cnaes`, que pode não ter o código carregado.
+model LeadCnae {
+  id        String  @id @default(uuid())
+  empresaId String
+  leadId    String
+  /// Código da subclasse, só dígitos (ex.: "4711302").
+  codigo    String
+  descricao String?
+  principal Boolean @default(false)
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([leadId, codigo])
+  @@index([empresaId, codigo])
+  @@map("lead_cnaes")
+}
+
+enum LeadColetaSituacao {
+  rodando
+  concluida
+  erro
+}
+
+/// Uma coleta na base da Receita: quem, quando, com quais filtros, e o que
+/// veio (quantos já eram clientes, já eram leads, inativos, importados).
+model LeadColeta {
+  id          String             @id @default(uuid())
+  empresaId   String
+  usuarioId   String
+  /// { uf, municipios: [{ codigo, nome }], cnaes: [codigo] }
+  filtros     Json
+  /// URL da fonte usada (pública ou própria), para saber de onde veio.
+  fonte       String
+  situacao    LeadColetaSituacao @default(rodando)
+  encontrados Int                @default(0)
+  jaClientes  Int                @default(0)
+  jaLeads     Int                @default(0)
+  inativos    Int                @default(0)
+  importados  Int                @default(0)
+  erro        String?            @db.Text
+  iniciadaEm  DateTime           @default(now())
+  concluidaEm DateTime?
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  leads   Lead[]
+
+  @@index([empresaId, iniciadaEm])
+  @@map("lead_coletas")
+}
+
+enum LeadDistribuicaoModo {
+  regiao
+  manual
+}
+
+/// Histórico de "para quem o lead foi enviado": cada envio, devolução ou
+/// troca de dono vira uma linha — o lead em si guarda só o dono atual.
+model LeadDistribuicao {
+  id             String               @id @default(uuid())
+  empresaId      String
+  leadId         String
+  deVendedorId   String?
+  paraVendedorId String?
+  distribuidoPor String
+  modo           LeadDistribuicaoModo
+  /// Região de atuação usada na sugestão (modo = regiao).
+  regiaoId       String?
+  createdAt      DateTime             @default(now())
+
+  empresa Empresa @relation(fields: [empresaId], references: [id])
+  lead    Lead    @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@index([empresaId, leadId, createdAt])
+  @@index([empresaId, paraVendedorId, createdAt])
+  @@map("lead_distribuicoes")
 }
 
 /// Comunicado interno exibido na tela inicial (Início).

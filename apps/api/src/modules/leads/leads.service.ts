@@ -50,6 +50,7 @@ export class LeadsService {
         empresaId,
         ...(query.situacao ? { situacao: query.situacao } : {}),
         ...(query.temperatura ? { temperatura: query.temperatura } : {}),
+        ...(query.origem ? { origem: query.origem } : {}),
         ...(query.search
           ? {
               OR: [
@@ -71,6 +72,22 @@ export class LeadsService {
                     mode: 'insensitive' as const,
                   },
                 },
+                {
+                  razaoSocial: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
+                {
+                  nomeFantasia: {
+                    contains: query.search,
+                    mode: 'insensitive' as const,
+                  },
+                },
+                // CNPJ: busca pelos dígitos, a partir de 4 (com pontuação ou não).
+                ...(query.search.replace(/\D/g, '').length >= 4
+                  ? [{ cnpj: { contains: query.search.replace(/\D/g, '') } }]
+                  : []),
               ],
             }
           : {}),
@@ -80,6 +97,16 @@ export class LeadsService {
       const [linhas, total] = await Promise.all([
         tx.lead.findMany({
           where,
+          // O retorno bruto da Receita fica fora da listagem (é grande); o
+          // CNAE principal vem junto para a tela.
+          omit: { dadosReceita: true },
+          include: {
+            cnaes: {
+              where: { principal: true },
+              select: { codigo: true, descricao: true },
+              take: 1,
+            },
+          },
           ...paginationToSkipTake(query),
           // Quente primeiro, e dentro de cada temperatura o mais antigo antes:
           // lead esfria esperando, e o que está há mais tempo na fila é o que
@@ -102,8 +129,11 @@ export class LeadsService {
         : [];
       const nomePorId = new Map(vendedores.map((v) => [v.id, v.nome]));
 
-      const data = linhas.map((l) => ({
+      const data = linhas.map(({ cnaes, ...l }) => ({
         ...l,
+        capitalSocial:
+          l.capitalSocial === null ? null : Number(l.capitalSocial),
+        cnaePrincipal: cnaes[0] ?? null,
         vendedorNome: l.vendedorId
           ? (nomePorId.get(l.vendedorId) ?? null)
           : null,
@@ -228,8 +258,10 @@ export class LeadsService {
       vendedorId: string | null;
       nome: string | null;
       empresaInformada: string | null;
-      telefone: string;
-      interesse: string;
+      nomeFantasia: string | null;
+      razaoSocial: string | null;
+      telefone: string | null;
+      interesse: string | null;
     },
   ) {
     if (!lead.vendedorId) return;
@@ -244,8 +276,8 @@ export class LeadsService {
       usuarioId: vendedor.usuarioId,
       autorUsuarioId: user.id,
       tipo: 'lead_novo',
-      titulo: `Lead para você: ${lead.empresaInformada ?? lead.nome ?? lead.telefone}`,
-      descricao: lead.interesse,
+      titulo: `Lead para você: ${lead.empresaInformada ?? lead.nomeFantasia ?? lead.razaoSocial ?? lead.nome ?? lead.telefone ?? 'sem nome'}`,
+      descricao: lead.interesse ?? 'Prospecção na base da Receita',
       rota: `/comercial/leads?lead=${lead.id}`,
       referenciaId: lead.id,
     });

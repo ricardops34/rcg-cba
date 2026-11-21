@@ -188,8 +188,8 @@ export type PosicaoClienteMapaLead = {
   id: string;
   nome: string | null;
   empresaInformada: string | null;
-  telefone: string;
-  interesse: string;
+  telefone: string | null;
+  interesse: string | null;
   temperatura: "quente" | "morno" | "frio";
   situacao: "novo" | "em_atendimento";
   vendedorNome: string | null;

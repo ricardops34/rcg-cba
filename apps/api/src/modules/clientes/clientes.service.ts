@@ -1823,7 +1823,8 @@ export class ClientesService {
     return linhas.map((l) => ({
       id: l.id,
       nome: l.nome,
-      empresaInformada: l.empresaInformada,
+      // Lead da Receita não "informou" empresa: vale o nome do cadastro dela.
+      empresaInformada: l.empresaInformada ?? l.nomeFantasia ?? l.razaoSocial,
       telefone: l.telefone,
       interesse: l.interesse,
       temperatura: l.temperatura,

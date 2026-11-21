@@ -364,7 +364,7 @@ export default function MapaClientesLeaflet({
           key={`lead-${l.id}`}
           position={[l.latitude, l.longitude]}
           icon={iconeLead}
-          title={l.empresaInformada ?? l.nome ?? l.telefone}
+          title={l.empresaInformada ?? l.nome ?? l.telefone ?? undefined}
         >
           <Popup>
             <div className="min-w-48 space-y-1 text-xs">
@@ -375,14 +375,14 @@ export default function MapaClientesLeaflet({
                 {l.empresaInformada || l.nome || "Sem nome"}
               </p>
               {l.empresaInformada && l.nome && <p className="text-muted-foreground">{l.nome}</p>}
-              <p className="font-mono text-muted-foreground">{l.telefone}</p>
+              {l.telefone && <p className="font-mono text-muted-foreground">{l.telefone}</p>}
               {l.municipio && (
                 <p className="text-muted-foreground">
                   {l.municipio}
                   {l.uf ? ` - ${l.uf}` : ""}
                 </p>
               )}
-              <p>{l.interesse}</p>
+              {l.interesse && <p>{l.interesse}</p>}
               <p className="text-muted-foreground">
                 {l.vendedorNome ? `Com ${l.vendedorNome}` : "Sem vendedor (na fila)"}
               </p>

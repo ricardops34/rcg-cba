@@ -1,8 +1,8 @@
 # Prospecção de leads pela base da Receita
 
-Pedido do usuário em 2026-11-20. Situação: **planejado, decisões tomadas** (seção
-"Decisões"); falta conferir o disco da VPS e o procedimento da stack para a base
-própria. Nada implementado.
+Pedido do usuário em 2026-11-20. Situação: **em implementação pela API pública**
+(decisão de 20/11, abaixo); a base própria (fase 1) fica para quando houver disco e
+o procedimento da stack.
 
 ## Objetivo
 
@@ -134,3 +134,35 @@ o mapa, a distribuição e os indicadores teriam de olhar duas tabelas.
 Adotadas sem pergunta (podem mudar): quadro societário fica só no retorno bruto
 (`dadosReceita`), já com o CPF mascarado pela fonte — sem campos próprios nem busca
 por sócio; limite de 5.000 empresas por coleta.
+
+## Decisão de 2026-11-20: começar pela API pública
+
+O usuário aprovou começar pelas **fases 2 a 5 usando a API pública** da MinhaReceita.
+A fase 1 (base própria) fica para quando o disco da VPS e o procedimento de subir o
+serviço na stack estiverem resolvidos. A troca para a base própria é só configuração
+(`MINHARECEITA_BASE_URL`), sem mudar código. Por causa do limite da API pública
+(429), a coleta anda devagar, página a página, e respeita o limite de 5.000 empresas
+por coleta.
+
+## Base própria: enxugar o que não interessa (pedido de 2026-11-20)
+
+O usuário pediu, na base própria, opções para **remover dados que não interessam**:
+
+- **Empresas baixadas** (e, por extensão, as que não estão ativas: baixada, nula,
+  inapta, suspensa), já que a prospecção só usa as ativas.
+- **Por estado:** manter só as UFs escolhidas (as da operação) e apagar as demais.
+
+Na tela Administração > Base da Receita: escolher as UFs mantidas e a regra de
+situação, ver quanto cada opção libera, e um botão "aplicar limpeza", que também roda
+depois de cada recarga mensal. Isso derruba o espaço bem abaixo dos ~180 GB da base
+inteira; o tamanho real depende das UFs (estimar quando houver a base).
+
+A conferir antes de implementar: se o `minha-receita` aceita filtrar na carga (o que
+evita até gravar o que será apagado) ou se a limpeza é feita depois, direto no
+Postgres dele.
+
+**Reduzir o tamanho de fato** (pedido do usuário, mesmo dia): no Postgres, apagar
+linhas não devolve espaço ao disco. Depois da limpeza é preciso compactar (`VACUUM
+FULL` nas tabelas da base, que trava a tabela durante a operação: rodar fora do
+horário e com a coleta parada) e recriar os índices. A tela mostra o tamanho antes e
+depois de cada limpeza.

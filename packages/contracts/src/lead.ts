@@ -26,6 +26,19 @@ export const LEAD_SITUACAO_LABEL: Record<LeadSituacao, string> = {
   descartado: "Descartado",
 };
 
+/**
+ * De onde o lead veio: a IA do WhatsApp, a coleta na base da Receita
+ * (prospecção) ou cadastro manual.
+ */
+export const leadOrigemSchema = z.enum(["whatsapp", "receita", "manual"]);
+export type LeadOrigem = z.infer<typeof leadOrigemSchema>;
+
+export const LEAD_ORIGEM_LABEL: Record<LeadOrigem, string> = {
+  whatsapp: "WhatsApp",
+  receita: "Receita",
+  manual: "Manual",
+};
+
 export const leadTemperaturaSchema = z.enum(["quente", "morno", "frio"]);
 export type LeadTemperatura = z.infer<typeof leadTemperaturaSchema>;
 
@@ -44,9 +57,31 @@ export const leadSchema = z.object({
   nome: z.string().nullable(),
   empresaInformada: z.string().nullable(),
   documento: z.string().nullable(),
-  /** De onde veio. O único dado que não depende do que ela diz. */
-  telefone: z.string(),
-  interesse: z.string(),
+  origem: leadOrigemSchema,
+  /**
+   * WhatsApp: de onde veio, o único dado que não depende do que a pessoa diz.
+   * Receita: o primeiro telefone da empresa, quando há.
+   */
+  telefone: z.string().nullable(),
+  /** O que procura (IA). Vazio no lead da Receita. */
+  interesse: z.string().nullable(),
+  /** Dados da empresa, vindos da Receita. `cnpj` só com dígitos. */
+  cnpj: z.string().nullable(),
+  razaoSocial: z.string().nullable(),
+  nomeFantasia: z.string().nullable(),
+  situacaoCadastral: z.string().nullable(),
+  dataAbertura: z.string().nullable(),
+  naturezaJuridica: z.string().nullable(),
+  porte: z.string().nullable(),
+  capitalSocial: z.number().nullable(),
+  email: z.string().nullable(),
+  telefone2: z.string().nullable(),
+  /** CNAE principal (código e descrição), quando veio da Receita. */
+  cnaePrincipal: z.object({ codigo: z.string(), descricao: z.string().nullable() }).nullable(),
+  coletadoEm: z.string().datetime().nullable(),
+  /** Cliente com o mesmo CNPJ, depois da conversão. */
+  clienteId: z.string().uuid().nullable(),
+  convertidoEm: z.string().datetime().nullable(),
   temperatura: leadTemperaturaSchema,
   /** Por que a IA classificou assim — para quem recebe poder discordar. */
   motivoClassificacao: z.string().nullable(),
@@ -72,6 +107,7 @@ export type Lead = z.infer<typeof leadSchema>;
 export const leadQuerySchema = paginationQuerySchema.extend({
   situacao: leadSituacaoSchema.optional(),
   temperatura: leadTemperaturaSchema.optional(),
+  origem: leadOrigemSchema.optional(),
 });
 export type LeadQuery = z.infer<typeof leadQuerySchema>;
 
@@ -109,8 +145,23 @@ export const LEAD_EXAMPLE: Lead = {
   nome: "Marcos",
   empresaInformada: "Padaria Estrela",
   documento: null,
+  origem: "whatsapp",
   telefone: "5567999887766",
   interesse: "Quer preço de refrigerante em caixa para revenda",
+  cnpj: null,
+  razaoSocial: null,
+  nomeFantasia: null,
+  situacaoCadastral: null,
+  dataAbertura: null,
+  naturezaJuridica: null,
+  porte: null,
+  capitalSocial: null,
+  email: null,
+  telefone2: null,
+  cnaePrincipal: null,
+  coletadoEm: null,
+  clienteId: null,
+  convertidoEm: null,
   temperatura: "quente",
   motivoClassificacao: "Disse que quer fechar esta semana e citou volume.",
   situacao: "novo",
