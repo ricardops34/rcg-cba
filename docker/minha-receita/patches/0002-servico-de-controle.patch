@@ -1,4 +1,4 @@
-From 14827c1b91b9db536ec92188c2894ccde5c97725 Mon Sep 17 00:00:00 2001
+From 2aebc5e6802545d491a761dc6d966505118615a0 Mon Sep 17 00:00:00 2001
 From: plataforma <plataforma@local>
 Date: Fri, 20 Nov 2026 22:37:35 -0400
 Subject: [PATCH] =?UTF-8?q?Servi=C3=A7o=20de=20controle=20interno:=20estad?=
@@ -9,9 +9,9 @@ Content-Transfer-Encoding: 8bit
 
 ---
  cmd/cmd.go           |   1 +
- cmd/controle.go      | 489 +++++++++++++++++++++++++++++++++++++++++++
- cmd/controle_test.go | 124 +++++++++++
- 3 files changed, 614 insertions(+)
+ cmd/controle.go      | 520 +++++++++++++++++++++++++++++++++++++++++++
+ cmd/controle_test.go | 138 ++++++++++++
+ 3 files changed, 659 insertions(+)
  create mode 100644 cmd/controle.go
  create mode 100644 cmd/controle_test.go
 
@@ -29,10 +29,10 @@ index c984653..8231f6a 100644
  		dropCmd,
 diff --git a/cmd/controle.go b/cmd/controle.go
 new file mode 100644
-index 0000000..68435f2
+index 0000000..679812d
 --- /dev/null
 +++ b/cmd/controle.go
-@@ -0,0 +1,489 @@
+@@ -0,0 +1,520 @@
 +package cmd
 +
 +// Serviço de controle — patch da plataforma (não existe no projeto original).
@@ -86,15 +86,19 @@ index 0000000..68435f2
 +)
 +
 +type cargaControle struct {
-+	Rodando     bool       `json:"rodando"`
-+	Etapa       string     `json:"etapa"` // download | verificacao | transform | limpeza | concluida | erro
-+	Mes         string     `json:"mes"`
-+	UFs         []string   `json:"ufs"`
-+	Situacoes   []string   `json:"situacoes"`
-+	IniciadaEm  *time.Time `json:"iniciadaEm"`
-+	ConcluidaEm *time.Time `json:"concluidaEm"`
-+	Erro        string     `json:"erro"`
-+	Log         []string   `json:"log"`
++	Rodando   bool     `json:"rodando"`
++	Etapa     string   `json:"etapa"` // download | verificacao | transform | limpeza | concluida | erro
++	Mes       string   `json:"mes"`
++	UFs       []string `json:"ufs"`
++	Situacoes []string `json:"situacoes"`
++	// Download (parâmetros RECEITA_DOWNLOAD_*); 0 = padrão do download.
++	Conexoes     int        `json:"conexoes"`
++	Retentativas int        `json:"retentativas"`
++	EsperaS      int        `json:"esperaS"`
++	IniciadaEm   *time.Time `json:"iniciadaEm"`
++	ConcluidaEm  *time.Time `json:"concluidaEm"`
++	Erro         string     `json:"erro"`
++	Log          []string   `json:"log"`
 +}
 +
 +type controle struct {
@@ -212,7 +216,7 @@ index 0000000..68435f2
 +		if c.rodarFn != nil {
 +			run = c.rodarFn
 +		}
-+		if err = run("download", nil, args...); err == nil {
++		if err = run("download", c.envDownload(), args...); err == nil {
 +			return nil
 +		}
 +		if t < tentativasDownload {
@@ -223,6 +227,23 @@ index 0000000..68435f2
 +		}
 +	}
 +	return err
++}
++
++// envDownload repassa ao processo de download os valores escolhidos na tela.
++func (c *controle) envDownload() []string {
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	var env []string
++	if c.carga.Conexoes > 0 {
++		env = append(env, fmt.Sprintf("MR_DOWNLOAD_CONEXOES=%d", c.carga.Conexoes))
++	}
++	if c.carga.Retentativas > 0 {
++		env = append(env, fmt.Sprintf("MR_DOWNLOAD_RETENTATIVAS=%d", c.carga.Retentativas))
++	}
++	if c.carga.EsperaS > 0 {
++		env = append(env, fmt.Sprintf("MR_DOWNLOAD_ESPERA_S=%d", c.carga.EsperaS))
++	}
++	return env
 +}
 +
 +func slicesSemRestart(args []string) []string {
@@ -429,9 +450,12 @@ index 0000000..68435f2
 +	})
 +	mux.HandleFunc("POST /carga", func(w http.ResponseWriter, r *http.Request) {
 +		var in struct {
-+			Mes       string   `json:"mes"`
-+			UFs       []string `json:"ufs"`
-+			Situacoes []string `json:"situacoes"`
++			Mes          string   `json:"mes"`
++			UFs          []string `json:"ufs"`
++			Situacoes    []string `json:"situacoes"`
++			Conexoes     int      `json:"conexoes"`
++			Retentativas int      `json:"retentativas"`
++			EsperaS      int      `json:"esperaS"`
 +		}
 +		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
 +			erroJSON(w, http.StatusBadRequest, "corpo inválido")
@@ -451,6 +475,10 @@ index 0000000..68435f2
 +				return
 +			}
 +		}
++		if in.Conexoes < 0 || in.Conexoes > 32 || in.Retentativas < 0 || in.Retentativas > 1000 || in.EsperaS < 0 || in.EsperaS > 600 {
++			erroJSON(w, http.StatusBadRequest, "download: conexões 1-32, tentativas 1-1000, espera 0-600 s")
++			return
++		}
 +		for _, s := range in.Situacoes {
 +			if !reSit.MatchString(s) {
 +				erroJSON(w, http.StatusBadRequest, "situação inválida: "+s)
@@ -465,12 +493,15 @@ index 0000000..68435f2
 +		}
 +		agora := time.Now()
 +		c.carga = cargaControle{
-+			Rodando:    true,
-+			Etapa:      "download",
-+			Mes:        in.Mes,
-+			UFs:        in.UFs,
-+			Situacoes:  in.Situacoes,
-+			IniciadaEm: &agora,
++			Rodando:      true,
++			Etapa:        "download",
++			Mes:          in.Mes,
++			UFs:          in.UFs,
++			Situacoes:    in.Situacoes,
++			Conexoes:     in.Conexoes,
++			Retentativas: in.Retentativas,
++			EsperaS:      in.EsperaS,
++			IniciadaEm:   &agora,
 +		}
 +		c.salvar()
 +		c.mu.Unlock()
@@ -524,10 +555,10 @@ index 0000000..68435f2
 +}
 diff --git a/cmd/controle_test.go b/cmd/controle_test.go
 new file mode 100644
-index 0000000..d0f9dfe
+index 0000000..b2e1f11
 --- /dev/null
 +++ b/cmd/controle_test.go
-@@ -0,0 +1,124 @@
+@@ -0,0 +1,138 @@
 +package cmd
 +
 +import (
@@ -650,5 +681,19 @@ index 0000000..d0f9dfe
 +	}
 +	if n != tentativasDownload {
 +		t.Fatalf("esperava %d tentativas, foram %d", tentativasDownload, n)
++	}
++}
++
++func TestEnvDownloadSoComOQueFoiEscolhido(t *testing.T) {
++	c := &controle{dir: t.TempDir(), log: slog.Default()}
++	if env := c.envDownload(); len(env) != 0 {
++		t.Fatalf("sem escolha não deve mandar nada, veio %v", env)
++	}
++	c.carga.Conexoes, c.carga.Retentativas, c.carga.EsperaS = 2, 40, 20
++	env := c.envDownload()
++	for _, esperado := range []string{"MR_DOWNLOAD_CONEXOES=2", "MR_DOWNLOAD_RETENTATIVAS=40", "MR_DOWNLOAD_ESPERA_S=20"} {
++		if !slices.Contains(env, esperado) {
++			t.Errorf("faltou %s em %v", esperado, env)
++		}
 +	}
 +}

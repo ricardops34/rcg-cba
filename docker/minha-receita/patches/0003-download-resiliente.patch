@@ -1,0 +1,139 @@
+From 08d920e89d45bad655ea42185d0cf4b37db6dc82 Mon Sep 17 00:00:00 2001
+From: plataforma <plataforma@local>
+Date: Sat, 21 Nov 2026 01:22:47 -0400
+Subject: [PATCH] =?UTF-8?q?Download=20resiliente:=20conex=C3=B5es,=20tenta?=
+ =?UTF-8?q?tivas=20e=20espera=20pelo=20ambiente=20(patch=20da=20plataforma?=
+ =?UTF-8?q?)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ download/download.go         |  2 ++
+ download/resiliencia.go      | 45 ++++++++++++++++++++++++++++++++++++
+ download/resiliencia_test.go | 44 +++++++++++++++++++++++++++++++++++
+ 3 files changed, 91 insertions(+)
+ create mode 100644 download/resiliencia.go
+ create mode 100644 download/resiliencia_test.go
+
+diff --git a/download/download.go b/download/download.go
+index 41d88bd..db87389 100644
+--- a/download/download.go
++++ b/download/download.go
+@@ -106,6 +106,7 @@ func downloadFederalRevenue(c *webdav, ym, dir string, restart bool) error {
+ 	d.UserAgent = userAgent
+ 	d.RestartDownloads = restart
+ 	d.ChunkSize = 4 << 20
++	ajustarDownloader(d) // patch da plataforma (resiliencia.go)
+ 	return trackDownload(d.Download(urls...), bar)
+ }
+ 
+@@ -154,6 +155,7 @@ func downloadTaxRegime(c *webdav, dir string, restart bool) error {
+ 	d.UserAgent = userAgent
+ 	d.RestartDownloads = restart
+ 	d.ChunkSize = 4 << 20
++	ajustarDownloader(d) // patch da plataforma (resiliencia.go)
+ 	return trackDownload(d.Download(urls...), bar)
+ }
+ 
+diff --git a/download/resiliencia.go b/download/resiliencia.go
+new file mode 100644
+index 0000000..2fd53cd
+--- /dev/null
++++ b/download/resiliencia.go
+@@ -0,0 +1,45 @@
++package download
++
++// Download resiliente — patch da plataforma (não existe no projeto original).
++//
++// O servidor da Receita oscila: em 2026-11-21 recusou conexão ("connect:
++// connection refused") várias vezes no meio do download, e o padrão do
++// chunk (5 tentativas por parte, 1 s entre elas) derrubava o download
++// inteiro em segundos. Os três valores vêm do ambiente, preenchido pelo
++// serviço de controle com os parâmetros de Administração > Base da Receita;
++// vazios, ficam os padrões abaixo (mais pacientes que os do chunk).
++//
++//   MR_DOWNLOAD_CONEXOES      conexões simultâneas com a Receita (padrão 4)
++//   MR_DOWNLOAD_RETENTATIVAS  tentativas por parte do arquivo (padrão 30)
++//   MR_DOWNLOAD_ESPERA_S      segundos entre as tentativas (padrão 15)
++
++import (
++	"os"
++	"strconv"
++	"time"
++
++	"tangled.org/cuducos.me/chunk"
++)
++
++const (
++	padraoConexoes      = 4
++	padraoRetentativas  = 30
++	padraoEsperaSegundo = 15
++)
++
++func inteiroDoAmbiente(nome string, padrao, min, max int) int {
++	v, err := strconv.Atoi(os.Getenv(nome))
++	if err != nil || v < min || v > max {
++		return padrao
++	}
++	return v
++}
++
++// ajustarDownloader aplica conexões, tentativas e espera. O cliente HTTP é
++// refeito porque o DefaultDownloader já o cria com o limite de conexões fixo.
++func ajustarDownloader(d *chunk.Downloader) {
++	d.ConcurrencyPerServer = inteiroDoAmbiente("MR_DOWNLOAD_CONEXOES", padraoConexoes, 1, 32)
++	d.MaxRetries = uint(inteiroDoAmbiente("MR_DOWNLOAD_RETENTATIVAS", padraoRetentativas, 1, 1000))
++	d.WaitRetry = time.Duration(inteiroDoAmbiente("MR_DOWNLOAD_ESPERA_S", padraoEsperaSegundo, 0, 600)) * time.Second
++	d.Client = nil
++}
+diff --git a/download/resiliencia_test.go b/download/resiliencia_test.go
+new file mode 100644
+index 0000000..91ff007
+--- /dev/null
++++ b/download/resiliencia_test.go
+@@ -0,0 +1,44 @@
++package download
++
++import (
++	"testing"
++	"time"
++
++	"tangled.org/cuducos.me/chunk"
++)
++
++func TestAjustarDownloaderPadroes(t *testing.T) {
++	t.Setenv("MR_DOWNLOAD_CONEXOES", "")
++	t.Setenv("MR_DOWNLOAD_RETENTATIVAS", "")
++	t.Setenv("MR_DOWNLOAD_ESPERA_S", "")
++	d := chunk.DefaultDownloader()
++	ajustarDownloader(d)
++	if d.ConcurrencyPerServer != 4 || d.MaxRetries != 30 || d.WaitRetry != 15*time.Second {
++		t.Fatalf("padrões errados: %d conexões, %d tentativas, %s", d.ConcurrencyPerServer, d.MaxRetries, d.WaitRetry)
++	}
++	if d.Client != nil {
++		t.Error("o cliente precisa ser refeito para a concorrência valer")
++	}
++}
++
++func TestAjustarDownloaderDoAmbiente(t *testing.T) {
++	t.Setenv("MR_DOWNLOAD_CONEXOES", "2")
++	t.Setenv("MR_DOWNLOAD_RETENTATIVAS", "50")
++	t.Setenv("MR_DOWNLOAD_ESPERA_S", "30")
++	d := chunk.DefaultDownloader()
++	ajustarDownloader(d)
++	if d.ConcurrencyPerServer != 2 || d.MaxRetries != 50 || d.WaitRetry != 30*time.Second {
++		t.Fatalf("ambiente ignorado: %d conexões, %d tentativas, %s", d.ConcurrencyPerServer, d.MaxRetries, d.WaitRetry)
++	}
++}
++
++func TestAjustarDownloaderValorInvalidoViraPadrao(t *testing.T) {
++	t.Setenv("MR_DOWNLOAD_CONEXOES", "0")
++	t.Setenv("MR_DOWNLOAD_RETENTATIVAS", "abc")
++	t.Setenv("MR_DOWNLOAD_ESPERA_S", "-1")
++	d := chunk.DefaultDownloader()
++	ajustarDownloader(d)
++	if d.ConcurrencyPerServer != 4 || d.MaxRetries != 30 || d.WaitRetry != 15*time.Second {
++		t.Fatalf("valor inválido devia cair no padrão: %d, %d, %s", d.ConcurrencyPerServer, d.MaxRetries, d.WaitRetry)
++	}
++}

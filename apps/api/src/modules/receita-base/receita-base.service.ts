@@ -97,6 +97,30 @@ export const RECEITA_PARAMETROS = {
     descricao:
       'Máximo de empresas lidas por coleta de leads (todas as situações)',
   },
+  downloadConexoes: {
+    parametro: 'RECEITA_DOWNLOAD_CONEXOES',
+    tipo: 'numero',
+    tamanho: 2,
+    padrao: '4',
+    descricao:
+      'Carga da base própria: conexões simultâneas com o servidor da Receita',
+  },
+  downloadRetentativas: {
+    parametro: 'RECEITA_DOWNLOAD_RETENTATIVAS',
+    tipo: 'numero',
+    tamanho: 4,
+    padrao: '30',
+    descricao:
+      'Carga da base própria: tentativas por parte do arquivo quando a Receita falha',
+  },
+  downloadEsperaS: {
+    parametro: 'RECEITA_DOWNLOAD_ESPERA_S',
+    tipo: 'numero',
+    tamanho: 3,
+    padrao: '15',
+    descricao:
+      'Carga da base própria: segundos de espera entre as tentativas do download',
+  },
   pausaMs: {
     parametro: 'PROSPECCAO_PAUSA_MS',
     tipo: 'numero',
@@ -155,6 +179,9 @@ export class ReceitaBaseService {
       maxCombinacoes: await numero(P.maxCombinacoes),
       maxEmpresas: await numero(P.maxEmpresas),
       pausaMs: await numero(P.pausaMs),
+      downloadConexoes: await numero(P.downloadConexoes),
+      downloadRetentativas: await numero(P.downloadRetentativas),
+      downloadEsperaS: await numero(P.downloadEsperaS),
       padroes: {
         propriaUrl: padroes.propriaUrl,
         controleUrl: padroes.controleUrl,
@@ -178,6 +205,9 @@ export class ReceitaBaseService {
       [P.maxCombinacoes, String(dados.maxCombinacoes)],
       [P.maxEmpresas, String(dados.maxEmpresas)],
       [P.pausaMs, String(dados.pausaMs)],
+      [P.downloadConexoes, String(dados.downloadConexoes)],
+      [P.downloadRetentativas, String(dados.downloadRetentativas)],
+      [P.downloadEsperaS, String(dados.downloadEsperaS)],
     ];
     // Cifrado (PARAMETROS_CRYPTO_KEY), antes da transação: sem a chave mestra o
     // salvamento inteiro é recusado, sem gravar a metade.
@@ -350,6 +380,8 @@ export class ReceitaBaseService {
   /** Dispara a carga com a união das empresas. */
   async carregar(empresaId: string, mes?: string) {
     const proxima = await this.proximaCarga();
+    // Download: parâmetros da empresa que dispara a carga.
+    const cfg = await this.config(empresaId);
     if (proxima.ufs.length === 0) {
       throw new BadRequestException(
         'Nenhum estado marcado: escolha ao menos um estado antes de carregar (senão a base viria com o Brasil inteiro).',
@@ -363,6 +395,9 @@ export class ReceitaBaseService {
         mes: mes ?? '',
         ufs: proxima.ufs,
         situacoes: proxima.situacoes,
+        conexoes: cfg.downloadConexoes,
+        retentativas: cfg.downloadRetentativas,
+        esperaS: cfg.downloadEsperaS,
       },
     );
     if (r.status === 409)

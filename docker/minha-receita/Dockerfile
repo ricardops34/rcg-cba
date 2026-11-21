@@ -22,7 +22,7 @@ RUN git -c core.autocrlf=false apply --whitespace=nowarn /patches/*.patch
 RUN go mod download
 # Os testes do filtro e os do pacote de carga original: um patch que quebre a
 # carga não chega a virar imagem.
-RUN go test ./transform/ && go test ./cmd/ -run "ConferirZip|VerificarZips|Baixar"
+RUN go test ./transform/ ./download/ && go test ./cmd/ -run "ConferirZip|VerificarZips|Baixar|EnvDownload"
 RUN CGO_ENABLED=1 go build -o /usr/bin/minha-receita
 # Diretório dos arquivos baixados, gravável pelo usuário sem privilégio da
 # imagem final (o volume nomeado herda dono e permissão na primeira montagem).

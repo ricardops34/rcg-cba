@@ -264,12 +264,16 @@ function Estado() {
   );
 }
 
-type Form = Omit<ReceitaBaseConfigSalvar, "controleToken" | "maxCombinacoes" | "maxEmpresas" | "pausaMs"> & {
+type CamposNumero =
+  | "maxCombinacoes"
+  | "maxEmpresas"
+  | "pausaMs"
+  | "downloadConexoes"
+  | "downloadRetentativas"
+  | "downloadEsperaS";
+type Form = Omit<ReceitaBaseConfigSalvar, "controleToken" | CamposNumero> & {
   controleToken: string;
-  maxCombinacoes: string;
-  maxEmpresas: string;
-  pausaMs: string;
-};
+} & Record<CamposNumero, string>;
 
 function Configuracao({ cfg }: { cfg: ReceitaBaseConfig }) {
   const queryClient = useQueryClient();
@@ -284,6 +288,9 @@ function Configuracao({ cfg }: { cfg: ReceitaBaseConfig }) {
     maxCombinacoes: String(cfg.maxCombinacoes),
     maxEmpresas: String(cfg.maxEmpresas),
     pausaMs: String(cfg.pausaMs),
+    downloadConexoes: String(cfg.downloadConexoes),
+    downloadRetentativas: String(cfg.downloadRetentativas),
+    downloadEsperaS: String(cfg.downloadEsperaS),
   }));
   const muda = <K extends keyof Form>(chave: K, valor: Form[K]) => setForm((f) => ({ ...f, [chave]: valor }));
   const alternar = <T extends string>(lista: T[], item: T) =>
@@ -299,6 +306,9 @@ function Configuracao({ cfg }: { cfg: ReceitaBaseConfig }) {
           maxCombinacoes: Number(dados.maxCombinacoes),
           maxEmpresas: Number(dados.maxEmpresas),
           pausaMs: Number(dados.pausaMs),
+          downloadConexoes: Number(dados.downloadConexoes),
+          downloadRetentativas: Number(dados.downloadRetentativas),
+          downloadEsperaS: Number(dados.downloadEsperaS),
         },
       }),
     onSuccess: (atualizado) => {
@@ -358,6 +368,30 @@ function Configuracao({ cfg }: { cfg: ReceitaBaseConfig }) {
                 A prospecção só usa as ativas; manter baixadas e inativas ocupa espaço sem uso.
                 Vale na próxima carga.
               </FieldDescription>
+            </div>
+            <div className="space-y-1.5">
+              <FieldLabel>Download da carga</FieldLabel>
+              <div className="grid gap-4 sm:grid-cols-3">
+                {(
+                  [
+                    ["downloadConexoes", "Conexões simultâneas (RECEITA_DOWNLOAD_CONEXOES)", "1 a 32. Menos conexões incomodam menos o servidor da Receita."],
+                    ["downloadRetentativas", "Tentativas por parte (RECEITA_DOWNLOAD_RETENTATIVAS)", "1 a 1.000. A Receita recusa conexão de vez em quando."],
+                    ["downloadEsperaS", "Espera entre tentativas, s (RECEITA_DOWNLOAD_ESPERA_S)", "0 a 600 segundos."],
+                  ] as const
+                ).map(([campo, rotulo, ajuda]) => (
+                  <div key={campo} className="space-y-1.5">
+                    <FieldLabel htmlFor={`receita-${campo}`}>{rotulo}</FieldLabel>
+                    <Input
+                      id={`receita-${campo}`}
+                      inputMode="numeric"
+                      value={form[campo]}
+                      onChange={(ev) => muda(campo, ev.target.value.replace(/D/g, ""))}
+                      disabled={!podeEditar}
+                    />
+                    <FieldDescription>{ajuda}</FieldDescription>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 

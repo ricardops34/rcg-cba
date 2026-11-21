@@ -62,6 +62,14 @@ export const receitaBaseConfigSalvarSchema = z.object({
   maxEmpresas: z.number().int().min(100).max(500000),
   /** Fonte pública: pausa entre buscas, em milissegundos. */
   pausaMs: z.number().int().min(0).max(60000),
+  /**
+   * Download da carga: o servidor da Receita oscila (recusou conexão várias
+   * vezes em 2026-11-21). Conexões simultâneas, tentativas por parte do
+   * arquivo e segundos entre elas.
+   */
+  downloadConexoes: z.number().int().min(1).max(32),
+  downloadRetentativas: z.number().int().min(1).max(1000),
+  downloadEsperaS: z.number().int().min(0).max(600),
 });
 export type ReceitaBaseConfigSalvar = z.infer<typeof receitaBaseConfigSalvarSchema>;
 
