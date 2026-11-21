@@ -4,6 +4,7 @@ import { LeadsService } from './leads.service';
 import { ProspeccaoController } from './prospeccao.controller';
 import { ProspeccaoService } from './prospeccao.service';
 import { GeocodificacaoModule } from '../geocodificacao/geocodificacao.module';
+import { ReceitaBaseModule } from '../receita-base/receita-base.module';
 
 /**
  * Leads: a distribuição dos captados pela IA e a prospecção na base da
@@ -12,7 +13,8 @@ import { GeocodificacaoModule } from '../geocodificacao/geocodificacao.module';
  */
 @Module({
   // Coordenadas pelo Google ao salvar o endereço do lead.
-  imports: [GeocodificacaoModule],
+  // Fonte e limites da coleta (parâmetros de Administração > Base da Receita).
+  imports: [GeocodificacaoModule, ReceitaBaseModule],
   // A prospecção vem antes: `leads/prospeccao/...` não pode cair numa rota
   // `leads/:id` (hoje só há PATCH :id, mas a ordem evita a surpresa).
   controllers: [ProspeccaoController, LeadsController],

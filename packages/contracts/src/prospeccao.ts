@@ -7,16 +7,23 @@ import { z } from "zod";
  * coleta fica só com as **ativas que ainda não são clientes nem leads** e as
  * importa como leads `origem = receita`, sem vendedor, para a distribuição.
  *
- * A fonte (MinhaReceita pública, ou a base própria quando existir) só aceita
- * **um município e um CNAE por busca** — a pública recusa a busca com vários
- * CNAEs ("busca muito custosa"). Por isso a coleta percorre cada combinação, e
- * o número de combinações tem teto.
+ * A fonte é parâmetro (Administração > Base da Receita):
+ * - **pública**: só aceita um município e um CNAE por busca (com vários ela
+ *   responde "busca muito custosa"), então a coleta percorre cada combinação,
+ *   com pausa entre buscas e teto de combinações;
+ * - **própria**: sem trava (uso exclusivo), uma busca com todos os municípios
+ *   e CNAEs, paginada.
  */
 
-/** Teto de combinações município × CNAE numa coleta. */
-export const PROSPECCAO_MAX_COMBINACOES = 60;
-/** Teto de empresas lidas numa coleta (todas as situações). */
-export const PROSPECCAO_MAX_EMPRESAS = 5000;
+/**
+ * Padrões dos limites da coleta. Os valores em uso são parâmetros da empresa
+ * (PROSPECCAO_*), alterados em Administração > Base da Receita.
+ */
+export const PROSPECCAO_PADRAO_MAX_COMBINACOES = 60;
+export const PROSPECCAO_PADRAO_MAX_EMPRESAS = 5000;
+export const PROSPECCAO_PADRAO_PAUSA_MS = 1500;
+/** Teto absoluto de itens escolhidos por coleta (a validação fina é do servidor). */
+const MAX_ITENS = 2000;
 
 export const prospeccaoColetaCriarSchema = z
   .object({
@@ -29,16 +36,12 @@ export const prospeccaoColetaCriarSchema = z
     municipios: z
       .array(z.string().regex(/^\d{7}$/, "Código IBGE com 7 dígitos"))
       .min(1, "Escolha ao menos um município")
-      .max(PROSPECCAO_MAX_COMBINACOES),
+      .max(MAX_ITENS),
     /** Códigos de subclasse CNAE (7 dígitos). */
     cnaes: z
       .array(z.string().regex(/^\d{7}$/, "CNAE com 7 dígitos"))
       .min(1, "Escolha ao menos um CNAE")
-      .max(PROSPECCAO_MAX_COMBINACOES),
-  })
-  .refine((v) => v.municipios.length * v.cnaes.length <= PROSPECCAO_MAX_COMBINACOES, {
-    message: `No máximo ${PROSPECCAO_MAX_COMBINACOES} combinações de município × CNAE por coleta`,
-    path: ["cnaes"],
+      .max(MAX_ITENS),
   });
 export type ProspeccaoColetaCriar = z.infer<typeof prospeccaoColetaCriarSchema>;
 

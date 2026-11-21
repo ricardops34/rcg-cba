@@ -6,7 +6,7 @@ import {
 } from '@nestjs/common';
 import { Prisma } from '@prisma/client';
 import {
-  PROSPECCAO_MAX_EMPRESAS,
+  type ProspeccaoLimites,
   type ProspeccaoCnae,
   type ProspeccaoColeta,
   type ProspeccaoColetaCriar,
@@ -16,31 +16,38 @@ import {
   PrismaService,
   type TenantTx,
 } from '../../common/prisma/prisma.service';
-import { BASE_URLS } from '../../common/external-http/external-http.service';
+import { ReceitaBaseService } from '../receita-base/receita-base.service';
 import type { AuthenticatedUser } from '../../common/decorators/current-user.decorator';
 
 /**
  * Coleta de empresas na base da Receita para virar lead
  * (docs/planos/2026-11-20-prospeccao-leads-receita.md, fase 3).
  *
- * A fonte é a MinhaReceita pela URL de `MINHARECEITA_BASE_URL`: hoje a pública;
- * quando houver a base própria, só a variável muda. O que a pública impõe, e
- * foi conferido em 20/11/2026:
+ * Fonte e limites são parâmetros da empresa (PROSPECCAO_*, em Administração >
+ * Base da Receita — ReceitaBaseService.prospeccao):
  *
- * - **um município (código IBGE) e um CNAE por busca** — com dois CNAEs ela
- *   responde "busca muito custosa para o banco de dados, tente novamente em 1
- *   minuto". Por isso a coleta percorre cada combinação, uma de cada vez;
- * - até 1.000 por página, `cursor` para a próxima e `cursor: null` no fim;
- * - vem **toda situação cadastral** (em Campo Grande, supermercado: 213 ativas
- *   de 622) — só as ATIVAS viram lead.
+ * - **pública** (MinhaReceita): **um município (código IBGE) e um CNAE por
+ *   busca** — com dois CNAEs ela responde "busca muito custosa para o banco de
+ *   dados, tente novamente em 1 minuto" (conferido em 20/11/2026). A coleta
+ *   percorre cada combinação, com pausa entre buscas e teto de combinações;
+ * - **própria**: sem trava (uso exclusivo), uma busca só com todos os
+ *   municípios e CNAEs, sem pausa; recusada enquanto a base está carregando.
+ *
+ * Nas duas: até 1.000 por página, `cursor` para a próxima e `cursor: null` no
+ * fim; vem toda situação cadastral que a fonte tiver (a pública, em Campo
+ * Grande × supermercado: 213 ativas de 622) — só as ATIVAS viram lead.
  *
  * A coleta roda em segundo plano, uma por empresa de cada vez; o progresso das
  * combinações fica em memória (some num restart, e a coleta que estava rodando
  * é marcada como interrompida na próxima consulta).
  */
 
-/** Pausa entre buscas: a pública é compartilhada e tem limite por servidor. */
-const PAUSA_ENTRE_BUSCAS_MS = 1500;
+interface ConfigColeta {
+  url: string;
+  pausaMs: number;
+  maxEmpresas: number;
+}
+
 /** Espera quando a fonte pede ("tente novamente em 1 minuto" ou 429). */
 const ESPERA_LIMITE_MS = 61_000;
 const TENTATIVAS_NO_LIMITE = 4;
@@ -101,7 +108,20 @@ export class ProspeccaoService {
   /** Empresas com coleta em andamento neste processo. */
   private readonly rodando = new Set<string>();
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly receita: ReceitaBaseService,
+  ) {}
+
+  /** Fonte e limites em uso, para a tela de Prospecção. */
+  async limites(empresaId: string): Promise<ProspeccaoLimites> {
+    const c = await this.receita.prospeccao(empresaId);
+    return {
+      fonte: c.fonte,
+      maxCombinacoes: c.maxCombinacoes,
+      maxEmpresas: c.maxEmpresas,
+    };
+  }
 
   /** Municípios da UF com código IBGE, para o filtro da coleta. */
   async municipios(uf: string): Promise<ProspeccaoMunicipio[]> {
@@ -207,6 +227,22 @@ export class ProspeccaoService {
         'Já há uma coleta rodando — espere ela terminar.',
       );
     }
+    const cfg = await this.receita.prospeccao(empresaId);
+    const combinacoesPedidas =
+      new Set(input.municipios).size * new Set(input.cnaes).size;
+    if (cfg.fonte === 'publica' && combinacoesPedidas > cfg.maxCombinacoes) {
+      throw new BadRequestException(
+        `A fonte pública aceita no máximo ${cfg.maxCombinacoes} buscas (município × atividade) por coleta; foram ${combinacoesPedidas}.`,
+      );
+    }
+    if (
+      cfg.fonte === 'propria' &&
+      (await this.receita.cargaRodando(empresaId))
+    ) {
+      throw new ConflictException(
+        'A base própria está sendo carregada; a coleta fica disponível quando a carga terminar.',
+      );
+    }
     // Nomes para o histórico da coleta (e para a tela): o que não existir na
     // base de municípios/CNAEs fica de fora.
     const [municipios, cnaes] = await Promise.all([
@@ -246,7 +282,7 @@ export class ProspeccaoService {
             empresaId,
             usuarioId: user.id,
             filtros: filtros,
-            fonte: BASE_URLS.minhaReceita(),
+            fonte: cfg.url,
           },
         }),
       );
@@ -256,11 +292,25 @@ export class ProspeccaoService {
       throw e;
     }
 
-    const combinacoes = filtros.municipios.flatMap((m) =>
-      filtros.cnaes.map((c) => ({ municipio: m.codigo, cnae: c.codigo })),
-    );
+    // Pública: uma busca por município × CNAE. Própria: uma busca com todos
+    // (a fonte aceita vários valores separados por vírgula).
+    const combinacoes =
+      cfg.fonte === 'propria'
+        ? [
+            {
+              municipio: filtros.municipios.map((m) => m.codigo).join(','),
+              cnae: filtros.cnaes.map((c) => c.codigo).join(','),
+            },
+          ]
+        : filtros.municipios.flatMap((m) =>
+            filtros.cnaes.map((c) => ({ municipio: m.codigo, cnae: c.codigo })),
+          );
     this.progresso.set(coletaId, { feitas: 0, total: combinacoes.length });
-    void this.executar(empresaId, user.id, coletaId, input.uf, combinacoes);
+    void this.executar(empresaId, user.id, coletaId, input.uf, combinacoes, {
+      url: cfg.url,
+      pausaMs: cfg.pausaMs,
+      maxEmpresas: cfg.maxEmpresas,
+    });
     return { id: coletaId };
   }
 
@@ -270,6 +320,7 @@ export class ProspeccaoService {
     coletaId: string,
     uf: string,
     combinacoes: { municipio: string; cnae: string }[],
+    cfg: ConfigColeta,
   ) {
     const totais = {
       encontrados: 0,
@@ -284,6 +335,7 @@ export class ProspeccaoService {
         let cursor: string | null = null;
         do {
           const pagina = await this.buscar(
+            cfg.url,
             uf,
             combo.municipio,
             combo.cnae,
@@ -298,11 +350,11 @@ export class ProspeccaoService {
             totais,
           );
           cursor = pagina.cursor == null ? null : String(pagina.cursor);
-          if (totais.encontrados >= PROSPECCAO_MAX_EMPRESAS) {
-            aviso = `Parou no limite de ${PROSPECCAO_MAX_EMPRESAS.toLocaleString('pt-BR')} empresas lidas por coleta. Para o resto, rode outra coleta com menos municípios ou CNAEs.`;
+          if (totais.encontrados >= cfg.maxEmpresas) {
+            aviso = `Parou no limite de ${cfg.maxEmpresas.toLocaleString('pt-BR')} empresas lidas por coleta (Administração > Base da Receita). Para o resto, rode outra coleta com menos municípios ou CNAEs.`;
             break laco;
           }
-          await dormir(PAUSA_ENTRE_BUSCAS_MS);
+          if (cfg.pausaMs > 0) await dormir(cfg.pausaMs);
         } while (cursor);
         this.progresso.set(coletaId, {
           feitas: i + 1,
@@ -344,12 +396,13 @@ export class ProspeccaoService {
 
   /** Uma página da fonte, esperando e repetindo quando ela pede. */
   private async buscar(
+    base: string,
     uf: string,
     municipio: string,
     cnae: string,
     cursor: string | null,
   ): Promise<PaginaReceita> {
-    const url = new URL(BASE_URLS.minhaReceita());
+    const url = new URL(base);
     url.searchParams.set('uf', uf);
     url.searchParams.set('municipio', municipio);
     url.searchParams.set('cnae_fiscal', cnae);

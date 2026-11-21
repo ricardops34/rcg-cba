@@ -7,9 +7,9 @@ import { Loader2, Radar } from "lucide-react";
 import { toast } from "sonner";
 import {
   LEAD_COLETA_SITUACAO_LABEL,
-  PROSPECCAO_MAX_COMBINACOES,
-  PROSPECCAO_MAX_EMPRESAS,
+  PROSPECCAO_FONTE_LABEL,
   type ProspeccaoCnae,
+  type ProspeccaoLimites,
   type ProspeccaoColeta,
   type ProspeccaoMunicipio,
 } from "@plataforma/contracts";
@@ -45,8 +45,9 @@ import { BarraAnimada } from "@/components/graficos/barra-animada";
  * sem vendedor) só as **ativas que não são clientes nem leads**; o resto entra
  * nas contagens. Os leads aparecem na tela de Leads para a distribuição.
  *
- * A base pública só aceita um município e um CNAE por busca, por isso a coleta
- * percorre cada combinação — e o número delas tem teto.
+ * A fonte (pública ou base própria) e os limites são parâmetros de Administração
+ * > Base da Receita. A pública só aceita um município e um CNAE por busca, então a coleta
+ * percorre cada combinação, com teto; a própria faz uma busca só.
  */
 
 const UFS = [
@@ -96,6 +97,11 @@ export default function ProspeccaoPage() {
     queryFn: () => apiFetch<ProspeccaoCnae[]>("/leads/prospeccao/cnaes"),
     staleTime: Infinity,
   });
+  // Fonte e limites são parâmetros (Administração > Base da Receita).
+  const { data: limites } = useQuery({
+    queryKey: ["prospeccao", "limites"],
+    queryFn: () => apiFetch<ProspeccaoLimites>("/leads/prospeccao/limites"),
+  });
   const coletasQuery = useQuery({
     queryKey: ["prospeccao", "coletas"],
     queryFn: () => apiFetch<ProspeccaoColeta[]>("/leads/prospeccao/coletas"),
@@ -125,7 +131,9 @@ export default function ProspeccaoPage() {
   const coletas = coletasQuery.data ?? [];
   const rodando = coletas.some((c) => c.situacao === "rodando");
   const combinacoes = municipios.length * cnaes.length;
-  const excede = combinacoes > PROSPECCAO_MAX_COMBINACOES;
+  const publica = limites?.fonte !== "propria";
+  // Só a fonte pública tem teto de buscas; a própria faz uma busca só.
+  const excede = publica && !!limites && combinacoes > limites.maxCombinacoes;
 
   const coletar = useMutation({
     mutationFn: () =>
@@ -217,14 +225,22 @@ export default function ProspeccaoPage() {
                 Coletar
               </Button>
               <p className={`text-xs ${excede ? "text-destructive" : "text-muted-foreground"}`}>
-                {combinacoes > 0
-                  ? `${combinacoes} ${combinacoes === 1 ? "busca" : "buscas"} (município × atividade)${
-                      excede ? ` — o máximo é ${PROSPECCAO_MAX_COMBINACOES}; tire municípios ou atividades.` : "."
-                    }`
-                  : "Escolha ao menos um município e uma atividade."}{" "}
+                {combinacoes === 0
+                  ? "Escolha ao menos um município e uma atividade."
+                  : publica
+                    ? `${combinacoes} ${combinacoes === 1 ? "busca" : "buscas"} (município × atividade)${
+                        excede ? ` — o máximo é ${numero(limites?.maxCombinacoes ?? 0)}; tire municípios ou atividades.` : "."
+                      }`
+                    : `${municipios.length} município(s) × ${cnaes.length} atividade(s), numa busca só.`}{" "}
                 {rodando && "Há uma coleta rodando; espere ela terminar. "}
-                A base pública é lenta e limita as buscas: a coleta anda devagar e para em{" "}
-                {numero(PROSPECCAO_MAX_EMPRESAS)} empresas lidas.
+                {limites && (
+                  <>
+                    Fonte: <strong>{PROSPECCAO_FONTE_LABEL[limites.fonte]}</strong>
+                    {publica && " (lenta e limita as buscas: a coleta anda devagar)"}; para em{" "}
+                    {numero(limites.maxEmpresas)} empresas lidas. Os parâmetros ficam em
+                    Administração &gt; Base da Receita.
+                  </>
+                )}
               </p>
             </div>
           </CardContent>

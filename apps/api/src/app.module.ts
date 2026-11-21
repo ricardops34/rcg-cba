@@ -63,6 +63,7 @@ import { RecuperacaoSenhaModule } from './modules/recuperacao-senha/recuperacao-
 import { RelatoriosModule } from './modules/relatorios/relatorios.module';
 import { AcompanhamentoModule } from './modules/acompanhamento/acompanhamento.module';
 import { LeadsModule } from './modules/leads/leads.module';
+import { ReceitaBaseModule } from './modules/receita-base/receita-base.module';
 import { ProdutoCamposModule } from './modules/produto-campos/produto-campos.module';
 import { PortalClienteModule } from './modules/portal-cliente/portal-cliente.module';
 import { validarSegredosDoAmbiente } from './common/config/validar-segredos';
@@ -175,6 +176,7 @@ import { GruposEconomicosModule } from './modules/grupos-economicos/grupos-econo
     RelatoriosModule,
     AcompanhamentoModule,
     LeadsModule,
+    ReceitaBaseModule,
     ProdutoCamposModule,
   ],
   controllers: [AppController],

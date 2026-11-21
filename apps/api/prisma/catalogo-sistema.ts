@@ -231,6 +231,17 @@ export const MENUS: DefinicaoMenu[] = [
     moduloId: MODULO.administracao,
   },
   {
+    // Base própria da Receita e parâmetros da coleta de leads (20/11/2026,
+    // docs/planos/2026-11-20-prospeccao-leads-receita.md). Só administradores;
+    // espelha a migration 20261120240000_base_receita.
+    id: 'seed-menu-base-receita',
+    nome: 'Base da Receita',
+    rota: '/admin/base-receita',
+    icone: 'database',
+    codigo: 'base-receita',
+    moduloId: MODULO.administracao,
+  },
+  {
     id: 'seed-menu-dashboard-comercial',
     nome: 'Dashboard',
     rota: '/comercial/dashboard',

@@ -1961,6 +1961,10 @@ docker compose -f docker/docker-compose.dev.yml up -d --no-deps api
 **Não recrie o `minha-receita-controle` com uma carga rodando:** a carga é um
 processo filho dele e morre junto (o estado volta como "interrompida").
 
+Recursos da carga em dev (2026-11-20): download de 7,9 GB em ~10 min; no `transform`,
+**~3,4 GB de RAM e ~5 núcleos** (o contêiner `minha-receita-controle`), deixando o
+resto do dev lento. Na VPS, programar a carga para fora do horário de uso.
+
 Disco em dev: a carga baixa 7,9 GB (2026-11) e usa ~15 GB de temporários no volume;
 apaga tudo ao terminar. A máquina de dev tinha 164 GB livres em 2026-11-20.
 

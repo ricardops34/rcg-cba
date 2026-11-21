@@ -31,6 +31,15 @@ export class ProspeccaoController {
     return this.service.municipios(uf ?? '');
   }
 
+  @ApiOperation({
+    summary: 'Fonte e limites da coleta (parâmetros PROSPECCAO_*)',
+  })
+  @RequirePermission('prospeccao-leads', 'visualizar')
+  @Get('limites')
+  limites(@CurrentUser() user: AuthenticatedUser) {
+    return this.service.limites(user.empresaAtivaId);
+  }
+
   @ApiOperation({ summary: 'CNAEs (subclasse) por descrição ou código' })
   @RequirePermission('prospeccao-leads', 'visualizar')
   @Get('cnaes')
