@@ -77,6 +77,11 @@ services:
       # Cifra os parâmetros de tipo senha (SMTP_SENHA, SMS_TOKEN). Chave
       # própria, como as do agente e do WhatsApp.
       PARAMETROS_CRYPTO_KEY: ${PARAMETROS_CRYPTO_KEY:-ZGV2LW9ubHktcGFyYW1ldHJvcy1jcnlwdG8ta2V5ISE=}
+      # Base própria da Receita (serviços minha-receita abaixo). São o padrão dos
+      # parâmetros RECEITA_* de Administração > Base da Receita: a tela vence.
+      MINHARECEITA_PROPRIA_URL: ${MINHARECEITA_PROPRIA_URL:-http://minha-receita:8000}
+      MINHARECEITA_CONTROLE_URL: ${MINHARECEITA_CONTROLE_URL:-http://minha-receita-controle:8001}
+      MINHARECEITA_CONTROLE_TOKEN: ${MINHARECEITA_CONTROLE_TOKEN:-desenvolvimento-local-receita}
       # Aviso no celular (Web Push). Par VAPID só de desenvolvimento — a
       # produção gera o seu (runbook, "Chaves do aviso no celular").
       VAPID_PUBLIC_KEY: ${VAPID_PUBLIC_KEY:-BDdUuo_qrQPA476YdskObrAGf7OFkokNGGE7gJWuhKykjomTJjcNqO802x1nfoJaQ9Ex8AtR9UrAawxQl9RxGVY}
@@ -137,6 +142,59 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
+
+  # Base própria da Receita (docs/planos/2026-11-20-prospeccao-leads-receita.md):
+  # o minha-receita com os patches da plataforma (docker/minha-receita). Uso
+  # exclusivo da plataforma: sem porta publicada, só a API alcança pela rede
+  # interna. O banco `minha_receita` fica no Postgres de dev.
+  minha-receita-db-init:
+    image: postgres:16-alpine
+    environment:
+      PGPASSWORD: plataforma
+    command: >-
+      sh -c "psql -h postgres -U plataforma -d postgres -tc \"SELECT 1 FROM pg_database WHERE datname='minha_receita'\"
+      | grep -q 1 || psql -h postgres -U plataforma -d postgres -c 'CREATE DATABASE minha_receita'"
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  # A API de consulta (a que a coleta de leads usa). Sem SEARCH_SCAN_GUARD: sem
+  # trava de busca, é de uso exclusivo (decisão do usuário, 2026-11-20).
+  minha-receita:
+    build:
+      # Raiz do repositório, como no publish.ps1 (o Dockerfile copia os patches).
+      context: ..
+      dockerfile: docker/minha-receita/Dockerfile
+    image: plataforma-minha-receita:dev
+    command: ["api"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://plataforma:plataforma@postgres:5432/minha_receita?sslmode=disable
+      PORT: "8000"
+      # Cache de respostas e filtro de presença são montados na subida e ficariam
+      # velhos depois de cada carga feita pelo controle. Uso exclusivo e de pouco
+      # volume: desligados (0), a busca vai sempre ao banco.
+      CACHE_SIZE: "0"
+      BLOOM_FILTER_SIZE: "0"
+    depends_on:
+      minha-receita-db-init:
+        condition: service_completed_successfully
+
+  # Controle interno (patch 0002): estado da base e carga com o filtro de UFs e
+  # situações escolhido na tela. Os arquivos baixados ficam no volume.
+  minha-receita-controle:
+    image: plataforma-minha-receita:dev
+    command: ["controle"]
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://plataforma:plataforma@postgres:5432/minha_receita?sslmode=disable
+      CONTROLE_TOKEN: ${MINHARECEITA_CONTROLE_TOKEN:-desenvolvimento-local-receita}
+      CONTROLE_PORTA: "8001"
+    volumes:
+      - minha_receita_dados:/dados
+    depends_on:
+      minha-receita-db-init:
+        condition: service_completed_successfully
 
   # Gateway Evolution GO — transporte único do WhatsApp (Oficial Meta e Não Oficial Baileys).
   #
@@ -340,3 +398,4 @@ volumes:
   contracts_node_modules:
   api_uploads:
   minio_data:
+  minha_receita_dados:

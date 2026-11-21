@@ -228,3 +228,10 @@ plataforma.** Consequências:
   pela rede, não por combinação.
 - A administração (mês carregado, limpeza, recarga) passa pela API da plataforma, em
   Administração > Base da Receita, nunca acessando o serviço diretamente.
+
+**Decisões do usuário (2026-11-20, continuação):**
+- **Filtrar na carga**: alterar o `transform` do minha-receita (MIT) para gravar só o
+  que interessa. A base nunca ocupa o tamanho cheio e cabe no dev (164 GB livres) e
+  na VPS.
+- **Os estados mantidos são parametrizáveis** em Administração > Base da Receita (não
+  fixos no código nem na stack). A situação (só ativas) segue o mesmo caminho.

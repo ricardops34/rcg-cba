@@ -1,0 +1,80 @@
+# Stack da base própria da Receita. No Portainer: `receita`.
+# Variáveis em docker/.env.receita.prod.example. Procedimento no runbook,
+# "Base própria da Receita" — [escrito em 2026-11-20, não rodado na VPS].
+#
+# O minha-receita (MIT) com os patches da plataforma (docker/minha-receita):
+# a carga grava só os estados e situações escolhidos em Administração > Base da
+# Receita, e o serviço de controle é por onde a plataforma vê o estado e
+# dispara a carga. Plano: docs/planos/2026-11-20-prospeccao-leads-receita.md.
+#
+# **Uso exclusivo da plataforma** (decisão do usuário, 2026-11-20): nenhum
+# serviço tem label do Traefik nem porta publicada. Só a API alcança, pela
+# RCGNet, nos endereços (cadastrar em Administração > Base da Receita):
+#   API de consulta: http://receita_api:8000
+#   Controle:        http://receita_controle:8001  (+ RECEITA_CONTROLE_TOKEN)
+# Os nomes completos `<stack>_<serviço>`, e não os curtos — ver "Rede da VPS
+# desde 2026-10-09" no runbook (nome curto ambíguo derrubou a API uma vez).
+version: "3.8"
+
+services:
+  # Banco só da base: fica fora do Postgres da plataforma para a carga (horas
+  # de escrita e índices) não disputar com o sistema, e para poder ser apagado
+  # e recarregado sem tocar em mais nada.
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_DB: minha_receita
+      POSTGRES_USER: minha_receita
+      POSTGRES_PASSWORD: ${RECEITA_DB_PASSWORD}
+    volumes:
+      - receita_pg:/var/lib/postgresql/data
+    networks:
+      - RCGNet
+    deploy:
+      replicas: 1
+
+  # API de consulta, usada pela coleta de leads (fonte "Base própria").
+  # Sem SEARCH_SCAN_GUARD: sem trava de busca (uso exclusivo). Cache e filtro
+  # de presença desligados: são montados na subida e ficariam velhos depois de
+  # cada carga feita pelo controle.
+  api:
+    image: ${RECEITA_IMAGE}
+    command: ["api"]
+    environment:
+      DATABASE_URL: postgres://minha_receita:${RECEITA_DB_PASSWORD}@receita_postgres:5432/minha_receita?sslmode=disable
+      PORT: "8000"
+      CACHE_SIZE: "0"
+      BLOOM_FILTER_SIZE: "0"
+    networks:
+      - RCGNet
+    deploy:
+      replicas: 1
+
+  # Controle interno (patch 0002): estado da base e carga com o filtro. Exige o
+  # token em toda chamada, mesmo dentro da rede. **replicas: 1 é requisito**:
+  # duas instâncias disparariam duas cargas no mesmo banco.
+  #
+  # O volume recebe os arquivos baixados (~8 GB) e os temporários da carga
+  # (~15 GB); o controle apaga tudo ao terminar. Reserve ~25 GB livres para a
+  # carga, além do banco (alguns GB com o filtro de estados e situações).
+  controle:
+    image: ${RECEITA_IMAGE}
+    command: ["controle"]
+    environment:
+      DATABASE_URL: postgres://minha_receita:${RECEITA_DB_PASSWORD}@receita_postgres:5432/minha_receita?sslmode=disable
+      CONTROLE_TOKEN: ${RECEITA_CONTROLE_TOKEN}
+      CONTROLE_PORTA: "8001"
+    volumes:
+      - receita_dados:/dados
+    networks:
+      - RCGNet
+    deploy:
+      replicas: 1
+
+volumes:
+  receita_pg:
+  receita_dados:
+
+networks:
+  RCGNet:
+    external: true

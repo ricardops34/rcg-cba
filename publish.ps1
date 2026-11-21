@@ -1,5 +1,5 @@
 param(
-    [ValidateSet("all", "api", "web", "scripts")]
+    [ValidateSet("all", "api", "web", "scripts", "receita")]
     [string]$Target = "all",
     [switch]$BuildOnly,
     [switch]$PreflightOnly,
@@ -171,6 +171,19 @@ try {
             -Label "Scripts" `
             -Dockerfile "docker/api-scripts.Dockerfile" `
             -Images (Get-ImageTags "scripts")
+    }
+
+    # Base propria da Receita (minha-receita com os patches da plataforma);
+    # nao entra em "all": muda so quando os patches ou a versao original mudam.
+    # Imagem nova, publicada so no nome novo (plataforma-*).
+    if ($Target -eq "receita") {
+        Invoke-ImageBuild `
+            -Label "Base da Receita" `
+            -Dockerfile "docker/minha-receita/Dockerfile" `
+            -Images @(
+                "bjsoftware/plataforma-minha-receita:latest",
+                "bjsoftware/plataforma-minha-receita:${versao}"
+            )
     }
 
     Write-Host "`n=========================================" -ForegroundColor Cyan

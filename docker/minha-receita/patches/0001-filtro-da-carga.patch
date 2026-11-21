@@ -1,0 +1,181 @@
+From 25da953010160288afb43b32f2487e89384783e2 Mon Sep 17 00:00:00 2001
+From: plataforma <plataforma@local>
+Date: Fri, 20 Nov 2026 22:37:35 -0400
+Subject: [PATCH 1/2] =?UTF-8?q?Filtro=20da=20carga=20por=20UF=20e=20situa?=
+ =?UTF-8?q?=C3=A7=C3=A3o=20cadastral=20(patch=20da=20plataforma)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ transform/filtro.go      | 82 ++++++++++++++++++++++++++++++++++++++++
+ transform/filtro_test.go | 46 ++++++++++++++++++++++
+ transform/writer.go      |  6 +++
+ 3 files changed, 134 insertions(+)
+ create mode 100644 transform/filtro.go
+ create mode 100644 transform/filtro_test.go
+
+diff --git a/transform/filtro.go b/transform/filtro.go
+new file mode 100644
+index 0000000..84cad92
+--- /dev/null
++++ b/transform/filtro.go
+@@ -0,0 +1,82 @@
++package transform
++
++// Filtro da carga — patch da plataforma (não existe no projeto original).
++//
++// A base inteira da Receita ocupa ~180 GB; a plataforma só prospecta empresas
++// de alguns estados e em certas situações cadastrais. O filtro descarta o
++// estabelecimento logo depois de lido, antes de montar a empresa, então o que
++// fica de fora nunca chega ao banco.
++//
++// Configuração por variável de ambiente (vazia = sem filtro, como o original):
++//
++//   MR_FILTRO_UFS        UFs mantidas, separadas por vírgula (ex.: "MS,MT")
++//   MR_FILTRO_SITUACOES  códigos de situação cadastral mantidos (ex.: "02");
++//                        01 nula, 02 ativa, 03 suspensa, 04 inapta, 08 baixada
++
++import (
++	"os"
++	"strings"
++	"sync"
++)
++
++// Colunas do CSV de Estabelecimentos (layout da Receita).
++const (
++	colSituacaoCadastral = 5
++	colUF                = 19
++)
++
++type filtroCarga struct {
++	ufs       map[string]bool
++	situacoes map[string]bool
++}
++
++func normalizarSituacao(s string) string {
++	s = strings.TrimSpace(s)
++	if len(s) == 1 {
++		return "0" + s
++	}
++	return s
++}
++
++func novoFiltro(ufs, situacoes string) filtroCarga {
++	f := filtroCarga{ufs: map[string]bool{}, situacoes: map[string]bool{}}
++	for _, u := range strings.Split(ufs, ",") {
++		if u = strings.ToUpper(strings.TrimSpace(u)); u != "" {
++			f.ufs[u] = true
++		}
++	}
++	for _, s := range strings.Split(situacoes, ",") {
++		if s = normalizarSituacao(s); s != "" {
++			f.situacoes[s] = true
++		}
++	}
++	return f
++}
++
++// manter diz se o estabelecimento (linha já limpa) entra na base.
++func (f filtroCarga) manter(row []string) bool {
++	if len(f.ufs) > 0 {
++		if len(row) <= colUF || !f.ufs[strings.ToUpper(strings.TrimSpace(row[colUF]))] {
++			return false
++		}
++	}
++	if len(f.situacoes) > 0 {
++		if len(row) <= colSituacaoCadastral || !f.situacoes[normalizarSituacao(row[colSituacaoCadastral])] {
++			return false
++		}
++	}
++	return true
++}
++
++var (
++	filtroAtual filtroCarga
++	filtroOnce  sync.Once
++)
++
++// manterEstabelecimento aplica o filtro das variáveis de ambiente (lido uma vez).
++func manterEstabelecimento(row []string) bool {
++	filtroOnce.Do(func() {
++		filtroAtual = novoFiltro(os.Getenv("MR_FILTRO_UFS"), os.Getenv("MR_FILTRO_SITUACOES"))
++	})
++	return filtroAtual.manter(row)
++}
+diff --git a/transform/filtro_test.go b/transform/filtro_test.go
+new file mode 100644
+index 0000000..fae0fa0
+--- /dev/null
++++ b/transform/filtro_test.go
+@@ -0,0 +1,46 @@
++package transform
++
++import "testing"
++
++func linhaEstabelecimento(situacao, uf string) []string {
++	row := make([]string, companyCols)
++	row[colSituacaoCadastral] = situacao
++	row[colUF] = uf
++	return row
++}
++
++func TestFiltroCarga(t *testing.T) {
++	casos := []struct {
++		nome      string
++		ufs       string
++		situacoes string
++		situacao  string
++		uf        string
++		manter    bool
++	}{
++		{"sem filtro mantém tudo", "", "", "08", "SP", true},
++		{"UF na lista", "MS,MT", "", "08", "MS", true},
++		{"UF fora da lista", "MS,MT", "", "02", "SP", false},
++		{"UF com espaço e minúscula", " ms , mt", "", "02", "mt", true},
++		{"só ativas: ativa", "", "02", "02", "SP", true},
++		{"só ativas: baixada sai", "", "02", "08", "SP", false},
++		{"situação com um dígito", "", "2", "02", "SP", true},
++		{"UF e situação juntas", "MS", "02", "02", "MS", true},
++		{"UF certa, situação errada", "MS", "02", "04", "MS", false},
++	}
++	for _, c := range casos {
++		t.Run(c.nome, func(t *testing.T) {
++			f := novoFiltro(c.ufs, c.situacoes)
++			if got := f.manter(linhaEstabelecimento(c.situacao, c.uf)); got != c.manter {
++				t.Errorf("manter = %v, esperado %v", got, c.manter)
++			}
++		})
++	}
++}
++
++func TestFiltroLinhaCurta(t *testing.T) {
++	f := novoFiltro("MS", "")
++	if f.manter([]string{"1", "2"}) {
++		t.Error("linha sem a coluna de UF não pode passar quando há filtro de UF")
++	}
++}
+diff --git a/transform/writer.go b/transform/writer.go
+index 68d2202..297e46c 100644
+--- a/transform/writer.go
++++ b/transform/writer.go
+@@ -294,6 +294,9 @@ func (w *writer) batchCSV(ctx context.Context, f *zip.File, ch chan<- []company.
+ 			for n := range row {
+ 				row[n] = cleanupColumn(row[n])
+ 			}
++			if !manterEstabelecimento(row) { // patch da plataforma: filtro da carga (filtro.go)
++				continue
++			}
+ 			c, err := newCompany(w.log, w.srcs, w.kv, row)
+ 			if err != nil {
+ 				return fmt.Errorf("could not create company %v: %w", row[:3], err)
+@@ -364,6 +367,9 @@ func (w *writer) streamCSV(ctx context.Context, f *zip.File, ch chan<- company.C
+ 			for n := range row {
+ 				row[n] = cleanupColumn(row[n])
+ 			}
++			if !manterEstabelecimento(row) { // patch da plataforma: filtro da carga (filtro.go)
++				continue
++			}
+ 			c, err := newCompany(w.log, w.srcs, w.kv, row)
+ 			if err != nil {
+ 				return fmt.Errorf("could not create company %v: %w", row[:3], err)

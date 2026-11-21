@@ -1934,3 +1934,55 @@ COMMIT;
 **Não investigado:** como o contato nasceu na empresa errada. Antes de
 aplicar essa correção em produção, vale achar a causa — senão o problema
 volta na próxima mensagem desse tipo.
+
+## Base própria da Receita (minha-receita) **[dev: subiu e a carga roda em 2026-11-20; VPS: escrito, não rodado]**
+
+Plano: `docs/planos/2026-11-20-prospeccao-leads-receita.md`. É o minha-receita
+(MIT) com dois patches da plataforma (`docker/minha-receita/patches`): o filtro da
+carga (só as UFs e situações escolhidas) e o serviço de controle (estado e carga,
+chamado pela API). **Uso exclusivo da plataforma:** sem Traefik e sem porta
+publicada; só a API alcança, pela rede interna. A configuração fica toda em
+**Administração > Base da Receita** (estados, situações, URLs, token, fonte e
+limites da coleta).
+
+### Dev **[verificado em dev, 2026-11-20]**
+
+Serviços `minha-receita-db-init`, `minha-receita` (API de consulta, porta interna
+8000) e `minha-receita-controle` (porta interna 8001) no
+`docker/docker-compose.dev.yml`; banco `minha_receita` no Postgres de dev; arquivos
+no volume `minha_receita_dados`. Subir ou recriar (a API também, pelas variáveis
+`MINHARECEITA_*` novas):
+
+```bash
+docker compose -f docker/docker-compose.dev.yml up -d --no-deps minha-receita-db-init minha-receita minha-receita-controle
+docker compose -f docker/docker-compose.dev.yml up -d --no-deps api
+```
+
+**Não recrie o `minha-receita-controle` com uma carga rodando:** a carga é um
+processo filho dele e morre junto (o estado volta como "interrompida").
+
+Disco em dev: a carga baixa 7,9 GB (2026-11) e usa ~15 GB de temporários no volume;
+apaga tudo ao terminar. A máquina de dev tinha 164 GB livres em 2026-11-20.
+
+### VPS **[escrito em 2026-11-20, não rodado — confirmar cada passo]**
+
+1. Publicar a imagem: `.\publish.ps1 -Target receita` (não entra no `all`). Anote a
+   tag de versão impressa no fim (`yyyy.MM.dd-HHmm`).
+2. Portainer > Stacks > Add stack, nome **`receita`** (os endereços abaixo dependem
+   do nome). Colar `docker/stack.receita.prod.yml` inteiro; variáveis conforme
+   `docker/.env.receita.prod.example` (sem aspas — ver "Armadilha: variável do
+   Portainer que não chega ao container").
+3. Conferir `receita_postgres`, `receita_api` e `receita_controle` em 1/1. O log da
+   `receita_api` reclama de `relation "public.cnpj" does not exist` até a primeira
+   carga: esperado.
+4. Na plataforma, Administração > Base da Receita: API `http://receita_api:8000`,
+   controle `http://receita_controle:8001` e o mesmo `RECEITA_CONTROLE_TOKEN`;
+   marcar estados e situações; **Carregar**. A carga leva horas; durante ela a coleta
+   pela base própria fica bloqueada.
+5. Disco: ~25 GB livres durante a carga (download + temporários) além do banco, que
+   com o filtro fica em poucos GB (medir na primeira carga e anotar aqui).
+
+Atualizar o minha-receita original: trocar `MR_COMMIT` no
+`docker/minha-receita/Dockerfile` e publicar de novo. O build falha se os patches
+não aplicarem mais ou se os testes da carga quebrarem; nesse caso, refazer os
+patches sobre a versão nova.

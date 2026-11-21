@@ -19,3 +19,6 @@
 *.ttf binary
 *.eot binary
 
+
+# Patches aplicados no build da base da Receita: CRLF quebra o git apply.
+docker/minha-receita/patches/*.patch -text eol=lf

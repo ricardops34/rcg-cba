@@ -1,0 +1,412 @@
+From 320f149279b61265a5d7817ffd25bba0249d24c0 Mon Sep 17 00:00:00 2001
+From: plataforma <plataforma@local>
+Date: Fri, 20 Nov 2026 22:37:35 -0400
+Subject: [PATCH 2/2] =?UTF-8?q?Servi=C3=A7o=20de=20controle=20interno:=20e?=
+ =?UTF-8?q?stado=20e=20carga=20com=20filtro=20(patch=20da=20plataforma)?=
+MIME-Version: 1.0
+Content-Type: text/plain; charset=UTF-8
+Content-Transfer-Encoding: 8bit
+
+---
+ cmd/cmd.go      |   1 +
+ cmd/controle.go | 379 ++++++++++++++++++++++++++++++++++++++++++++++++
+ 2 files changed, 380 insertions(+)
+ create mode 100644 cmd/controle.go
+
+diff --git a/cmd/cmd.go b/cmd/cmd.go
+index c984653..8231f6a 100644
+--- a/cmd/cmd.go
++++ b/cmd/cmd.go
+@@ -100,6 +100,7 @@ func CLI() *cobra.Command {
+ 		addDataDir(downloadCLI()),
+ 		addDataDir(transformCLI()),
+ 		apiCLI(),
++		controleCLI(), // patch da plataforma (cmd/controle.go)
+ 		createCmd,
+ 		createExtraIndexesCmd,
+ 		dropCmd,
+diff --git a/cmd/controle.go b/cmd/controle.go
+new file mode 100644
+index 0000000..e1b2141
+--- /dev/null
++++ b/cmd/controle.go
+@@ -0,0 +1,379 @@
++package cmd
++
++// Serviço de controle — patch da plataforma (não existe no projeto original).
++//
++// A plataforma administra a base própria pela tela Administração > Base da
++// Receita: vê o mês carregado, o tamanho e a situação da carga, e dispara uma
++// carga nova com os estados e situações escolhidos lá (o filtro da carga está
++// em transform/filtro.go). Este comando é o lado de cá: um HTTP pequeno, que só
++// a API da plataforma alcança (rede interna do Docker, sem porta publicada) e
++// que ainda exige um token compartilhado.
++//
++// Variáveis:
++//   DATABASE_URL     banco da base (o mesmo da `api`)
++//   CONTROLE_TOKEN   token exigido em "Authorization: Bearer <token>" (obrigatório)
++//   CONTROLE_PORTA   porta (padrão 8001)
++//   MR_DADOS_DIR     diretório dos arquivos baixados (padrão /dados)
++//
++// A carga roda o próprio binário: `download` do mês e `transform --clean-up
++// --skip-graph` com MR_FILTRO_UFS/MR_FILTRO_SITUACOES. Depois de carregar, os
++// arquivos baixados são apagados para devolver o espaço (~8 GB). Durante a
++// carga a base fica vazia/incompleta: a coleta de leads espera ela terminar.
++
++import (
++	"context"
++	"encoding/json"
++	"errors"
++	"fmt"
++	"io"
++	"log/slog"
++	"net/http"
++	"os"
++	"os/exec"
++	"path/filepath"
++	"regexp"
++	"strings"
++	"sync"
++	"time"
++
++	"codeberg.org/cuducos/minha-receita/download"
++	"github.com/jackc/pgx/v5/pgxpool"
++	"github.com/spf13/cobra"
++)
++
++const arquivoEstadoControle = "controle-estado.json"
++
++var (
++	reMes = regexp.MustCompile(`^\d{4}-\d{2}$`)
++	reUF  = regexp.MustCompile(`^[A-Z]{2}$`)
++	reSit = regexp.MustCompile(`^0[1-9]$`)
++)
++
++type cargaControle struct {
++	Rodando     bool       `json:"rodando"`
++	Etapa       string     `json:"etapa"` // download | transform | limpeza | concluida | erro
++	Mes         string     `json:"mes"`
++	UFs         []string   `json:"ufs"`
++	Situacoes   []string   `json:"situacoes"`
++	IniciadaEm  *time.Time `json:"iniciadaEm"`
++	ConcluidaEm *time.Time `json:"concluidaEm"`
++	Erro        string     `json:"erro"`
++	Log         []string   `json:"log"`
++}
++
++type controle struct {
++	mu        sync.Mutex
++	dir       string
++	dbURL     string
++	carga     cargaControle
++	recente   string
++	recenteEm time.Time
++	log       *slog.Logger
++}
++
++func (c *controle) caminhoEstado() string { return filepath.Join(c.dir, arquivoEstadoControle) }
++
++func (c *controle) salvar() {
++	b, err := json.MarshalIndent(c.carga, "", "  ")
++	if err == nil {
++		err = os.WriteFile(c.caminhoEstado(), b, 0o644)
++	}
++	if err != nil {
++		c.log.Warn("não salvou o estado do controle", "error", err)
++	}
++}
++
++func (c *controle) carregar() {
++	b, err := os.ReadFile(c.caminhoEstado())
++	if err != nil {
++		return
++	}
++	if err := json.Unmarshal(b, &c.carga); err != nil {
++		return
++	}
++	// Carga que estava rodando quando o serviço caiu não terminou.
++	if c.carga.Rodando {
++		agora := time.Now()
++		c.carga.Rodando = false
++		c.carga.Etapa = "erro"
++		c.carga.Erro = "Interrompida: o serviço reiniciou durante a carga. Rode de novo."
++		c.carga.ConcluidaEm = &agora
++		c.salvar()
++	}
++}
++
++// logLinha guarda as últimas linhas da saída da carga, para a tela.
++func (c *controle) logLinha(l string) {
++	l = strings.TrimSpace(l)
++	if l == "" {
++		return
++	}
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	c.carga.Log = append(c.carga.Log, l)
++	if len(c.carga.Log) > 80 {
++		c.carga.Log = c.carga.Log[len(c.carga.Log)-80:]
++	}
++}
++
++type escritorLinhas struct {
++	c   *controle
++	buf []byte
++}
++
++func (w *escritorLinhas) Write(p []byte) (int, error) {
++	w.buf = append(w.buf, p...)
++	for {
++		i := strings.IndexAny(string(w.buf), "\n\r")
++		if i < 0 {
++			break
++		}
++		w.c.logLinha(string(w.buf[:i]))
++		w.buf = w.buf[i+1:]
++	}
++	return len(p), nil
++}
++
++func (c *controle) rodar(etapa string, env []string, args ...string) error {
++	c.mu.Lock()
++	c.carga.Etapa = etapa
++	c.salvar()
++	c.mu.Unlock()
++	exe, err := os.Executable()
++	if err != nil {
++		return err
++	}
++	cmd := exec.Command(exe, args...)
++	cmd.Env = append(os.Environ(), env...)
++	w := &escritorLinhas{c: c}
++	cmd.Stdout, cmd.Stderr = w, w
++	if err := cmd.Run(); err != nil {
++		return fmt.Errorf("%s falhou: %w", etapa, err)
++	}
++	return nil
++}
++
++// limparArquivos apaga o que a carga baixou, mantendo o estado do controle.
++func (c *controle) limparArquivos() error {
++	ls, err := os.ReadDir(c.dir)
++	if err != nil {
++		return err
++	}
++	for _, e := range ls {
++		if e.Name() == arquivoEstadoControle {
++			continue
++		}
++		if err := os.RemoveAll(filepath.Join(c.dir, e.Name())); err != nil {
++			return err
++		}
++	}
++	return nil
++}
++
++func (c *controle) executarCarga() {
++	c.mu.Lock()
++	mes, ufs, sits := c.carga.Mes, c.carga.UFs, c.carga.Situacoes
++	c.mu.Unlock()
++	filtro := []string{
++		"MR_FILTRO_UFS=" + strings.Join(ufs, ","),
++		"MR_FILTRO_SITUACOES=" + strings.Join(sits, ","),
++	}
++	err := c.limparArquivos()
++	if err == nil {
++		err = c.rodar("download", nil, "download", "--directory", c.dir, mes)
++	}
++	if err == nil {
++		err = c.rodar("transform", filtro, "transform", "--directory", c.dir, "--clean-up", "--skip-graph")
++	}
++	if err == nil {
++		c.mu.Lock()
++		c.carga.Etapa = "limpeza"
++		c.mu.Unlock()
++		err = c.limparArquivos()
++	}
++	agora := time.Now()
++	c.mu.Lock()
++	defer c.mu.Unlock()
++	c.carga.Rodando = false
++	c.carga.ConcluidaEm = &agora
++	if err != nil {
++		c.carga.Etapa = "erro"
++		c.carga.Erro = err.Error()
++	} else {
++		c.carga.Etapa = "concluida"
++		c.carga.Erro = ""
++	}
++	c.salvar()
++}
++
++// mesMaisRecente consulta a Receita no máximo uma vez por hora.
++func (c *controle) mesMaisRecente() string {
++	c.mu.Lock()
++	if c.recente != "" && time.Since(c.recenteEm) < time.Hour {
++		r := c.recente
++		c.mu.Unlock()
++		return r
++	}
++	c.mu.Unlock()
++	r, err := download.Latest()
++	if err != nil {
++		c.log.Warn("não consultou o mês mais recente", "error", err)
++		return ""
++	}
++	c.mu.Lock()
++	c.recente, c.recenteEm = r, time.Now()
++	c.mu.Unlock()
++	return r
++}
++
++type estadoBase struct {
++	Mes          string `json:"mes"`
++	Empresas     int64  `json:"empresas"`
++	TamanhoBytes int64  `json:"tamanhoBytes"`
++}
++
++func (c *controle) base(ctx context.Context) (estadoBase, error) {
++	var e estadoBase
++	pool, err := pgxpool.New(ctx, c.dbURL)
++	if err != nil {
++		return e, err
++	}
++	defer pool.Close()
++	// Tabelas podem não existir antes da primeira carga: cada leitura é opcional.
++	_ = pool.QueryRow(ctx, `SELECT value FROM meta WHERE key = 'updated-at'`).Scan(&e.Mes)
++	_ = pool.QueryRow(ctx, `SELECT GREATEST(reltuples, 0)::bigint FROM pg_class WHERE relname = 'cnpj'`).Scan(&e.Empresas)
++	if err := pool.QueryRow(ctx, `SELECT pg_database_size(current_database())`).Scan(&e.TamanhoBytes); err != nil {
++		return e, err
++	}
++	return e, nil
++}
++
++func responderJSON(w http.ResponseWriter, status int, v any) {
++	w.Header().Set("Content-Type", "application/json; charset=utf-8")
++	w.WriteHeader(status)
++	_ = json.NewEncoder(w).Encode(v)
++}
++
++func erroJSON(w http.ResponseWriter, status int, msg string) {
++	responderJSON(w, status, map[string]string{"message": msg})
++}
++
++func (c *controle) handler(token string) http.Handler {
++	mux := http.NewServeMux()
++	mux.HandleFunc("GET /saude", func(w http.ResponseWriter, _ *http.Request) {
++		responderJSON(w, http.StatusOK, map[string]bool{"ok": true})
++	})
++	mux.HandleFunc("GET /estado", func(w http.ResponseWriter, r *http.Request) {
++		ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
++		defer cancel()
++		base, err := c.base(ctx)
++		erroBase := ""
++		if err != nil {
++			erroBase = err.Error()
++		}
++		c.mu.Lock()
++		carga := c.carga
++		carga.Log = append([]string(nil), c.carga.Log...)
++		c.mu.Unlock()
++		responderJSON(w, http.StatusOK, map[string]any{
++			"carga":          carga,
++			"base":           base,
++			"erroBase":       erroBase,
++			"mesMaisRecente": c.mesMaisRecente(),
++		})
++	})
++	mux.HandleFunc("POST /carga", func(w http.ResponseWriter, r *http.Request) {
++		var in struct {
++			Mes       string   `json:"mes"`
++			UFs       []string `json:"ufs"`
++			Situacoes []string `json:"situacoes"`
++		}
++		if err := json.NewDecoder(io.LimitReader(r.Body, 1<<16)).Decode(&in); err != nil {
++			erroJSON(w, http.StatusBadRequest, "corpo inválido")
++			return
++		}
++		if in.Mes == "" {
++			in.Mes = c.mesMaisRecente()
++		}
++		if !reMes.MatchString(in.Mes) {
++			erroJSON(w, http.StatusBadRequest, "mês inválido (AAAA-MM) ou a Receita não respondeu")
++			return
++		}
++		for i, u := range in.UFs {
++			in.UFs[i] = strings.ToUpper(strings.TrimSpace(u))
++			if !reUF.MatchString(in.UFs[i]) {
++				erroJSON(w, http.StatusBadRequest, "UF inválida: "+u)
++				return
++			}
++		}
++		for _, s := range in.Situacoes {
++			if !reSit.MatchString(s) {
++				erroJSON(w, http.StatusBadRequest, "situação inválida: "+s)
++				return
++			}
++		}
++		c.mu.Lock()
++		if c.carga.Rodando {
++			c.mu.Unlock()
++			erroJSON(w, http.StatusConflict, "já há uma carga rodando")
++			return
++		}
++		agora := time.Now()
++		c.carga = cargaControle{
++			Rodando:    true,
++			Etapa:      "download",
++			Mes:        in.Mes,
++			UFs:        in.UFs,
++			Situacoes:  in.Situacoes,
++			IniciadaEm: &agora,
++		}
++		c.salvar()
++		c.mu.Unlock()
++		go c.executarCarga()
++		responderJSON(w, http.StatusAccepted, map[string]string{"mes": in.Mes})
++	})
++	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
++		if r.URL.Path != "/saude" && r.Header.Get("Authorization") != "Bearer "+token {
++			erroJSON(w, http.StatusUnauthorized, "token inválido")
++			return
++		}
++		mux.ServeHTTP(w, r)
++	})
++}
++
++func controleCLI() *cobra.Command {
++	return &cobra.Command{
++		Use:   "controle",
++		Short: "Serviço de controle interno da plataforma (estado e carga com filtro)",
++		RunE: func(_ *cobra.Command, _ []string) error {
++			token := os.Getenv("CONTROLE_TOKEN")
++			if len(token) < 16 {
++				return errors.New("CONTROLE_TOKEN não configurado (mínimo 16 caracteres)")
++			}
++			dbURL := os.Getenv("DATABASE_URL")
++			if dbURL == "" {
++				return errors.New("DATABASE_URL não configurado")
++			}
++			dir := os.Getenv("MR_DADOS_DIR")
++			if dir == "" {
++				dir = "/dados"
++			}
++			if err := os.MkdirAll(dir, 0o755); err != nil {
++				return err
++			}
++			porta := os.Getenv("CONTROLE_PORTA")
++			if porta == "" {
++				porta = "8001"
++			}
++			c := &controle{dir: dir, dbURL: dbURL, log: slog.Default()}
++			c.carregar()
++			srv := &http.Server{
++				Addr:              ":" + porta,
++				Handler:           c.handler(token),
++				ReadHeaderTimeout: 10 * time.Second,
++			}
++			slog.Info("controle ouvindo", "porta", porta, "dados", dir)
++			return srv.ListenAndServe()
++		},
++	}
++}
