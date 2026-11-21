@@ -1,17 +1,19 @@
-From 320f149279b61265a5d7817ffd25bba0249d24c0 Mon Sep 17 00:00:00 2001
+From 00316ac8ae7737dd8a857a59253459a6b6fa41ac Mon Sep 17 00:00:00 2001
 From: plataforma <plataforma@local>
 Date: Fri, 20 Nov 2026 22:37:35 -0400
-Subject: [PATCH 2/2] =?UTF-8?q?Servi=C3=A7o=20de=20controle=20interno:=20e?=
- =?UTF-8?q?stado=20e=20carga=20com=20filtro=20(patch=20da=20plataforma)?=
+Subject: [PATCH] =?UTF-8?q?Servi=C3=A7o=20de=20controle=20interno:=20estad?=
+ =?UTF-8?q?o=20e=20carga=20com=20filtro=20(patch=20da=20plataforma)?=
 MIME-Version: 1.0
 Content-Type: text/plain; charset=UTF-8
 Content-Transfer-Encoding: 8bit
 
 ---
- cmd/cmd.go      |   1 +
- cmd/controle.go | 379 ++++++++++++++++++++++++++++++++++++++++++++++++
- 2 files changed, 380 insertions(+)
+ cmd/cmd.go           |   1 +
+ cmd/controle.go      | 443 +++++++++++++++++++++++++++++++++++++++++++
+ cmd/controle_test.go |  76 ++++++++
+ 3 files changed, 520 insertions(+)
  create mode 100644 cmd/controle.go
+ create mode 100644 cmd/controle_test.go
 
 diff --git a/cmd/cmd.go b/cmd/cmd.go
 index c984653..8231f6a 100644
@@ -27,10 +29,10 @@ index c984653..8231f6a 100644
  		dropCmd,
 diff --git a/cmd/controle.go b/cmd/controle.go
 new file mode 100644
-index 0000000..e1b2141
+index 0000000..caccf58
 --- /dev/null
 +++ b/cmd/controle.go
-@@ -0,0 +1,379 @@
+@@ -0,0 +1,443 @@
 +package cmd
 +
 +// Serviço de controle — patch da plataforma (não existe no projeto original).
@@ -54,6 +56,7 @@ index 0000000..e1b2141
 +// carga a base fica vazia/incompleta: a coleta de leads espera ela terminar.
 +
 +import (
++	"archive/zip"
 +	"context"
 +	"encoding/json"
 +	"errors"
@@ -84,7 +87,7 @@ index 0000000..e1b2141
 +
 +type cargaControle struct {
 +	Rodando     bool       `json:"rodando"`
-+	Etapa       string     `json:"etapa"` // download | transform | limpeza | concluida | erro
++	Etapa       string     `json:"etapa"` // download | verificacao | transform | limpeza | concluida | erro
 +	Mes         string     `json:"mes"`
 +	UFs         []string   `json:"ufs"`
 +	Situacoes   []string   `json:"situacoes"`
@@ -186,6 +189,53 @@ index 0000000..e1b2141
 +	return nil
 +}
 +
++// verificarZips lê por inteiro cada arquivo de cada zip baixado: o pacote
++// archive/zip confere o CRC no fim da leitura, então zip corrompido aparece
++// aqui, e não horas depois no meio do transform. Devolve os zips com defeito.
++func (c *controle) verificarZips() ([]string, error) {
++	c.mu.Lock()
++	c.carga.Etapa = "verificacao"
++	c.salvar()
++	c.mu.Unlock()
++	ls, err := os.ReadDir(c.dir)
++	if err != nil {
++		return nil, err
++	}
++	var ruins []string
++	for _, e := range ls {
++		if e.IsDir() || !strings.HasSuffix(strings.ToLower(e.Name()), ".zip") {
++			continue
++		}
++		if err := conferirZip(filepath.Join(c.dir, e.Name())); err != nil {
++			c.logLinha(fmt.Sprintf("Zip com defeito: %s (%v)", e.Name(), err))
++			ruins = append(ruins, e.Name())
++			continue
++		}
++		c.logLinha("Zip conferido: " + e.Name())
++	}
++	return ruins, nil
++}
++
++func conferirZip(pth string) error {
++	z, err := zip.OpenReader(pth)
++	if err != nil {
++		return err
++	}
++	defer z.Close()
++	for _, f := range z.File {
++		r, err := f.Open()
++		if err != nil {
++			return err
++		}
++		_, err = io.Copy(io.Discard, r)
++		r.Close()
++		if err != nil {
++			return fmt.Errorf("%s: %w", f.Name, err)
++		}
++	}
++	return nil
++}
++
 +// limparArquivos apaga o que a carga baixou, mantendo o estado do controle.
 +func (c *controle) limparArquivos() error {
 +	ls, err := os.ReadDir(c.dir)
@@ -214,6 +264,22 @@ index 0000000..e1b2141
 +	err := c.limparArquivos()
 +	if err == nil {
 +		err = c.rodar("download", nil, "download", "--directory", c.dir, mes)
++	}
++	// O download em partes já entregou zip corrompido (2026-11-20, dev:
++	// "inflate error" no meio dos Estabelecimentos), e o transform só descobre
++	// horas depois. Confere o CRC de todos antes; se falhar, baixa tudo de novo.
++	for tentativa := 1; err == nil; tentativa++ {
++		var ruins []string
++		ruins, err = c.verificarZips()
++		if err != nil || len(ruins) == 0 {
++			break
++		}
++		if tentativa >= 3 {
++			err = fmt.Errorf("arquivos da Receita corrompidos mesmo depois de baixar de novo: %s", strings.Join(ruins, ", "))
++			break
++		}
++		c.logLinha(fmt.Sprintf("Corrompidos no download: %s — baixando de novo (tentativa %d)", strings.Join(ruins, ", "), tentativa+1))
++		err = c.rodar("download", nil, "download", "--directory", c.dir, "--restart", mes)
 +	}
 +	if err == nil {
 +		err = c.rodar("transform", filtro, "transform", "--directory", c.dir, "--clean-up", "--skip-graph")
@@ -408,5 +474,87 @@ index 0000000..e1b2141
 +			slog.Info("controle ouvindo", "porta", porta, "dados", dir)
 +			return srv.ListenAndServe()
 +		},
++	}
++}
+diff --git a/cmd/controle_test.go b/cmd/controle_test.go
+new file mode 100644
+index 0000000..10ef075
+--- /dev/null
++++ b/cmd/controle_test.go
+@@ -0,0 +1,76 @@
++package cmd
++
++import (
++	"archive/zip"
++	"bytes"
++	"log/slog"
++	"math/rand"
++	"os"
++	"path/filepath"
++	"testing"
++)
++
++// zipDeTeste grava um zip com conteúdo pouco compressível e devolve o caminho.
++func zipDeTeste(t *testing.T, dir string) string {
++	t.Helper()
++	var buf bytes.Buffer
++	w := zip.NewWriter(&buf)
++	f, err := w.Create("ESTABELE")
++	if err != nil {
++		t.Fatal(err)
++	}
++	dados := make([]byte, 256<<10)
++	rand.New(rand.NewSource(1)).Read(dados)
++	if _, err := f.Write(dados); err != nil {
++		t.Fatal(err)
++	}
++	if err := w.Close(); err != nil {
++		t.Fatal(err)
++	}
++	pth := filepath.Join(dir, "Estabelecimentos0.zip")
++	if err := os.WriteFile(pth, buf.Bytes(), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	return pth
++}
++
++func TestConferirZipIntegro(t *testing.T) {
++	pth := zipDeTeste(t, t.TempDir())
++	if err := conferirZip(pth); err != nil {
++		t.Fatalf("zip íntegro acusado: %v", err)
++	}
++}
++
++func TestConferirZipCorrompido(t *testing.T) {
++	pth := zipDeTeste(t, t.TempDir())
++	b, err := os.ReadFile(pth)
++	if err != nil {
++		t.Fatal(err)
++	}
++	// Estraga o meio dos dados comprimidos, como no download de 2026-11-20.
++	for i := len(b) / 3; i < len(b)/3+64; i++ {
++		b[i] ^= 0xFF
++	}
++	if err := os.WriteFile(pth, b, 0o644); err != nil {
++		t.Fatal(err)
++	}
++	if err := conferirZip(pth); err == nil {
++		t.Fatal("zip corrompido passou na conferência")
++	}
++}
++
++func TestVerificarZipsListaSoOsRuins(t *testing.T) {
++	dir := t.TempDir()
++	zipDeTeste(t, dir)
++	if err := os.WriteFile(filepath.Join(dir, "Empresas0.zip"), []byte("não é zip"), 0o644); err != nil {
++		t.Fatal(err)
++	}
++	c := &controle{dir: dir, log: slog.Default()}
++	ruins, err := c.verificarZips()
++	if err != nil {
++		t.Fatal(err)
++	}
++	if len(ruins) != 1 || ruins[0] != "Empresas0.zip" {
++		t.Fatalf("esperava só Empresas0.zip, veio %v", ruins)
 +	}
 +}

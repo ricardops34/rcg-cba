@@ -72,11 +72,19 @@ export interface ReceitaBaseConfig extends Omit<ReceitaBaseConfigSalvar, "contro
   padroes: { propriaUrl: string | null; controleUrl: string | null; temControleToken: boolean };
 }
 
-export type ReceitaCargaEtapa = "" | "download" | "transform" | "limpeza" | "concluida" | "erro";
+export type ReceitaCargaEtapa =
+  | ""
+  | "download"
+  | "verificacao"
+  | "transform"
+  | "limpeza"
+  | "concluida"
+  | "erro";
 
 export const RECEITA_CARGA_ETAPA_LABEL: Record<ReceitaCargaEtapa, string> = {
   "": "Nunca carregada",
   download: "Baixando da Receita",
+  verificacao: "Conferindo os arquivos baixados",
   transform: "Gravando na base (com o filtro)",
   limpeza: "Apagando os arquivos baixados",
   concluida: "Concluída",
