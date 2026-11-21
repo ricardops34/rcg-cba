@@ -189,3 +189,29 @@ depois de cada limpeza.
     de dev para a conferência visual.
   - Coleta que estava rodando quando a API reiniciou é marcada como interrompida.
     Rodar de novo continua sem repetir.
+
+## Base própria: o que a instância nossa permite (conferido no código, 2026-11-20)
+
+O `minha-receita` é código aberto, **licença MIT** (pode ser usado e alterado), em Go.
+Saiu do GitHub (arquivado) para o Codeberg: `codeberg.org/cuducos/minha-receita`.
+
+- **O limite de "busca muito custosa" é configuração, não regra do programa.** Ele só
+  existe quando a variável `SEARCH_SCAN_GUARD` (segundos) está definida
+  (`db/postgres.go`). Sem ela, a instância própria não limita. Nesse caso a coleta pode
+  dispensar a pausa e a espera de 61 s, e o teto de combinações pode subir.
+- **Vários valores numa busca são aceitos** ("repetindo o parâmetro ou separando por
+  vírgulas", vale para `uf`, `municipio`, `cnae_fiscal`, `cnae`,
+  `natureza_juridica`). Na pública, a recusa vinha do limite acima. Na nossa, a coleta
+  pode buscar vários CNAEs e municípios de uma vez. Isso vira um parâmetro da coleta
+  (fonte pública: um por busca; própria: vários).
+- **A carga (`transform`) não filtra por UF nem por situação.** As opções são
+  `--clean-up`, `--batch-size`, `--no-privacy`, `--stream`, `--skip-graph`,
+  `--graph-only`. Há dois caminhos para o pedido de enxugar a base:
+  1. **Limpar depois da carga**, por SQL no Postgres dela (a FAQ do projeto mostra o
+     filtro por `descricao_situacao_cadastral` no JSON), seguido de `VACUUM FULL`. O
+     pico de disco continua sendo o da base inteira (~180 GB) durante a carga.
+  2. **Filtrar na carga**, com um ajuste nosso no `transform` (licença MIT permite):
+     gravar só as UFs escolhidas e só as ativas. Nunca ocupa o tamanho cheio, mas
+     passa a ser um fork a manter a cada versão nova do projeto.
+  Recomendação: começar pelo caminho 1, que não exige manter fork, e partir para o 2
+  se o pico de disco da carga for o problema.
