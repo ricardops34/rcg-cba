@@ -20,6 +20,7 @@ import { useVendedoresEscopo, vendedorFiltroLabel } from "@/hooks/use-vendedores
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { BarraAnimada } from "@/components/graficos/barra-animada";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -123,7 +124,6 @@ function StatCard({
  * sozinha não informa quem não a distingue.
  */
 function BarraMeta({ perc }: { perc: number }) {
-  const largura = Math.min(100, Math.max(0, perc));
   const cor =
     perc >= 100
       ? "bg-success"
@@ -134,9 +134,7 @@ function BarraMeta({ perc }: { perc: number }) {
           : "bg-destructive";
   return (
     <div className="flex items-center gap-2">
-      <div className="h-2.5 min-w-16 flex-1 overflow-hidden rounded-full bg-muted">
-        <div className={`h-full rounded-full ${cor}`} style={{ width: `${largura}%` }} />
-      </div>
+      <BarraAnimada perc={perc} cor={cor} altura="h-2.5" className="min-w-16 flex-1" />
       <span className="w-16 text-right text-xs tabular-nums">{percento(perc)}</span>
     </div>
   );

@@ -32,16 +32,16 @@ import {
   type FiltroExtra,
 } from "@/components/consultas/filtros-consulta";
 import {
+  GraficoEvolucao,
   TIPOS_GRAFICO_EVOLUCAO,
   type SerieEvolucao,
   type TipoGraficoEvolucao,
 } from "@/components/consultas/grafico-evolucao";
 import {
-  GraficoEvolucaoMensal,
   GraficoParticipacao,
   type FormaParticipacao,
   type ItemParticipacao,
-} from "@/components/comercial/evolucao-vendas-graficos";
+} from "@/components/graficos/grafico-participacao";
 import { TODOS, percentualDoTotal } from "@/components/consultas/periodo-consulta";
 
 const MAX_SERIES = 6;
@@ -357,7 +357,13 @@ export function EvolucaoVendasView() {
                 />
               </div>
               {series.length ? (
-                <GraficoEvolucaoMensal meses={meses} series={series} tipo={tipoGrafico} />
+                <GraficoEvolucao
+                  meses={meses}
+                  series={series}
+                  formato="moeda"
+                  rotuloValor="Venda"
+                  tipo={tipoGrafico}
+                />
               ) : (
                 <p className="text-sm text-muted-foreground">Nenhuma venda no período.</p>
               )}

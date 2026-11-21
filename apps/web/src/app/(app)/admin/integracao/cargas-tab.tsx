@@ -16,6 +16,7 @@ import { apiFetch, apiUpload, ApiError } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { BarraAnimada } from "@/components/graficos/barra-animada";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Field, FieldLabel } from "@/components/ui/field";
 import {
@@ -659,12 +660,10 @@ export function ProcessamentoCargasTab() {
             </span>
             <span className="font-mono text-xs">{rodando.descricao ?? rodando.id}</span>
             <div className="flex flex-1 items-center gap-2">
-              <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                <div
-                  className="h-full bg-sky-500 transition-all"
-                  style={{ width: `${rodando.totalLinhas > 0 ? Math.min(100, (rodando.linhasProcessadas / rodando.totalLinhas) * 100) : 0}%` }}
-                />
-              </div>
+              <BarraAnimada
+                cor="bg-sky-500"
+                perc={rodando.totalLinhas > 0 ? (rodando.linhasProcessadas / rodando.totalLinhas) * 100 : 0}
+              />
               <span className="shrink-0 text-xs text-muted-foreground">
                 {numeroBr(rodando.linhasProcessadas)} de {numeroBr(rodando.totalLinhas)}
               </span>
@@ -740,9 +739,7 @@ export function ProcessamentoCargasTab() {
                     </Badge>
                   </TableCell>
                   <TableCell>
-                    <div className="h-2 w-full overflow-hidden rounded-full bg-muted">
-                      <div className="h-full bg-primary transition-all" style={{ width: `${pct}%` }} />
-                    </div>
+                    <BarraAnimada perc={pct} />
                     <p className="mt-1 text-xs text-muted-foreground">
                       {numeroBr(c.linhasProcessadas)} de {numeroBr(c.totalLinhas)} ({Math.floor(pct)}%)
                     </p>

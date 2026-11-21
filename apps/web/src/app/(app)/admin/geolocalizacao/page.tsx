@@ -18,6 +18,7 @@ import { ApiError, apiFetch } from "@/lib/api-client";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { BarraAnimada } from "@/components/graficos/barra-animada";
 import { Checkbox } from "@/components/ui/checkbox";
 import { FieldDescription, FieldLabel } from "@/components/ui/field";
 import { Input } from "@/components/ui/input";
@@ -520,12 +521,7 @@ function Lote({ cfg }: { cfg: GeocodificacaoConfiguracao }) {
                 {numero(lote.processados)} de {numero(lote.total)}
               </span>
             </div>
-            <div className="h-2 overflow-hidden rounded bg-muted">
-              <div
-                className={lote.erro ? "h-full rounded bg-destructive" : "h-full rounded bg-primary"}
-                style={{ width: `${progresso}%` }}
-              />
-            </div>
+            <BarraAnimada perc={progresso} cor={lote.erro ? "bg-destructive" : "bg-primary"} />
             <p className="text-xs text-muted-foreground">
               Encontrados: {numero(lote.encontrados)} · Não encontrados:{" "}
               {numero(lote.naoEncontrados)} · Erros: {numero(lote.erros)}

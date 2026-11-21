@@ -22,6 +22,8 @@ import { EntityTable, type ColumnDef } from "@/components/crud/entity-table";
 
 import { Input } from "@/components/ui/input";
 import { Card, CardContent } from "@/components/ui/card";
+import { BarraAnimada } from "@/components/graficos/barra-animada";
+import { GraficoParticipacao } from "@/components/graficos/grafico-participacao";
 import { Field, FieldLabel } from "@/components/ui/field";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
@@ -228,6 +230,12 @@ export default function AcessosPage() {
     queryFn: () => apiFetch<{ data: UsoRotina[] }>("/acessos/uso-rotinas", { query: filtros }),
   });
   const maiorUso = Math.max(1, ...(usoQuery.data?.data ?? []).map((r) => r.acessos));
+  // Gráfico da aba: as 10 mais abertas, com a parte de cada uma no total.
+  const totalAcessos = (usoQuery.data?.data ?? []).reduce((a, r) => a + r.acessos, 0);
+  const topRotinas = [...(usoQuery.data?.data ?? [])]
+    .sort((a, b) => b.acessos - a.acessos)
+    .slice(0, 10)
+    .map((r) => ({ id: r.rotinaId, nome: r.rotinaNome, valor: r.acessos, cor: "var(--viz-1)" }));
 
   const colunasRotinas: ColumnDef<UsoRotina>[] = [
     {
@@ -244,12 +252,7 @@ export default function AcessosPage() {
       className: "w-64",
       cell: (r) => (
         <div className="flex items-center gap-2">
-          <div className="h-2 flex-1 rounded-full bg-muted">
-            <div
-              className="h-2 rounded-full bg-primary"
-              style={{ width: `${Math.round((r.acessos / maiorUso) * 100)}%` }}
-            />
-          </div>
+          <BarraAnimada perc={(r.acessos / maiorUso) * 100} className="flex-1" />
           <span className="w-12 text-right text-xs font-medium">{r.acessos.toLocaleString("pt-BR")}</span>
         </div>
       ),
@@ -698,7 +701,23 @@ export default function AcessosPage() {
           />
         </TabsContent>
 
-        <TabsContent value="rotinas" className="pt-4">
+        <TabsContent value="rotinas" className="space-y-4 pt-4">
+          {topRotinas.length > 0 && (
+            <Card>
+              <CardContent className="space-y-2">
+                <p className="text-sm font-medium">
+                  As {topRotinas.length} telas mais abertas no período
+                </p>
+                <GraficoParticipacao
+                  itens={topRotinas}
+                  total={totalAcessos}
+                  forma="barras"
+                  formato="quantidade"
+                  rotulo="Telas mais abertas no período e a parte de cada uma nos acessos"
+                />
+              </CardContent>
+            </Card>
+          )}
           <EntityTable
             columns={colunasRotinas}
             rows={usoQuery.data?.data ?? []}

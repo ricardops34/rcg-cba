@@ -53,8 +53,36 @@ Os gráficos desta tela usam o **Nivo** (`@nivo/line`, `@nivo/bar` e `@nivo/pie`
   próprio React. Clicar na legenda esconde ou mostra a série.
 - **Participação no total:** barras ou rosca, com as mesmas 6 + "Outros" e as
   mesmas cores do gráfico mensal (antes eram os 10 maiores).
-- **As Consultas continuam com o SVG próprio** (`consultas/grafico-evolucao.tsx`).
+- **As Consultas também passaram ao Nivo** (pedido do usuário, mesmo dia): o
+  `GraficoEvolucao` de `consultas/grafico-evolucao.tsx` virou a versão Nivo, com a
+  mesma interface, e as duas telas usam o mesmo componente. O formato
+  `quantidade` (clientes) só marca números inteiros no eixo, e a grade segue as
+  marcas. A participação (barras/rosca) é só da Evolução de Vendas.
 
 Conferido em print (claro e escuro, 4 formas, rosca, meio da animação) numa página
 de teste com dados fictícios. Falta a aprovação do usuário na tela real, o commit
 (só se aprovar) e publicar.
+
+## Todos os gráficos da plataforma no mesmo padrão (2026-11-20)
+
+O usuário pediu para trocar todos. Ficou assim:
+
+- **Viraram gráficos Nivo:**
+  - SMS: "Por motivo" virou rosca, com a cor presa ao motivo pela ordem do
+    contrato (são seis, as seis da paleta); "mês a mês" virou colunas
+    (`graficos/grafico-colunas.tsx`).
+  - Acessos: na aba "Uso por Rotina", um gráfico com as 10 telas mais abertas e
+    o % de cada uma.
+- **O gráfico de participação foi para a pasta comum:**
+  `graficos/grafico-participacao.tsx`, com formato moeda ou quantidade e rótulo
+  do miolo configurável.
+- **Barras dentro de tabela e de progresso viraram `graficos/barra-animada.tsx`:**
+  metas do Dashboard Gerencial, coluna de Acessos, cargas da Integração e lote da
+  Geolocalização. Um gráfico Nivo em cada linha pesaria a tela. A barra cresce com
+  efeito de mola ao aparecer e desliza quando o valor muda (CSS `.barra-animada`
+  em `globals.css`), no mesmo movimento do Nivo.
+- **Conferido em prints em tempo real** (protocolo de depuração do Edge, porque o
+  "tempo virtual" do headless não deixa a mola avançar), no meio e no fim da
+  animação.
+
+Falta: aprovação do usuário na tela real, commit e publicar.

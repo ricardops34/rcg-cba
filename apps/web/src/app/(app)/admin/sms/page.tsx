@@ -15,6 +15,8 @@ import { SmsConfiguracaoCard } from "@/components/admin/sms-configuracao";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
+import { GraficoColunas } from "@/components/graficos/grafico-colunas";
+import { GraficoParticipacao } from "@/components/graficos/grafico-participacao";
 import { FieldLabel } from "@/components/ui/field";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
@@ -114,7 +116,18 @@ export default function SmsPage() {
 
   const est = estatisticas.data;
   const totalPaginas = Math.max(1, Math.ceil((envios.data?.total ?? 0) / 20));
-  const maiorMes = Math.max(1, ...(est?.porMes.map((m) => m.total) ?? [1]));
+  // Cor presa ao motivo pela ordem do contrato (são seis, as seis da paleta):
+  // filtrar o período não repinta os motivos.
+  const ordemMotivos = Object.keys(SMS_MOTIVO_ROTULO) as SmsMotivo[];
+  const porMotivo = [...(est?.porMotivo ?? [])]
+    .sort((a, b) => b.total - a.total)
+    .map((m) => ({
+      id: m.motivo,
+      nome: SMS_MOTIVO_ROTULO[m.motivo],
+      valor: m.total,
+      cor: `var(--viz-${(ordemMotivos.indexOf(m.motivo) % 6) + 1})`,
+    }));
+  const totalMotivos = porMotivo.reduce((a, m) => a + m.valor, 0);
 
   return (
     <div className="space-y-4">
@@ -196,39 +209,30 @@ export default function SmsPage() {
         <Card>
           <CardContent className="space-y-2">
             <p className="text-sm font-medium">Por motivo</p>
-            {!est?.porMotivo.length ? (
+            {!porMotivo.length ? (
               <p className="text-sm text-muted-foreground">Nenhum envio no período.</p>
             ) : (
-              <ul className="space-y-1 text-sm">
-                {[...est.porMotivo]
-                  .sort((a, b) => b.total - a.total)
-                  .map((m) => (
-                    <li key={m.motivo} className="flex justify-between">
-                      <span>{SMS_MOTIVO_ROTULO[m.motivo]}</span>
-                      <span className="tabular-nums">{numero(m.total)}</span>
-                    </li>
-                  ))}
-              </ul>
+              <GraficoParticipacao
+                itens={porMotivo}
+                total={totalMotivos}
+                forma="rosca"
+                formato="quantidade"
+                rotulo="Envios de SMS por motivo"
+                rotuloTotal="Envios"
+              />
             )}
           </CardContent>
         </Card>
         <Card>
           <CardContent className="space-y-2">
             <p className="text-sm font-medium">Envios em {ano}, mês a mês</p>
-            <ul className="space-y-1 text-xs">
-              {(est?.porMes ?? []).map((m) => (
-                <li key={m.mes} className="flex items-center gap-2">
-                  <span className="w-8 text-muted-foreground">{MESES[m.mes - 1].slice(0, 3)}</span>
-                  <span className="h-2 flex-1 overflow-hidden rounded bg-muted">
-                    <span
-                      className="block h-full rounded bg-primary"
-                      style={{ width: `${(m.total / maiorMes) * 100}%` }}
-                    />
-                  </span>
-                  <span className="w-10 text-right tabular-nums">{numero(m.total)}</span>
-                </li>
-              ))}
-            </ul>
+            <GraficoColunas
+              itens={(est?.porMes ?? []).map((m) => ({
+                rotulo: MESES[m.mes - 1].slice(0, 3),
+                valor: m.total,
+              }))}
+              rotuloValor="Envios"
+            />
           </CardContent>
         </Card>
       </div>
