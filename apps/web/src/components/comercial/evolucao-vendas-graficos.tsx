@@ -1,30 +1,28 @@
 "use client";
 
-import { useMemo } from "react";
-import type { PieSeriesOption } from "echarts/charts";
+import { useMemo, useState, type ReactNode } from "react";
+import { ResponsiveBar, type BarDatum } from "@nivo/bar";
+import { ResponsiveLine } from "@nivo/line";
+import { ResponsivePie } from "@nivo/pie";
 import type {
   SerieEvolucao,
   TipoGraficoEvolucao,
 } from "@/components/consultas/grafico-evolucao";
-import {
-  GraficoECharts,
-  escaparHtml,
-  tooltipBase,
-  useTemaGrafico,
-  type OpcaoGrafico,
-} from "@/components/graficos/echarts";
+import { temaNivo, useTemaGrafico } from "@/components/graficos/tema-grafico";
 
 /**
- * Gráficos da Comercial > Evolução de Vendas em ECharts (20/11/2026). As
- * Consultas seguem no SVG próprio (consultas/grafico-evolucao.tsx) até a
- * decisão de migrar; os tipos de série e de forma são os mesmos de lá.
+ * Gráficos da Comercial > Evolução de Vendas com Nivo (MIT) — 20/11/2026,
+ * escolhido pelas animações (o ECharts foi tentado antes e descartado). As
+ * Consultas seguem no SVG próprio (consultas/grafico-evolucao.tsx); os tipos
+ * de série e de forma são os mesmos de lá.
  *
- * Visual no estilo dos exemplos do ECharts (pedido do usuário): linhas
- * suavizadas com degradê embaixo, pontos, barras crescendo em sequência,
- * zoom no período e rosca com rótulos. Ficam do gráfico antigo: cor presa à
- * entidade (--viz-N na ordem do chamador, "Outros" em cinza), legenda com
- * nome, total no tooltip das formas empilhadas e a tabela da aba Dados
- * repetindo todos os números.
+ * - Animação por mola (react-spring): barras crescem ao montar, agrupadas ↔
+ *   empilhadas deslizam, linha ↔ área sobem/descem as faixas, a rosca abre.
+ *   Linha → barra troca de componente (sem morph): a barra nasce crescendo.
+ * - Cores: --viz-N presas à entidade, na ordem do chamador; "Outros" em cinza.
+ *   Resolvidas para rgba (tema-grafico.ts) porque a mola interpola cor.
+ * - Tooltip e legenda são React: nome de cliente/produto entra como texto,
+ *   escapado pelo próprio React.
  */
 
 const moedaCheia = (v: number) =>
@@ -38,42 +36,38 @@ const pct = (parte: number, total: number) =>
         maximumFractionDigits: 1,
       })}%`
     : "—";
+const truncar = (texto: string, max: number) =>
+  texto.length > max ? `${texto.slice(0, max - 1)}…` : texto;
 
-/** Troca a opacidade de uma cor `rgba(r, g, b, a)` já resolvida pelo tema. */
-function comAlfa(rgba: string, alfa: number) {
-  const m = /rgba?\((\d+),\s*(\d+),\s*(\d+)/.exec(rgba);
-  return m ? `rgba(${m[1]}, ${m[2]}, ${m[3]}, ${alfa})` : rgba;
-}
+const MOLA = "gentle" as const;
 
-/** Degradê vertical: cor cheia em cima, `fim` de opacidade embaixo. */
-function degrade(cor: string, inicio: number, fim: number) {
-  return {
-    type: "linear" as const,
-    x: 0,
-    y: 0,
-    x2: 0,
-    y2: 1,
-    colorStops: [
-      { offset: 0, color: comAlfa(cor, inicio) },
-      { offset: 1, color: comAlfa(cor, fim) },
-    ],
-  };
-}
-
-/** Acima disso o rótulo na ponta da linha se atropela — fica só a legenda. */
-const MAX_SERIES_COM_ROTULO = 4;
-/** A partir daqui aparece a régua de zoom do período. */
-const MESES_COM_ZOOM = 7;
-
-/** Uma linha do tooltip: bolinha na cor da série, nome escapado e valor. */
-function linhaTooltip(cor: string, nome: string, valor: string, negrito = false) {
+/** Caixa do tooltip, no visual dos popovers do sistema. */
+function CaixaTooltip({ titulo, children }: { titulo?: string; children: ReactNode }) {
   return (
-    `<div style="display:flex;align-items:center;gap:8px;min-width:180px;${negrito ? "font-weight:600;" : ""}">` +
-    (cor
-      ? `<span style="width:8px;height:8px;border-radius:50%;background:${cor};flex-shrink:0"></span>`
-      : "") +
-    `<span style="opacity:.75;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:220px">${escaparHtml(nome)}</span>` +
-    `<span style="margin-left:auto;font-variant-numeric:tabular-nums">${valor}</span></div>`
+    <div className="min-w-48 rounded-lg border bg-popover px-3 py-2 text-popover-foreground shadow-md">
+      {titulo && <p className="mb-1 text-xs font-semibold">{titulo}</p>}
+      <ul className="space-y-0.5">{children}</ul>
+    </div>
+  );
+}
+
+function LinhaTooltip({
+  cor,
+  nome,
+  valor,
+  forte,
+}: {
+  cor?: string;
+  nome: string;
+  valor: string;
+  forte?: boolean;
+}) {
+  return (
+    <li className={`flex items-center gap-2 text-xs ${forte ? "border-t pt-1 font-semibold" : ""}`}>
+      {cor && <span className="size-2 shrink-0 rounded-full" style={{ backgroundColor: cor }} />}
+      <span className="max-w-56 truncate text-muted-foreground">{nome}</span>
+      <span className="ml-auto pl-3 tabular-nums">{valor}</span>
+    </li>
   );
 }
 
@@ -87,187 +81,178 @@ export function GraficoEvolucaoMensal({
   tipo: TipoGraficoEvolucao;
 }) {
   const tema = useTemaGrafico();
-  const comZoom = meses.length >= MESES_COM_ZOOM;
+  // Clique na legenda esconde/mostra a série.
+  const [ocultas, setOcultas] = useState<Set<string>>(new Set());
 
-  const opcao = useMemo<OpcaoGrafico | null>(() => {
-    if (!tema) return null;
-    const emBarras = tipo === "barra" || tipo === "empilhada";
-    const empilhado = tipo === "area" || tipo === "empilhada";
-    const comRotulo = tipo === "linha" && series.length <= MAX_SERIES_COM_ROTULO;
-    const eixo = { color: tema.textoSuave, fontSize: 11 };
-    const legenda = series.length > 1;
+  const visiveis = useMemo(() => series.filter((s) => !ocultas.has(s.id)), [series, ocultas]);
+  const corDe = useMemo(() => {
+    const mapa = new Map(series.map((s) => [s.id, tema ? tema.cor(s.cor) : ""]));
+    return (id: string | number) => mapa.get(String(id)) ?? "";
+  }, [series, tema]);
+  const nomeDe = useMemo(() => {
+    const mapa = new Map(series.map((s) => [s.id, s.nome]));
+    return (id: string | number) => mapa.get(String(id)) ?? String(id);
+  }, [series]);
 
-    return {
-      animation: true,
-      animationDuration: 1200,
-      animationEasing: "cubicOut",
-      animationDurationUpdate: 800,
-      animationEasingUpdate: "cubicInOut",
-      grid: {
-        top: 24,
-        left: 8,
-        right: comRotulo ? 72 : 16,
-        bottom: (legenda ? 36 : 8) + (comZoom ? 36 : 0),
-        containLabel: true,
-      },
-      xAxis: {
-        type: "category",
-        data: meses,
-        boundaryGap: emBarras,
-        axisLine: { lineStyle: { color: tema.borda } },
-        axisTick: { show: false },
-        axisLabel: { ...eixo, hideOverlap: true, margin: 12 },
-      },
-      yAxis: {
-        type: "value",
-        axisLabel: { ...eixo, formatter: (v: number) => moedaCompacta(v) },
-        splitLine: { lineStyle: { color: tema.borda, type: "dashed" } },
-      },
-      dataZoom: comZoom
-        ? [
-            { type: "inside", start: 0, end: 100 },
-            {
-              type: "slider",
-              bottom: legenda ? 36 : 4,
-              height: 22,
-              borderColor: tema.borda,
-              textStyle: { color: tema.textoSuave, fontSize: 10 },
-              fillerColor: comAlfa(tema.cor("var(--viz-1)"), 0.15),
-              handleStyle: { color: tema.superficie, borderColor: tema.textoSuave },
-              dataBackground: {
-                lineStyle: { color: tema.textoSuave, opacity: 0.4 },
-                areaStyle: { color: tema.textoSuave, opacity: 0.1 },
-              },
-            },
-          ]
-        : [],
-      legend: {
-        show: legenda,
-        type: "scroll",
-        bottom: 0,
-        icon: tipo === "linha" ? "roundRect" : "circle",
-        itemWidth: tipo === "linha" ? 16 : 10,
-        itemHeight: tipo === "linha" ? 4 : 10,
-        itemGap: 16,
-        textStyle: { color: tema.textoSuave, fontSize: 12 },
-        pageTextStyle: { color: tema.textoSuave },
-        inactiveColor: tema.borda,
-      },
-      tooltip: {
-        ...tooltipBase(tema),
-        trigger: "axis",
-        axisPointer: emBarras
-          ? { type: "shadow", shadowStyle: { color: comAlfa(tema.textoSuave, 0.08) } }
-          : {
-              type: "cross",
-              label: { backgroundColor: tema.textoSuave },
-              lineStyle: { color: tema.textoSuave, type: "dashed" },
-              crossStyle: { color: tema.textoSuave },
-            },
-        formatter: (params) => {
-          const itens = (Array.isArray(params) ? params : [params]) as {
-            seriesName?: string;
-            value?: unknown;
-            color?: unknown;
-            name?: string;
-          }[];
-          if (!itens.length) return "";
-          const mes = escaparHtml(String(itens[0].name ?? ""));
-          const ordenados = [...itens].sort((a, b) => Number(b.value ?? 0) - Number(a.value ?? 0));
-          const total = itens.reduce((a, p) => a + Number(p.value ?? 0), 0);
-          const corDe = (c: unknown) =>
-            typeof c === "string"
-              ? c
-              : // Degradê: a bolinha usa a cor do topo.
-                ((c as { colorStops?: { color: string }[] })?.colorStops?.[0]?.color ?? "");
-          return (
-            `<div style="font-weight:600;margin-bottom:4px">${mes}</div>` +
-            ordenados
-              .map((p) =>
-                linhaTooltip(corDe(p.color), String(p.seriesName ?? ""), moedaCheia(Number(p.value ?? 0))),
-              )
-              .join("") +
-            (empilhado && itens.length > 1
-              ? `<div style="border-top:1px solid ${tema.borda};margin-top:4px;padding-top:4px">${linhaTooltip("", "Total", moedaCheia(total), true)}</div>`
-              : "")
-          );
-        },
-      },
-      series: series.map((s, i) => {
-        const cor = tema.cor(s.cor);
-        const comum = {
-          id: s.id,
-          name: s.nome,
-          data: s.valores,
-          color: cor,
-          universalTransition: { enabled: true },
-          emphasis: { focus: "series" as const },
-        };
-        if (emBarras) {
-          const doTopo = tipo === "barra" || i === series.length - 1;
-          return {
-            ...comum,
-            type: "bar" as const,
-            stack: tipo === "empilhada" ? "total" : undefined,
-            barMaxWidth: tipo === "barra" ? 28 : 40,
-            barGap: "10%",
-            itemStyle: {
-              color: degrade(cor, 1, 0.65),
-              borderRadius: doTopo ? [6, 6, 0, 0] : 0,
-            },
-            emphasis: {
-              focus: "series" as const,
-              itemStyle: { shadowBlur: 12, shadowColor: comAlfa(cor, 0.5) },
-            },
-            // Barras nascem em sequência: mês a mês, série a série.
-            animationDelay: (idx: number) => idx * 60 + i * 120,
-            animationDelayUpdate: (idx: number) => idx * 20,
-          };
-        }
-        return {
-          ...comum,
-          type: "line" as const,
-          stack: tipo === "area" ? "total" : undefined,
-          smooth: 0.35,
-          symbol: "circle",
-          symbolSize: 8,
-          showSymbol: meses.length <= 12,
-          lineStyle: {
-            width: tipo === "area" ? 2 : 3,
-            color: cor,
-            shadowBlur: tipo === "linha" ? 8 : 0,
-            shadowColor: comAlfa(cor, 0.35),
-            shadowOffsetY: 4,
-          },
-          itemStyle: { color: cor, borderColor: tema.superficie, borderWidth: 2 },
-          // Linha: véu em degradê; área empilhada: faixa quase cheia.
-          areaStyle:
-            tipo === "area"
-              ? { color: degrade(cor, 0.85, 0.45) }
-              : series.length <= 3
-                ? { color: degrade(cor, 0.28, 0) }
-                : undefined,
-          emphasis: { focus: "series" as const, scale: 1.6 },
-          endLabel: comRotulo
-            ? {
-                show: true,
-                color: tema.texto,
-                fontSize: 11,
-                fontWeight: 600,
-                formatter: (p: { value?: unknown }) => moedaCompacta(Number(p.value ?? 0)),
-              }
-            : undefined,
-        };
+  const emBarras = tipo === "barra" || tipo === "empilhada";
+  const empilhado = tipo === "area" || tipo === "empilhada";
+
+  const dadosLinha = useMemo(
+    () =>
+      visiveis.map((s) => ({
+        id: s.id,
+        data: meses.map((m, i) => ({ x: m, y: s.valores[i] ?? 0 })),
+      })),
+    [visiveis, meses],
+  );
+  const dadosBarra = useMemo<BarDatum[]>(
+    () =>
+      meses.map((m, i) => {
+        const linha: BarDatum = { mes: m };
+        for (const s of visiveis) linha[s.id] = s.valores[i] ?? 0;
+        return linha;
       }),
-    } satisfies OpcaoGrafico;
-  }, [tema, meses, series, tipo, comZoom]);
+    [visiveis, meses],
+  );
+  const totalDoMes = (mes: string | number) => {
+    const i = meses.indexOf(String(mes));
+    return visiveis.reduce((a, s) => a + (s.valores[i] ?? 0), 0);
+  };
+
+  if (!tema) return <div style={{ height: 360 }} />;
+  const temaGrafico = temaNivo(tema);
+  const eixoEsquerdo = {
+    tickSize: 0,
+    tickPadding: 8,
+    tickValues: 5,
+    format: (v: number) => moedaCompacta(v),
+  };
+  const eixoBase = { tickSize: 0, tickPadding: 10 };
 
   return (
-    <GraficoECharts
-      opcao={opcao}
-      altura={360 + (series.length > 1 ? 32 : 0) + (comZoom ? 36 : 0)}
-      rotulo={`Venda por mês, de ${meses[0] ?? "—"} a ${meses[meses.length - 1] ?? "—"}`}
-    />
+    <div className="space-y-3">
+      <div
+        style={{ height: 360 }}
+        role="img"
+        aria-label={`Venda por mês, de ${meses[0] ?? "—"} a ${meses[meses.length - 1] ?? "—"}`}
+      >
+        {visiveis.length === 0 ? (
+          <p className="pt-24 text-center text-sm text-muted-foreground">
+            Todas as séries estão ocultas — clique na legenda para mostrar.
+          </p>
+        ) : emBarras ? (
+          <ResponsiveBar
+            data={dadosBarra}
+            keys={visiveis.map((s) => s.id)}
+            indexBy="mes"
+            groupMode={tipo === "empilhada" ? "stacked" : "grouped"}
+            margin={{ top: 24, right: 16, bottom: 32, left: 64 }}
+            padding={0.3}
+            innerPadding={tipo === "empilhada" ? 1 : 2}
+            borderRadius={4}
+            colors={(d) => corDe(d.id)}
+            enableLabel={false}
+            enableGridY
+            axisLeft={eixoEsquerdo}
+            axisBottom={eixoBase}
+            theme={temaGrafico}
+            motionConfig={MOLA}
+            tooltip={(b) => (
+              <CaixaTooltip titulo={String(b.indexValue)}>
+                <LinhaTooltip cor={b.color} nome={nomeDe(b.id)} valor={moedaCheia(b.value)} />
+                {visiveis.length > 1 && (
+                  <LinhaTooltip
+                    nome={empilhado ? "Total do mês" : "% do mês"}
+                    valor={
+                      empilhado
+                        ? moedaCheia(totalDoMes(b.indexValue))
+                        : pct(b.value, totalDoMes(b.indexValue))
+                    }
+                    forte
+                  />
+                )}
+              </CaixaTooltip>
+            )}
+          />
+        ) : (
+          <ResponsiveLine
+            data={dadosLinha}
+            margin={{ top: 24, right: 24, bottom: 32, left: 64 }}
+            xScale={{ type: "point" }}
+            yScale={{ type: "linear", min: 0, max: "auto", stacked: tipo === "area" }}
+            curve="monotoneX"
+            colors={(s: { id: string | number }) => corDe(s.id)}
+            lineWidth={3}
+            enableArea={tipo === "area" || visiveis.length <= 3}
+            areaOpacity={tipo === "area" ? 0.75 : 0.12}
+            pointSize={9}
+            pointColor={({ series: s }: { series: { color: string } }) => s.color}
+            pointBorderWidth={2}
+            pointBorderColor={tema.superficie}
+            enableGridX={false}
+            axisLeft={eixoEsquerdo}
+            axisBottom={eixoBase}
+            enableSlices="x"
+            enableCrosshair
+            crosshairType="x"
+            theme={temaGrafico}
+            motionConfig={MOLA}
+            sliceTooltip={({ slice }) => {
+              const pontos = [...slice.points].sort(
+                (a, b) => Number(b.data.y ?? 0) - Number(a.data.y ?? 0),
+              );
+              const total = pontos.reduce((a, p) => a + Number(p.data.y ?? 0), 0);
+              return (
+                <CaixaTooltip titulo={String(pontos[0]?.data.x ?? "")}>
+                  {pontos.map((p) => (
+                    <LinhaTooltip
+                      key={p.id}
+                      cor={p.seriesColor}
+                      nome={nomeDe(p.seriesId)}
+                      valor={moedaCheia(Number(p.data.y ?? 0))}
+                    />
+                  ))}
+                  {empilhado && pontos.length > 1 && (
+                    <LinhaTooltip nome="Total" valor={moedaCheia(total)} forte />
+                  )}
+                </CaixaTooltip>
+              );
+            }}
+          />
+        )}
+      </div>
+
+      {series.length > 1 && (
+        <ul className="flex flex-wrap gap-x-4 gap-y-1.5">
+          {series.map((s) => {
+            const oculta = ocultas.has(s.id);
+            return (
+              <li key={s.id}>
+                <button
+                  type="button"
+                  className={`flex items-center gap-1.5 text-xs transition-opacity ${oculta ? "opacity-40" : "hover:opacity-80"}`}
+                  title={oculta ? "Mostrar no gráfico" : "Esconder do gráfico"}
+                  onClick={() =>
+                    setOcultas((atual) => {
+                      const nova = new Set(atual);
+                      if (nova.has(s.id)) nova.delete(s.id);
+                      else nova.add(s.id);
+                      return nova;
+                    })
+                  }
+                >
+                  <span
+                    className={tipo === "linha" ? "h-1 w-4 shrink-0 rounded-full" : "size-2.5 shrink-0 rounded-sm"}
+                    style={{ backgroundColor: corDe(s.id) }}
+                  />
+                  <span className={`text-muted-foreground ${oculta ? "line-through" : ""}`}>{s.nome}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      )}
+    </div>
   );
 }
 
@@ -291,149 +276,129 @@ export function GraficoParticipacao({
   forma: FormaParticipacao;
 }) {
   const tema = useTemaGrafico();
+  const porId = useMemo(() => new Map(itens.map((i) => [i.id, i])), [itens]);
 
-  const opcao = useMemo<OpcaoGrafico | null>(() => {
-    if (!tema) return null;
-    const dados = itens.map((it) => {
-      const cor = tema.cor(it.cor);
-      return {
-        id: it.id,
-        name: it.nome,
-        value: it.valor,
-        itemStyle: {
-          color:
-            forma === "barras"
-              ? {
-                  type: "linear" as const,
-                  x: 0,
-                  y: 0,
-                  x2: 1,
-                  y2: 0,
-                  colorStops: [
-                    { offset: 0, color: comAlfa(cor, 0.7) },
-                    { offset: 1, color: cor },
-                  ],
-                }
-              : cor,
-        },
-      };
-    });
-    const tooltip = {
-      ...tooltipBase(tema),
-      trigger: "item" as const,
-      formatter: (p: unknown) => {
-        const { name, value, dataIndex } = p as { name?: string; value?: unknown; dataIndex?: number };
-        const v = Number(value ?? 0);
-        const cor = dataIndex != null && itens[dataIndex] ? tema.cor(itens[dataIndex].cor) : "";
-        return linhaTooltip(cor, String(name ?? ""), `${moedaCheia(v)} · ${pct(v, total)}`);
-      },
-    };
-    const comum = {
-      id: "participacao",
-      name: "Participação",
-      data: dados,
-      universalTransition: { enabled: true },
-      animationDuration: 1000,
-      animationEasing: "cubicOut" as const,
-    };
+  if (!tema) return <div style={{ height: 280 }} />;
+  const temaGrafico = temaNivo(tema);
+  const corDe = (id: string | number) => tema.cor(porId.get(String(id))?.cor ?? "");
 
-    if (forma === "rosca") {
-      return {
-        animation: true,
-        animationDurationUpdate: 900,
-        animationEasingUpdate: "cubicInOut",
-        tooltip,
-        series: [
-          {
-            ...comum,
-            type: "pie" as const,
-            radius: ["42%", "68%"],
-            center: ["50%", "50%"],
-            padAngle: 2,
-            animationType: "expansion",
-            itemStyle: { borderRadius: 6, borderColor: tema.superficie, borderWidth: 2 },
-            label: {
-              show: true,
-              color: tema.textoSuave,
-              fontSize: 11,
-              width: 90,
-              overflow: "truncate",
-              formatter: (p: { name?: string; percent?: number }) =>
-                `${p.name ?? ""}\n{pct|${(p.percent ?? 0).toLocaleString("pt-BR", { maximumFractionDigits: 1 })}%}`,
-              rich: { pct: { color: tema.texto, fontSize: 12, fontWeight: 600, lineHeight: 18 } },
-            },
-            labelLine: { length: 8, length2: 10, smooth: true, lineStyle: { color: tema.borda } },
-            labelLayout: { hideOverlap: true },
-            emphasis: {
-              scale: true,
-              scaleSize: 8,
-              itemStyle: { shadowBlur: 16, shadowColor: "rgba(0,0,0,.25)" },
-            },
-          } as PieSeriesOption,
-          // Total no miolo da rosca (série só de rótulo, sem interação).
-          {
-            type: "pie",
-            radius: [0, "38%"],
-            silent: true,
-            data: [{ value: 1, name: "Total", itemStyle: { color: "transparent" } }],
-            label: {
-              show: true,
-              position: "center",
-              formatter: () => `{v|${moedaCompacta(total)}}\n{r|Total}`,
-              rich: {
-                v: { color: tema.texto, fontSize: 18, fontWeight: 700, lineHeight: 24 },
-                r: { color: tema.textoSuave, fontSize: 11 },
-              },
-            },
-            labelLine: { show: false },
-            tooltip: { show: false },
-          } as PieSeriesOption,
-        ],
-      } satisfies OpcaoGrafico;
-    }
+  if (forma === "rosca") {
+    return (
+      <div className="space-y-3">
+        <div style={{ height: 260 }} role="img" aria-label="Participação de cada um no total do período">
+          <ResponsivePie
+            data={itens.map((i) => ({ id: i.id, label: i.nome, value: i.valor }))}
+            margin={{ top: 12, right: 12, bottom: 12, left: 12 }}
+            innerRadius={0.6}
+            padAngle={1.5}
+            cornerRadius={4}
+            activeOuterRadiusOffset={8}
+            colors={(d) => corDe(d.id)}
+            borderWidth={0}
+            enableArcLinkLabels={false}
+            arcLabel={(d) => pct(d.value, total)}
+            arcLabelsSkipAngle={18}
+            arcLabelsTextColor="#ffffff"
+            theme={temaGrafico}
+            motionConfig={MOLA}
+            transitionMode="startAngle"
+            tooltip={({ datum }) => (
+              <CaixaTooltip>
+                <LinhaTooltip
+                  cor={datum.color}
+                  nome={String(datum.label)}
+                  valor={`${moedaCheia(datum.value)} · ${pct(datum.value, total)}`}
+                />
+              </CaixaTooltip>
+            )}
+            layers={[
+              "arcs",
+              "arcLabels",
+              ({ centerX, centerY }) => (
+                <g>
+                  <text
+                    x={centerX}
+                    y={centerY - 4}
+                    textAnchor="middle"
+                    style={{ fill: tema.texto, fontSize: 17, fontWeight: 700 }}
+                  >
+                    {moedaCompacta(total)}
+                  </text>
+                  <text
+                    x={centerX}
+                    y={centerY + 14}
+                    textAnchor="middle"
+                    style={{ fill: tema.textoSuave, fontSize: 11 }}
+                  >
+                    Total
+                  </text>
+                </g>
+              ),
+            ]}
+          />
+        </div>
+        <ul className="space-y-1">
+          {itens.map((i) => (
+            <li key={i.id} className="flex items-center gap-2 text-xs">
+              <span className="size-2.5 shrink-0 rounded-sm" style={{ backgroundColor: corDe(i.id) }} />
+              <span className="truncate text-muted-foreground" title={i.nome}>
+                {i.nome}
+              </span>
+              <span className="ml-auto shrink-0 tabular-nums">{pct(i.valor, total)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+    );
+  }
 
-    return {
-      animation: true,
-      animationDurationUpdate: 900,
-      animationEasingUpdate: "cubicInOut",
-      tooltip,
-      grid: { top: 4, left: 4, right: 52, bottom: 4, containLabel: true },
-      xAxis: { type: "value", show: false, max: Math.max(...itens.map((i) => i.valor), 0) || 1 },
-      yAxis: {
-        type: "category",
-        inverse: true,
-        data: itens.map((i) => i.nome),
-        axisLine: { show: false },
-        axisTick: { show: false },
-        axisLabel: { color: tema.textoSuave, fontSize: 11, width: 120, overflow: "truncate" },
-      },
-      series: [
-        {
-          ...comum,
-          type: "bar",
-          barMaxWidth: 18,
-          showBackground: true,
-          backgroundStyle: { color: comAlfa(tema.textoSuave, 0.08), borderRadius: 9 },
-          itemStyle: { borderRadius: 9 },
-          animationDelay: (idx: number) => idx * 90,
-          label: {
-            show: true,
-            position: "right",
-            color: tema.texto,
-            fontSize: 11,
-            fontWeight: 600,
-            formatter: (p: { value?: unknown }) => pct(Number(p.value ?? 0), total),
-          },
-        },
-      ],
-    } satisfies OpcaoGrafico;
-  }, [tema, itens, total, forma]);
-
+  // Barras horizontais: o Nivo desenha a primeira linha embaixo, por isso inverte.
+  const dados: BarDatum[] = [...itens].reverse().map((i) => ({ id: i.id, valor: i.valor }));
   return (
-    <GraficoECharts
-      opcao={opcao}
-      altura={forma === "rosca" ? 320 : Math.max(180, itens.length * 38 + 16)}
-      rotulo="Participação de cada um no total do período"
-    />
+    <div
+      style={{ height: Math.max(180, itens.length * 40 + 16) }}
+      role="img"
+      aria-label="Participação de cada um no total do período"
+    >
+      <ResponsiveBar
+        data={dados}
+        keys={["valor"]}
+        indexBy="id"
+        layout="horizontal"
+        margin={{ top: 4, right: 56, bottom: 4, left: 124 }}
+        padding={0.35}
+        borderRadius={6}
+        colors={(d) => corDe(d.indexValue)}
+        valueScale={{ type: "linear", nice: false }}
+        enableLabel={false}
+        enableGridX={false}
+        enableGridY={false}
+        axisBottom={null}
+        axisLeft={{
+          tickSize: 0,
+          tickPadding: 8,
+          format: (id: string) => truncar(porId.get(id)?.nome ?? id, 18),
+        }}
+        axisRight={{
+          tickSize: 0,
+          tickPadding: 8,
+          format: (id: string) => pct(porId.get(id)?.valor ?? 0, total),
+        }}
+        theme={{
+          ...temaGrafico,
+          axis: { ...temaGrafico.axis, domain: { line: { strokeWidth: 0 } } },
+        }}
+        motionConfig={MOLA}
+        tooltip={(b) => (
+          <CaixaTooltip>
+            <LinhaTooltip
+              cor={b.color}
+              nome={porId.get(String(b.indexValue))?.nome ?? ""}
+              valor={`${moedaCheia(b.value)} · ${pct(b.value, total)}`}
+            />
+          </CaixaTooltip>
+        )}
+      />
+    </div>
   );
 }

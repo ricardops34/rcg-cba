@@ -30,26 +30,31 @@ hierarquia de quem acessa (escopo de carteira, `resolverEscopoVendedores`).
 - **Sem exportação** (decisão do usuário, 2026-11-20): no módulo Comercial só o
   Orçamento exporta. Exportar fica nas Consultas.
 
-## Gráficos em Apache ECharts (2026-11-20)
+## Gráficos com Nivo (2026-11-20)
 
-Decisão do usuário: os gráficos desta tela passam a usar o **Apache ECharts**
-(`echarts` 6.1.0, licença Apache 2.0), escolhido pelas animações. Recharts/shadcn
-e Nivo foram comparados e animam bem menos.
+Os gráficos desta tela usam o **Nivo** (`@nivo/line`, `@nivo/bar` e `@nivo/pie`
+0.99.0, licença MIT), por decisão do usuário.
 
-- Base comum em `apps/web/src/components/graficos/echarts.tsx`: import por partes
-  (barra, linha, pizza), renderer SVG, cores lidas das variáveis do tema (`--viz-N`,
-  `--border`...) e recalculadas na troca claro/escuro, e tooltip com texto escapado
-  (`escaparHtml`), porque o tooltip do ECharts é HTML.
-- **Evolução mensal:** as mesmas 4 formas (linhas, área, barras agrupadas e
-  empilhadas), com a troca entre elas animada. A legenda é clicável e liga/desliga
-  a série.
-- **Participação no total:** barras ou rosca, com a troca animada. Mostra as mesmas
-  6 + "Outros" do gráfico mensal, com as mesmas cores (antes eram os 10 maiores).
-- A animação **não** segue o "reduzir movimento" do sistema: o Windows liga esse
-  sinal só por ter "Efeitos de animação" desligado, e os gráficos ficaram parados.
-- Visual no estilo dos exemplos do ECharts: linhas suavizadas com degradê, barras
-  crescendo em sequência, régua de zoom a partir de 7 meses, rosca com rótulos.
+- **Primeiro foi tentado o Apache ECharts.** Na tela real, a troca linha → barras
+  travou e sobraram só os pontos. Numa página isolada o ECharts funcionava, e a
+  causa na integração não foi achada. O usuário achou o resultado pior que o SVG
+  antigo e mandou trocar.
+- **Animação por mola (react-spring):** as barras crescem ao abrir, agrupadas ↔
+  empilhadas deslizam, linha ↔ área sobem as faixas e a rosca abre. A troca linha →
+  barra muda de componente, então a barra nasce crescendo, sem transformar a linha.
+- **Não desligar a animação por `prefers-reduced-motion`.** O Windows liga esse
+  sinal só por ter "Efeitos de animação" desligado, e foi isso que deixou a primeira
+  versão parada.
+- **Cores:** `--viz-N` resolvidas para rgba (`components/graficos/tema-grafico.ts`),
+  porque a mola interpola cor e não entende `var()` nem oklch.
+- **Sem degradê:** o `linearGradientDef` com cor `inherit` sai preto nas barras e
+  na área (conferido em print).
+- **Tooltip e legenda são React,** então o nome vindo do ERP é escapado pelo
+  próprio React. Clicar na legenda esconde ou mostra a série.
+- **Participação no total:** barras ou rosca, com as mesmas 6 + "Outros" e as
+  mesmas cores do gráfico mensal (antes eram os 10 maiores).
 - **As Consultas continuam com o SVG próprio** (`consultas/grafico-evolucao.tsx`).
-  Migrar depende da conferência visual desta tela.
 
-Pendente: conferência visual (claro e escuro, celular) e publicar.
+Conferido em print (claro e escuro, 4 formas, rosca, meio da animação) numa página
+de teste com dados fictícios. Falta a aprovação do usuário na tela real, o commit
+(só se aprovar) e publicar.
