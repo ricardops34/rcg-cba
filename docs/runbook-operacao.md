@@ -1935,7 +1935,7 @@ COMMIT;
 aplicar essa correção em produção, vale achar a causa — senão o problema
 volta na próxima mensagem desse tipo.
 
-## Base própria da Receita (minha-receita) **[dev: subiu e a carga roda em 2026-11-20; VPS: escrito, não rodado]**
+## Base própria da Receita (minha-receita) **[dev: carga completa e coleta verificadas em 2026-11-21; VPS: escrito, não rodado]**
 
 Plano: `docs/planos/2026-11-20-prospeccao-leads-receita.md`. É o minha-receita
 (MIT) com quatro patches da plataforma (`docker/minha-receita/patches`): o filtro
@@ -1978,6 +1978,13 @@ resto do dev lento. Na VPS, programar a carga para fora do horário de uso.
 Disco em dev: a carga baixa 7,9 GB (2026-11) e usa ~15 GB de temporários no volume;
 apaga tudo ao terminar. A máquina de dev tinha 164 GB livres em 2026-11-20.
 
+**Primeira carga completa (dev, 2026-11-21)** — mês 2026-11, MS e MT, só ativas:
+**969.239 empresas, banco de 2,3 GB**; 71 min no total (download ~25 min,
+conferência dos zips ~5 min, `transform` ~40 min). Coleta pela base própria,
+3 municípios × 3 CNAEs numa busca só: 267 lidas em ~1 s (a pública recusa mais de
+um município ou CNAE por busca). Conferido: `uf=SP` devolve 0 — o filtro da carga
+vale.
+
 ### Download da Receita: firewall e instabilidade **[visto em dev, 2026-11-20/21]**
 
 O servidor da Receita (`arquivos.receitafederal.gov.br`) oscila: recusa conexão
@@ -2016,8 +2023,9 @@ O que a imagem faz desde então:
    controle `http://receita_controle:8001` e o mesmo `RECEITA_CONTROLE_TOKEN`;
    marcar estados e situações; **Carregar**. A carga leva horas; durante ela a coleta
    pela base própria fica bloqueada.
-5. Disco: ~25 GB livres durante a carga (download + temporários) além do banco, que
-   com o filtro fica em poucos GB (medir na primeira carga e anotar aqui).
+5. Disco: ~25 GB livres durante a carga (download + temporários) além do banco.
+   Com o filtro, o banco ficou em 2,3 GB para MS + MT só ativas (dev, 2026-11-21);
+   cada estado a mais soma na proporção das empresas dele.
 
 Atualizar o minha-receita original: trocar `MR_COMMIT` no
 `docker/minha-receita/Dockerfile` e publicar de novo. O build falha se os patches
