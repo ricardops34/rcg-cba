@@ -120,6 +120,7 @@ export * from "./plataforma";
 export * from "./erro-log";
 export * from "./demo";
 export * from "./lead";
+export * from "./prospeccao";
 export * from "./produto-campo";
 export * from "./produto-relacionado";
 export * from "./termo";

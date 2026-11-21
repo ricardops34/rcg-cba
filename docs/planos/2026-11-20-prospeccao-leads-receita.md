@@ -166,3 +166,26 @@ linhas não devolve espaço ao disco. Depois da limpeza é preciso compactar (`V
 FULL` nas tabelas da base, que trava a tabela durante a operação: rodar fora do
 horário e com a coleta parada) e recriar os índices. A tela mostra o tamanho antes e
 depois de cada limpeza.
+
+## Andamento
+
+- **Fase 2 (modelo): feita** (commit a5efdd58). A tela de Leads mostra origem, CNPJ,
+  CNAE principal, porte e abertura, com filtro por origem.
+- **Fase 3 (coleta): feita.** CRM > Prospecção de Leads (rotina
+  `prospeccao-leads`: Supervisor, Gerente, Diretor e administradores; migration
+  20261120230000_prospeccao_leads).
+  - O que a API pública impõe, conferido em 20/11: **um município (IBGE) e um CNAE
+    por busca** (com dois CNAEs ela responde "busca muito custosa… tente novamente em
+    1 minuto"); até 1.000 por página; `cursor: null` no fim. Por isso a coleta
+    percorre cada combinação, com teto de 60 combinações e de 5.000 empresas lidas,
+    1,5 s entre buscas e espera de 61 s quando a fonte pede.
+  - **Diferente do plano:** não há a etapa "prévia e marcar". A coleta importa
+    direto as ativas que não são clientes nem leads, e a prévia virou o resumo da
+    coleta (lidas, importadas, já clientes, já leads, inativas). Lead indesejado se
+    descarta na tela de Leads.
+  - Testado na API de dev: Terenos-MS × minimercados leu 124, importou 34 e descartou
+    90 inativas, em 3 s. A segunda rodada deu 34 "já leads" e 0 importadas. Uma
+    segunda coleta simultânea é recusada (409). Os 34 leads de teste ficaram na base
+    de dev para a conferência visual.
+  - Coleta que estava rodando quando a API reiniciou é marcada como interrompida.
+    Rodar de novo continua sem repetir.

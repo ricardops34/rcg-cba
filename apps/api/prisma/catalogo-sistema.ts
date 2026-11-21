@@ -387,6 +387,17 @@ export const MENUS: DefinicaoMenu[] = [
     codigo: 'leads',
     moduloId: MODULO.crm,
   },
+  // Coletar empresas na base da Receita para virar lead (20/11/2026,
+  // docs/planos/2026-11-20-prospeccao-leads-receita.md). Supervisor, Gerente,
+  // Diretor e administradores; espelha a migration 20261120230000_prospeccao_leads.
+  {
+    id: 'seed-menu-prospeccao-leads',
+    nome: 'Prospecção de Leads',
+    rota: '/comercial/prospeccao',
+    icone: 'radar',
+    codigo: 'prospeccao-leads',
+    moduloId: MODULO.crm,
+  },
   {
     id: 'seed-menu-configuracoes-whatsapp',
     nome: 'WhatsApp',
@@ -942,6 +953,9 @@ export const SUPERVISAO_PERMISSOES: Record<string, Acao[]> = {
   clientes: ['visualizar', 'cadastrar', 'editar', 'importar'],
   // Distribuir, descartar e anotar o lead.
   leads: ['visualizar', 'editar'],
+  // Coletar leads na base da Receita (20/11/2026). Espelha a migration
+  // 20261120230000_prospeccao_leads.
+  'prospeccao-leads': ['visualizar', 'cadastrar'],
   // Cadastro de equipamentos de comodato (decisão do usuário, 2026-10-07):
   // Gerente e Supervisor mantêm, o Vendedor não. `importar` é o "popular pelas
   // notas". Espelha a migration 20261007033504_equipamentos_comodato.
