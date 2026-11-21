@@ -45,7 +45,10 @@ e Nivo foram comparados e animam bem menos.
   a série.
 - **Participação no total:** barras ou rosca, com a troca animada. Mostra as mesmas
   6 + "Outros" do gráfico mensal, com as mesmas cores (antes eram os 10 maiores).
-- Quem pede "reduzir movimento" no sistema operacional fica sem animação.
+- A animação **não** segue o "reduzir movimento" do sistema: o Windows liga esse
+  sinal só por ter "Efeitos de animação" desligado, e os gráficos ficaram parados.
+- Visual no estilo dos exemplos do ECharts: linhas suavizadas com degradê, barras
+  crescendo em sequência, régua de zoom a partir de 7 meses, rosca com rótulos.
 - **As Consultas continuam com o SVG próprio** (`consultas/grafico-evolucao.tsx`).
   Migrar depende da conferência visual desta tela.
 

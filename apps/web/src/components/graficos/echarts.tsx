@@ -4,8 +4,14 @@ import { useEffect, useMemo, useRef, useSyncExternalStore } from "react";
 import * as echarts from "echarts/core";
 import { BarChart, LineChart, PieChart } from "echarts/charts";
 import type { BarSeriesOption, LineSeriesOption, PieSeriesOption } from "echarts/charts";
-import { GridComponent, LegendComponent, TooltipComponent } from "echarts/components";
+import {
+  DataZoomComponent,
+  GridComponent,
+  LegendComponent,
+  TooltipComponent,
+} from "echarts/components";
 import type {
+  DataZoomComponentOption,
   GridComponentOption,
   LegendComponentOption,
   TooltipComponentOption,
@@ -28,12 +34,15 @@ import { SVGRenderer } from "echarts/renderers";
  *   de cliente, produto, categoria) passa por `escaparHtml` antes de entrar
  *   nele — nunca monte `formatter` concatenando texto cru.
  * - Animação: as trocas de forma (linha → barra, barra → rosca) usam o
- *   universalTransition; quem pede "reduzir movimento" no sistema fica sem.
+ *   universalTransition. NÃO desligar por `prefers-reduced-motion`: o Windows
+ *   liga esse sinal só por ter "Efeitos de animação" desligado, e os gráficos
+ *   ficaram sem animação nenhuma (20/11/2026) — a animação é o motivo da escolha.
  */
 echarts.use([
   BarChart,
   LineChart,
   PieChart,
+  DataZoomComponent,
   GridComponent,
   LegendComponent,
   TooltipComponent,
@@ -46,6 +55,7 @@ export type OpcaoGrafico = echarts.ComposeOption<
   | BarSeriesOption
   | LineSeriesOption
   | PieSeriesOption
+  | DataZoomComponentOption
   | GridComponentOption
   | LegendComponentOption
   | TooltipComponentOption
@@ -83,8 +93,6 @@ export interface TemaGrafico {
   borda: string;
   superficie: string;
   popover: string;
-  /** Usuário pediu menos movimento no sistema operacional. */
-  semAnimacao: boolean;
 }
 
 /** Avisa quando a classe/estilo do <html> muda (troca de tema claro/escuro). */
@@ -127,7 +135,6 @@ export function useTemaGrafico(): TemaGrafico | null {
       borda: cor("var(--border)"),
       superficie: cor("var(--card)"),
       popover: cor("var(--popover)"),
-      semAnimacao: window.matchMedia("(prefers-reduced-motion: reduce)").matches,
     };
   }, [assinatura]);
 }
