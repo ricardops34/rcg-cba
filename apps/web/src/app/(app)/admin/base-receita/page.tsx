@@ -370,7 +370,7 @@ function Referencias() {
         <FieldDescription>
           Referências: baixa a tabela do Tesouro e as da Receita (segundos). Rode antes da carga,
           para município novo sair com IBGE. CEPs: grava os CEPs da base própria que a tabela ainda
-          não tem (cerca de 1 minuto para MS e MT); os do ViaCEP não são alterados.
+          não tem (pouco mais de 2 minutos para MS e MT); os do ViaCEP não são alterados.
         </FieldDescription>
 
         {refs && (

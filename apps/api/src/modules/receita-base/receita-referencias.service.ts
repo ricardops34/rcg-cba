@@ -240,7 +240,7 @@ export class ReceitaReferenciasService {
   }
 
   async atualizarCeps(empresaId: string): Promise<ReceitaCepsResultado> {
-    // ~1 min para MS+MT (969 mil empresas, 42 mil CEPs); o Brasil todo, mais.
+    // ~2 min 20 s para MS+MT (969 mil empresas, 42 mil CEPs); o Brasil todo, mais.
     const r = await this.base.chamarControle<{ ceps: CepControle[] }>(
       empresaId,
       'GET',
